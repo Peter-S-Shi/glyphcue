@@ -3,7 +3,7 @@
 **Document type:** Authoritative post-Grill product architecture baseline  
 **Project:** GlyphCue  
 **Repository:** `Peter-S-Shi/glyphcue`  
-**Lifecycle phase:** Production Development in progress → Milestone 0 complete, Milestone 1 next  
+**Lifecycle phase:** Production Development in progress → Milestone 1 complete, Milestone 2 next  
 **Status:** Authoritative V1 product architecture for production development  
 **Last updated:** 2026-08-30
 
@@ -1227,8 +1227,11 @@ Required as engineering / portfolio evidence (produced across M1–M10 per ROADM
 Milestone 0 — Production Foundation
 ✓ complete
 
+Milestone 1 — Thin Path B Vertical Slice
+✓ complete
+
 Production Development
-IN PROGRESS — Milestone 1 (Thin Path B Vertical Slice) next
+IN PROGRESS — Milestone 2 (Path A Media & Job Orchestration) next
 ```
 
 ---

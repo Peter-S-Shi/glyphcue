@@ -39,7 +39,13 @@ class MainWindow(QMainWindow):
     are injected via the constructor rather than constructed globally.
     """
 
-    def __init__(self, cue_repository: CueRepository | None = None) -> None:
+    def __init__(
+        self,
+        cue_repository: CueRepository | None = None,
+        left_pane: QWidget | None = None,
+        center_pane: QWidget | None = None,
+        right_pane: QWidget | None = None,
+    ) -> None:
         super().__init__()
         self._cue_repository = cue_repository
 
@@ -48,15 +54,18 @@ class MainWindow(QMainWindow):
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
         splitter.addWidget(
-            _placeholder_pane("Structure + Queue", "Left pane — reconstruction queue")
+            left_pane
+            or _placeholder_pane("Structure + Queue", "Left pane — reconstruction queue")
         )
         splitter.addWidget(
-            _placeholder_pane(
+            center_pane
+            or _placeholder_pane(
                 "Primary Evidence Workspace", "Center pane — Path A/B evidence"
             )
         )
         splitter.addWidget(
-            _placeholder_pane(
+            right_pane
+            or _placeholder_pane(
                 "Reconstruction QA", "Right pane — QA + supporting evidence"
             )
         )
