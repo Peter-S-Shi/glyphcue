@@ -22,7 +22,7 @@ def test_full_vertical_slice_import_review_approve_export(qapp_guard, tmp_path):
     destination = tmp_path / "input.reconstructed.srt"
 
     cues, observations_by_id = parse_and_reconstruct(source)
-    workspace = PathBWorkspace(cues, observations_by_id, destination)
+    workspace = PathBWorkspace(cues, observations_by_id, source, destination)
 
     # Queue selection + active Cue + source observations
     workspace.queue.setCurrentRow(0)

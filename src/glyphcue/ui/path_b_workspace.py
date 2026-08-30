@@ -44,10 +44,12 @@ class PathBWorkspace:
         self,
         cues: list[Cue],
         observations_by_id: dict[str, Observation],
+        source_path: Path,
         export_destination: Path,
     ) -> None:
         self._cues = list(cues)
         self._observations_by_id = observations_by_id
+        self._source_path = source_path
         self._export_destination = export_destination
         self._adapter = Pysubs2SubtitleFormatAdapter()
 
@@ -73,7 +75,7 @@ class PathBWorkspace:
 
         self.queue.currentRowChanged.connect(self._on_row_changed)
         self.approve_button.clicked.connect(self._on_approve)
-        self.export_button.clicked.connect(self._on_export)
+        self.export_button.clicked.connect(self._on_export_button_clicked)
 
         if self._cues:
             self.queue.setCurrentRow(0)
@@ -115,6 +117,25 @@ class PathBWorkspace:
         )
         self.status_label.setText("Approved")
 
-    def _on_export(self) -> None:
+    def export(self) -> Path:
+        """Write the current cues to the export destination.
+
+        Refuses to overwrite the source file, regardless of what
+        destination the workspace was constructed with -- this check
+        lives here (not only in the orchestration layer that picks the
+        default destination) so no caller of this class can accidentally
+        bypass it.
+        """
+        if self._export_destination.resolve() == self._source_path.resolve():
+            raise ValueError(
+                "Export refused: destination must not overwrite the source file"
+            )
         self._adapter.write(self._cues, self._export_destination)
         self.status_label.setText(f"Exported to {self._export_destination}")
+        return self._export_destination
+
+    def _on_export_button_clicked(self) -> None:
+        try:
+            self.export()
+        except ValueError as exc:
+            self.status_label.setText(str(exc))
