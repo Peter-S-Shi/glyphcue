@@ -3,8 +3,8 @@
 **Document type:** Authoritative post-Grill product architecture baseline  
 **Project:** GlyphCue  
 **Repository:** `Peter-S-Shi/glyphcue`  
-**Lifecycle phase:** Product Discovery complete → Pre-Prototype Architecture Baseline  
-**Status:** Current architecture authority for product planning  
+**Lifecycle phase:** Product Shell Validation complete → Production Development Ready (M0 next)  
+**Status:** Authoritative V1 product architecture for production development  
 **Last updated:** 2026-08-30
 
 ---
@@ -24,7 +24,7 @@ This document is **not** a roadmap, milestone plan, coding specification, UI des
 
 Its purpose is to answer:
 
-> What is GlyphCue now, what problems does it own, what architectural constraints are already accepted, where should custom engineering depth live, and what remains genuinely open before production development?
+> What is GlyphCue now, what problems does it own, what architectural constraints are already accepted, where should custom engineering depth live, and what remains genuinely open during V1 production development?
 
 When this file conflicts with earlier exploratory baselines or Grill recommendations, **this file is the current planning authority**.
 
@@ -413,7 +413,7 @@ QA maturation
 remaining evidence-driven gaps
 ```
 
-This sequencing is an architectural risk-control decision, not yet a Milestone roadmap.
+This sequencing is the architectural rationale implemented by the current milestone roadmap in `ROADMAP.md`; `ROADMAP.md` is authoritative for milestone ordering and gates.
 
 ---
 
@@ -1230,21 +1230,17 @@ NEXT — Milestone 0 (Production Foundation)
 
 ---
 
-# 33. Open Decisions Before Production Freeze
+# 33. Remaining Open Architecture Decisions During Production Development
 
 Only unresolved issues that can materially affect production architecture should remain here.
 
-O1 (multilingual timing semantics) and O2 (final desktop technology stack) are closed — see §12 and `ROADMAP.md` §3 respectively. O3 remains open below.
+O1 (multilingual timing semantics), O2 (final desktop technology stack), and O4 (final UI / interaction model) are closed — see §12, `ROADMAP.md` §3, and `DESIGN.md` respectively. O3 and O5 remain genuinely open below.
 
 ## O3 — OCR runtime selection
 
 The product architecture assumes mature pretrained OCR integration.
 
 The exact engine / runtime should be selected through practical engineering evidence, not preference alone.
-
-## O4 — Final UI / interaction model
-
-Closed. Prototype Rounds 1–3 and Product Shell Validation are complete; the accepted UI / interaction model is frozen in `DESIGN.md`. The prototype questions this item originally tracked (Path A vs Path B entry flow, ROI / Track Group configuration, video + cue + evidence layout, QA Workspace structure, processing-job visibility, export workflow, Advanced Settings visibility) were resolved there.
 
 ## O5 — Final public-facing identity wording
 

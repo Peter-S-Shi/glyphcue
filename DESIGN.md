@@ -3,7 +3,7 @@
 **Document type:** Production-facing UI / UX design authority  
 **Project:** GlyphCue  
 **Repository:** `Peter-S-Shi/glyphcue`  
-**Lifecycle phase:** Product Shell Validation complete → Pre-Production Design Baseline  
+**Lifecycle phase:** Product Shell Validation complete → Production Development Ready  
 **Status:** Authoritative V1 design specification  
 **Last updated:** 2026-08-30
 
@@ -491,7 +491,9 @@ Each layer may show:
 - script / language metadata where useful;
 - reconstructed text;
 - local issue marker;
-- timing exception UI if required.
+- layer-local issue / asymmetry diagnostic.
+
+V1 does not provide per-layer timing controls or a timing override in this presentation — timing belongs to the Cue (see §13).
 
 The QA inspector may show all layers.
 
@@ -2468,8 +2470,6 @@ Future UI implementation agents must obey:
 # 94. Open Design / Architecture Dependencies
 
 The following remain explicitly unresolved.
-
-Multilingual timing semantics (formerly listed here as O1) is closed for V1 — see §13 and `ROADMAP.md` §4.
 
 ## O2 — Minimum window / responsive collapse
 
