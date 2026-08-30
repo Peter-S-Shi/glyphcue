@@ -471,36 +471,26 @@ A bilingual subtitle block should not require the user to draw the same ROI twic
 
 ---
 
-# 12. Open Multilingual Timing Decision
+# 12. Multilingual Timing Decision — V1 Frozen
 
-The physical configuration model and the canonical timing model are not the same thing.
+The physical configuration model and the canonical timing model are distinct questions.
 
-A visual region may contain several language layers while the internal timing semantics still need to answer:
-
-- do all languages always appear at the same time?
-- can one language lag another?
-- can a language be absent for one cue?
-- can one language split while another remains continuous?
-- can alignment become one-to-many or many-to-one?
-
-Therefore the following is **not frozen**:
+A visual region may contain several language layers. For V1, representative target sample observation has resolved the timing semantics:
 
 ```text
-single Cue with shared timing + N texts
+single Cue with shared timing + N language layers
 ```
 
-versus:
+is the frozen V1 model. Language Layers inherit the Cue's timing; independent per-language timing, alignment graphs, and one-to-many/many-to-one timing relations are explicitly out of scope for V1.
 
-```text
-independent timed language cues
-+ alignment relationship
-```
+See `ROADMAP.md` §4 (V1 Domain Simplification — Multilingual Timing Closed) for the accepted material profile and rationale:
 
-This question must be resolved using real multilingual sample observation before the production domain model is frozen.
+- language layers appear together within a Track Group;
+- language layers disappear together within a Track Group;
+- meaningful timing skew was not observed in representative target material;
+- rare missing/asymmetric layers are treated as degraded / low-quality source conditions.
 
-A full competitor Evidence Gate is **not** required.
-
-A small physical-layout sample survey remains required because this is a domain-fact dependency.
+This is an intentional V1 domain simplification based on the supported material profile, not a universal claim about all burned-in multilingual subtitles. It may be revisited in a future version if evidence requires it.
 
 ---
 
@@ -551,7 +541,7 @@ Possible responsibilities include:
 - manual edits;
 - approved final text.
 
-Exact multilingual timing structure remains open as described in §12.
+Multilingual timing structure is frozen for V1 as described in §12: Language Layers inherit Cue timing.
 
 ---
 
@@ -1180,13 +1170,13 @@ Hardening and RC are not optional decorations.
 
 A working core algorithm does **not** equal project completion.
 
-The detailed Milestone roadmap will be created later.
+The detailed Milestone roadmap exists as `ROADMAP.md`.
 
 ---
 
 # 32. Current Lifecycle State
 
-As of this architecture baseline:
+As of this update:
 
 ```text
 Repository created
@@ -1207,17 +1197,35 @@ Post-Grill architecture consolidation
 Formal competitor Evidence Gate
 Retired as blocker
 
+Prototype Round 1
+✓
+
+Prototype Round 2
+✓
+
+Prototype Round 3
+✓
+
+Product Shell Validation
+✓
+
+DESIGN.md
+✓ exists
+
+Multilingual timing decision (O1)
+✓ closed — see §12
+
+V1 technology stack
+✓ frozen — see ROADMAP.md §3
+
+ROADMAP.md
+✓ exists
+
 Evaluation corpus
-Required as engineering / portfolio evidence
+Required as engineering / portfolio evidence (produced across M1–M10 per ROADMAP.md)
 
-UI prototype
-NEXT
-
-Production architecture / domain-model freeze
-AFTER prototype + remaining factual checks
-
-Milestone roadmap
-AFTER product / architecture freeze
+Production Development
+NEXT — Milestone 0 (Production Foundation)
 ```
 
 ---
@@ -1226,34 +1234,7 @@ AFTER product / architecture freeze
 
 Only unresolved issues that can materially affect production architecture should remain here.
 
-## O1 — Multilingual timing semantics
-
-Does a Track Group produce:
-
-```text
-one shared timed cue with N language layers
-```
-
-or:
-
-```text
-independent language cues
-+ explicit alignment
-```
-
-or a hybrid?
-
-Resolve through a small physical-layout survey of real multilingual samples.
-
-This is not a competitor test.
-
-## O2 — Final desktop technology stack
-
-Windows desktop and local-first are current direction.
-
-Python ecosystem is probable.
-
-The final GUI framework / runtime stack is not frozen by this document.
+O1 (multilingual timing semantics) and O2 (final desktop technology stack) are closed — see §12 and `ROADMAP.md` §3 respectively. O3 remains open below.
 
 ## O3 — OCR runtime selection
 
@@ -1263,17 +1244,7 @@ The exact engine / runtime should be selected through practical engineering evid
 
 ## O4 — Final UI / interaction model
 
-The product shell is intentionally not frozen until `/prototype`.
-
-Key prototype questions include:
-
-- Path A vs Path B entry flow;
-- ROI / Track Group configuration;
-- video + cue + evidence layout;
-- QA Workspace structure;
-- processing-job visibility;
-- export workflow;
-- Advanced Settings visibility.
+Closed. Prototype Rounds 1–3 and Product Shell Validation are complete; the accepted UI / interaction model is frozen in `DESIGN.md`. The prototype questions this item originally tracked (Path A vs Path B entry flow, ROI / Track Group configuration, video + cue + evidence layout, QA Workspace structure, processing-job visibility, export workflow, Advanced Settings visibility) were resolved there.
 
 ## O5 — Final public-facing identity wording
 
@@ -1285,7 +1256,7 @@ Marketing description / GitHub description / tagline wording may still be refine
 
 # 34. Prototype Contract
 
-The next major phase is **UI / product-shell prototyping**.
+Status: fulfilled. Prototype Rounds 1–3 and Product Shell Validation are complete; the accepted result is frozen in `DESIGN.md`. The contract below is retained as the historical record of what the prototype phase was required to test and preserve.
 
 Prototype is a decision artifact.
 
@@ -1317,7 +1288,7 @@ Future Codex / Claude Code work must preserve these rules unless an explicit pro
 3. Do not silently turn the QA workspace into a full subtitle editor.
 4. Do not expose CV tuning knobs by default without evidence.
 5. Do not hard-code bilingual-only assumptions.
-6. Do not assume shared multilingual timing before O1 is resolved.
+6. Do not implement per-language independent timing for V1; shared Cue-level timing is frozen (§12).
 7. Do not silently rewrite recovered text for style or fluency.
 8. Do not claim third-party model capabilities as GlyphCue inventions.
 9. Do not claim market novelty without evidence.
@@ -1352,21 +1323,21 @@ Role:
 
 Their accepted deltas have been consolidated here.
 
-## Future `DESIGN.md`
+## `DESIGN.md`
 
 Role:
 
-> approved visual and interaction design after prototype work
+> approved visual and interaction design, frozen after Prototype Rounds 1–3 and Product Shell Validation
 
 It should not redefine product architecture silently.
 
-## Future `ROADMAP.md`
+## `ROADMAP.md`
 
 Role:
 
 > milestone-driven engineering progression
 
-It should implement this architecture, not recreate product discovery.
+It implements this architecture and does not recreate product discovery. It is the current authoritative source for V1 technology stack and multilingual timing facts (see §12 above).
 
 ## Future `PROJECT_STATUS.md`
 

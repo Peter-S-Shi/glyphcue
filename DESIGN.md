@@ -511,24 +511,28 @@ This prevents the navigation list from becoming vertically unstable.
 
 # 13. Multilingual Timing UI
 
-## `OPEN`
+## `V1 FROZEN`
 
-The production domain model for multilingual timing is not frozen.
+The production domain model for multilingual timing is frozen for V1, per `ROADMAP.md` §4 (V1 Domain Simplification — Multilingual Timing Closed):
 
-Do not encode into UI architecture that every language always shares one timing span.
+> shared Cue-level timing. Language Layers inherit the Cue's `start_time` / `end_time`.
 
-Prototype testing showed:
+Representative target samples showed:
 
-- shared timing is visually efficient;
-- fully independent timing for every layer becomes noisy;
-- exception-based timing is a promising interaction pattern.
+- language layers appear together within a Track Group;
+- language layers disappear together within a Track Group;
+- meaningful timing skew was not observed in representative target material.
+
+V1 UI must encode Cue-level timing as the shared timing span for all language layers in a Track Group. V1 does not implement per-language independent timing, a language-cue alignment graph, or layer timing override.
+
+This is an intentional V1 domain simplification based on the supported material profile, not a universal claim about all burned-in multilingual subtitles. A future version may revisit it if evidence requires it.
 
 ## `GUIDELINE`
 
-Preferred UI shape if the domain model permits it:
+Accepted V1 UI shape:
 
 ```text
-Master Cue Timing
+Cue Timing
 34.600 → 39.200
 
 Japanese
@@ -536,17 +540,9 @@ Japanese
 
 English
 ...
-⚠ Layer timing differs
-In: 34.950
-Out: 39.200
-[Use master timing]
 ```
 
-This should be treated as an **interaction recommendation**, not a domain-schema decision.
-
-Until O1 is resolved from real sample evidence:
-
-> Production code must not hard-code shared timing as an invariant.
+Rare missing/asymmetric layers are a degraded/low-quality source condition (diagnostic + review flag), not a case the V1 timing model needs to represent structurally.
 
 ---
 
@@ -2054,13 +2050,13 @@ This document must not resolve architecture questions that remain open.
 
 Examples:
 
-- multilingual timing schema;
-- OCR runtime;
+- OCR runtime (remains benchmark-dependent, see `ROADMAP.md` §3/M3);
 - actual consensus algorithm;
-- actual CJK segmentation strategy;
-- final desktop framework.
+- actual CJK segmentation strategy.
 
-If implementation needs one of these decisions, escalate it to architecture / engineering review.
+Multilingual timing schema and the desktop technology stack are no longer open — both are frozen for V1 (see §13 above and `ROADMAP.md` §3/§4). This document still must not encode implementation details of consensus/segmentation/OCR runtime choices that remain genuinely open.
+
+If implementation needs an open decision resolved, escalate it to architecture / engineering review.
 
 Do not hide architectural decisions inside UI code.
 
@@ -2460,7 +2456,7 @@ Future UI implementation agents must obey:
 12. Do not add batch approval without evidence.
 13. Do not add linked video to Path B unless explicitly approved.
 14. Do not add user-facing JSON diagnostics export without scope approval.
-15. Do not assume multilingual timing semantics.
+15. Do not implement per-language-layer independent timing; V1 Language Layers inherit Cue timing (frozen, see §13).
 16. Do not encode state by color alone.
 17. Do not use decoration to simulate technical sophistication.
 18. Do not make every action primary.
@@ -2473,11 +2469,7 @@ Future UI implementation agents must obey:
 
 The following remain explicitly unresolved.
 
-## O1 — Multilingual timing semantics
-
-UI recommendation exists.
-
-Domain truth does not.
+Multilingual timing semantics (formerly listed here as O1) is closed for V1 — see §13 and `ROADMAP.md` §4.
 
 ## O2 — Minimum window / responsive collapse
 
