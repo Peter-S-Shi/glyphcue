@@ -3,7 +3,7 @@
 **Document type:** Authoritative V1 milestone roadmap  
 **Project:** GlyphCue  
 **Repository:** `Peter-S-Shi/glyphcue`  
-**Lifecycle phase:** Architecture + Product Shell + Design frozen → Production Development Ready  
+**Lifecycle phase:** Production Development in progress → Milestone 0 complete, Milestone 1 next  
 **Status:** Current V1 execution roadmap  
 **Last updated:** 2026-08-30
 
@@ -1793,8 +1793,6 @@ Only then should the roadmap be considered complete.
 
 # 29. Current Lifecycle State
 
-At roadmap creation:
-
 ```text
 Repository created                     ✓
 Product discovery                      ✓
@@ -1811,7 +1809,9 @@ Technology Stack Freeze                ✓
 
 Production Roadmap                     ✓  ← this document
 
-Production Development                 NEXT
+Milestone 0 — Production Foundation    ✓ complete
+
+Production Development                 IN PROGRESS
 ```
 
 ---
@@ -1820,21 +1820,19 @@ Production Development                 NEXT
 
 The next engineering action is:
 
-> **Milestone 0 — Production Foundation**
+> **Milestone 1 — Thin Path B Vertical Slice**
 
 Do not ask AG2.0 to implement the whole roadmap.
 
-Start with M0 only.
+Advance one milestone at a time.
 
-After M0 is pushed:
+After M1 is pushed:
 
 1. inspect the remote repository;
 2. verify the milestone against its acceptance gate;
 3. correct deficiencies;
 4. merge only when the milestone is genuinely accepted;
-5. then issue the M1 prompt.
-
-The project should advance one milestone at a time.
+5. then issue the M2 prompt.
 
 ---
 
