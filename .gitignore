@@ -1,0 +1,112 @@
+# ── Python ──────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+.Python
+pip-wheel-metadata/
+*.egg-info/
+.eggs/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.coverage
+.coverage.*
+htmlcov/
+
+# ── Secrets / environment ──────────────────────────────────────────
+.env
+.env.*
+*.env
+!.env.example
+*.pem
+*.key
+secrets/
+
+# ── Build / dist ────────────────────────────────────────────────────
+build/
+dist/
+*.egg
+node_modules/
+.next/
+out/
+
+# ── Runtime data / databases ────────────────────────────────────────
+data/*.db
+data/*.sqlite
+data/*.sqlite3
+*.db
+*.sqlite
+*.sqlite3
+*.log
+logs/
+
+# ── User import/export/working data ─────────────────────────────────
+imports/
+exports/
+outputs/
+runs/
+
+# ── Media (video/audio) ──────────────────────────────────────────────
+*.mp4
+*.mkv
+*.mov
+*.avi
+*.webm
+*.wav
+*.mp3
+*.flac
+*.m4a
+*.aac
+
+# ── Subtitle/caption working files (must be explicitly un-ignored per file) ──
+*.srt
+*.vtt
+*.ass
+*.ssa
+*.sub
+
+# ── Private samples / fixtures (audit individually before un-ignoring) ──
+samples/
+private_samples/
+fixtures/media/
+
+# ── OCR / model weights ───────────────────────────────────────────────
+*.onnx
+*.pt
+*.pth
+*.h5
+*.tflite
+*.weights
+models/
+weights/
+
+# ── Scratch / prototype / local-only working dirs ────────────────────
+scratch/
+prototype/
+.prompt-drafts/
+
+# ── Screenshots / images produced during dev (audit before tracking) ──
+*.png
+*.jpg
+*.jpeg
+*.gif
+
+# ── IDE / editor ───────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ── OS artifacts ───────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── Temp ───────────────────────────────────────────────────────────
+*.tmp
+*.temp
+~$*

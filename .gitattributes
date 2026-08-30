@@ -1,0 +1,30 @@
+# Normalize line endings to LF in the repo; let Git handle checkout conversion.
+* text=auto eol=lf
+
+# Explicit text types
+*.md text
+*.py text
+*.txt text
+*.json text
+*.yml text
+*.yaml text
+*.toml text
+*.cfg text
+*.ini text
+
+# Windows-specific scripts keep CRLF
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# Binary types — no EOL conversion
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.onnx binary
+*.pt binary
+*.pth binary
+*.h5 binary
