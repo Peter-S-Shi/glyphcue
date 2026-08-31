@@ -105,12 +105,14 @@ class PathAMediaPane:
         ocr_engine_factory: Callable[[str], OcrEngine] | None = None,
         db_path: Path | None = None,
         available_languages: tuple[str, ...] = CANONICAL_LANGUAGES,
+        on_open_caption_file: Callable[[Path], None] | None = None,
     ) -> None:
         self._repository = track_group_repository
         self._track_group_id = track_group_id
         self._ocr_engine = ocr_engine
         self._ocr_engine_factory = ocr_engine_factory
         self._db_path = db_path
+        self._on_open_caption_file = on_open_caption_file
         self._current_track_group: TrackGroup | None = None
         self._processing_range = ProcessingRange()
         # A connection of its own on the UI thread, separate from
@@ -240,8 +242,30 @@ class PathAMediaPane:
         )
         self.qa.add_right_pane_widget(self.export_controls.widget)
 
+        self.open_caption_file_button = QPushButton("Open Caption File (Path B)…")
+        self.open_caption_file_button.setEnabled(on_open_caption_file is not None)
+        self.open_caption_file_button.clicked.connect(self._on_open_caption_file_clicked)
+        self.qa.add_right_pane_widget(self.open_caption_file_button)
+
     def _on_replay(self, cue) -> None:
         self.controller.play_span(cue.start_time, cue.end_time)
+
+    def switch_to_caption_file(self, path: Path) -> None:
+        """Reaches Path B directly from an already-open Path A
+        workbench (DESIGN.md section 9): switching paths is changing
+        evidence-source mode inside one product, not restarting the
+        app. Delegates to the shared entry (`GlyphCueEntry`) via the
+        injected callback so the same window-transition logic used at
+        first launch is reused, not duplicated."""
+        if self._on_open_caption_file is not None:
+            self._on_open_caption_file(path)
+
+    def _on_open_caption_file_clicked(self) -> None:
+        path_str, _selected_filter = QFileDialog.getOpenFileName(
+            None, "Open Caption File", "", "Subtitle files (*.srt *.vtt)"
+        )
+        if path_str:
+            self.switch_to_caption_file(Path(path_str))
 
     @property
     def last_reconstructed_cues(self) -> list | None:
@@ -260,6 +284,13 @@ class PathAMediaPane:
             f"{metadata.duration_seconds:.2f}s · {metadata.codec_name}"
         )
         self.export_controls.set_source_path(path)
+        # DESIGN.md section 84: the range controls must offer a
+        # reasonable bound from the real, just-opened media -- not an
+        # arbitrary large ceiling the user could set past the video's
+        # own end.
+        self.processing_range_start_spin.setRange(0.0, metadata.duration_seconds)
+        self.processing_range_end_spin.setRange(0.0, metadata.duration_seconds)
+        self.processing_range_end_spin.setValue(metadata.duration_seconds)
 
     def current_roi(self) -> ROI:
         return ROI(
@@ -329,8 +360,6 @@ class PathAMediaPane:
         track_group = TrackGroup(id=self._track_group_id, roi=self.current_roi(), languages=languages)
         self._current_track_group = track_group
 
-        self.ocr_metrics = PipelineMetrics()
-        self.current_evidence_run_id = str(uuid.uuid4())
         self._processing_range = self.current_processing_range()
 
         # Real, resolved processing-end evidence -- the SAME
@@ -338,10 +367,22 @@ class PathAMediaPane:
         # final reconstructed Cue can use it instead of an ~1ms
         # OCR-instant-marker fallback (ROADMAP M5's frozen final-
         # boundary contract; see reconstruct_multilingual_cues_for_track_group).
+        #
+        # Resolved and validated BEFORE any job/run-state is touched
+        # (ROADMAP M9): a reversed/zero/out-of-media range must never
+        # start a job or overwrite the previous run's status with a
+        # fake "running" state -- it is refused up front, with the
+        # current OCR status left exactly as it was.
         media_duration = probe_media(self._video_path).duration_seconds
-        _range_start, self._current_processing_end_time = self._processing_range.resolve(
-            media_duration
-        )
+        try:
+            _range_start, processing_end_time = self._processing_range.resolve(media_duration)
+        except ValueError as exc:
+            self.ocr_status_label.setText(f"Invalid processing range: {exc}")
+            return
+        self._current_processing_end_time = processing_end_time
+
+        self.ocr_metrics = PipelineMetrics()
+        self.current_evidence_run_id = str(uuid.uuid4())
 
         if len(languages) == 1:
             # The live language selection must choose the real runtime

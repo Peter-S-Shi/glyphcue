@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Callable
 
-from PySide6.QtWidgets import QLabel, QPushButton, QTextEdit, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QFileDialog, QLabel, QPushButton, QTextEdit, QVBoxLayout, QWidget
 
-from glyphcue.adapters.pysubs2_subtitle_io import ImportWarning, Pysubs2SubtitleFormatAdapter
-from glyphcue.adapters.transcript_export import write_ai_ready_transcript, write_readable_transcript
+from glyphcue.adapters.pysubs2_subtitle_io import ImportWarning
 from glyphcue.application.reconstruction import PathBDiagnostics
 from glyphcue.application.review_priority import (
     ReviewPriority,
@@ -15,6 +15,7 @@ from glyphcue.application.review_priority import (
 from glyphcue.domain.cue import Cue
 from glyphcue.domain.observation import Observation
 from glyphcue.ui.design_tokens import Spacing
+from glyphcue.ui.export_controls import ExportControls
 from glyphcue.ui.reconstruction_qa_workspace import ReconstructionQaWorkspace
 
 
@@ -51,12 +52,19 @@ def _normalization_kind_line(diagnostics: PathBDiagnostics | None) -> str | None
     content GlyphCue could reliably restore doesn't need a human
     re-check), but the reviewer must still be able to SEE what actually
     happened, not just a blank center pane. Reuses the existing
-    consolidation explanation widget -- no second QA UI."""
+    consolidation explanation widget -- no second QA UI.
+
+    DESIGN.md section 17 (Preserved / No-Change State): when real
+    diagnostics exist and NONE of them fired, that is itself a real,
+    positive fact -- a structurally normal caption GlyphCue did not
+    need to touch -- and must say so explicitly rather than showing
+    nothing, which would be indistinguishable from "no diagnostics were
+    ever computed" (the `diagnostics is None` case below)."""
     if diagnostics is None:
         return None
     kinds = [label for field_name, label in _NORMALIZATION_KIND_LABELS if getattr(diagnostics, field_name)]
     if not kinds:
-        return None
+        return "Preserved 1:1 — no reconstruction required"
     return "Normalization: " + ", ".join(kinds)
 
 
@@ -103,6 +111,81 @@ def _consolidation_explanation(
     return f"{base}\n{kind_line}"
 
 
+def _cue_source_observations(
+    cue: Cue | None, observations_by_id: dict[str, Observation]
+) -> list[Observation]:
+    if cue is None:
+        return []
+    source_ids = [
+        observation_id for layer in cue.language_layers for observation_id in layer.observation_ids
+    ]
+    observations = [
+        observations_by_id[observation_id]
+        for observation_id in source_ids
+        if observation_id in observations_by_id
+    ]
+    observations.sort(key=lambda observation: observation.start_time)
+    return observations
+
+
+def _raw_timed_caption_stream_text(
+    cue: Cue | None, observations_by_id: dict[str, Observation]
+) -> str:
+    """DESIGN.md section 14.1's Raw Timed Caption Stream: every source
+    observation's own id/timing/text that fed the active reconstructed
+    Cue, in source-time order -- the raw evidence, not the curated/
+    consolidated view (that is `_consolidation_explanation`)."""
+    if cue is None:
+        return ""
+    observations = _cue_source_observations(cue, observations_by_id)
+    if not observations:
+        return "No source observations recorded for this Cue."
+    return "\n".join(
+        f"{observation.id}  {observation.start_time:.3f}s–{observation.end_time:.3f}s  {observation.text}"
+        for observation in observations
+    )
+
+
+def _timing_collision_track_text(
+    cue: Cue | None,
+    observations_by_id: dict[str, Observation],
+    diagnostics_by_cue_id: dict[str, PathBDiagnostics],
+) -> str:
+    """DESIGN.md section 14.3's Timing / Collision Track: source
+    observation spans, the reconstructed Cue's own span, and an
+    explicit collision/review-boundary marker when M8's diagnostics
+    flagged one -- makes temporal normalization inspectable rather than
+    only described in prose."""
+    if cue is None:
+        return ""
+    lines = [
+        f"Source {observation.id}: {observation.start_time:.3f}s – {observation.end_time:.3f}s"
+        for observation in _cue_source_observations(cue, observations_by_id)
+    ]
+    lines.append(f"Reconstructed {cue.id}: {cue.start_time:.3f}s – {cue.end_time:.3f}s")
+    diagnostics = diagnostics_by_cue_id.get(cue.id)
+    if diagnostics is not None and diagnostics.timing_collision:
+        lines.append("⚠ Timing collision — flagged for review")
+    return "\n".join(lines)
+
+
+def _ingestion_profile_text(
+    source_path: Path,
+    observations_by_id: dict[str, Observation],
+    cues: list[Cue],
+) -> str:
+    """DESIGN.md section 15's Path B left-pane ingestion/normalization
+    profile: source filename, format, source/output cue counts, and
+    the non-destructive-source status, always visible (not only on the
+    active Cue) since it describes the whole import, not one Cue."""
+    format_name = source_path.suffix.lstrip(".").upper() or "?"
+    return (
+        f"{source_path.name}  ({format_name})\n"
+        f"Source cues: {len(observations_by_id)}  →  Output cues: {len(cues)}\n"
+        "Source protected — original file is never modified"
+    )
+
+
 class PathBWorkspace:
     """Wires Path B's timed-caption reconstruction into the shared
     Milestone 7 Reconstruction QA seam (`ReconstructionQaWorkspace`),
@@ -111,8 +194,11 @@ class PathBWorkspace:
     thing that differs per path, per DESIGN.md section 7.2.
 
     Center pane here is Path B's own "Timed Text Evidence Workspace"
-    (DESIGN.md section 14): a consolidation explanation showing which
-    source observations became the active reconstructed Cue.
+    (DESIGN.md section 14): the Raw Timed Caption Stream (14.1), the
+    Consolidation / Reconstruction Explanation (14.2), and the Timing /
+    Collision Track (14.3), plus a left-pane ingestion profile (section
+    15) and Preserved 1:1 state for structurally clean input (section
+    17).
     """
 
     def __init__(
@@ -120,26 +206,34 @@ class PathBWorkspace:
         cues: list[Cue],
         observations_by_id: dict[str, Observation],
         source_path: Path,
-        export_destination: Path,
         diagnostics_by_cue_id: dict[str, PathBDiagnostics] | None = None,
         import_warnings: list[ImportWarning] | None = None,
+        on_open_video: Callable[[Path], None] | None = None,
     ) -> None:
         self._source_path = source_path
-        self._export_destination = export_destination
         self._observations_by_id = observations_by_id
-        self._adapter = Pysubs2SubtitleFormatAdapter()
         self._diagnostics_by_cue_id = diagnostics_by_cue_id or {}
+        self._on_open_video = on_open_video
         diagnostics_by_cue_id = self._diagnostics_by_cue_id
 
+        self.raw_stream_view = QTextEdit()
+        self.raw_stream_view.setReadOnly(True)
         self.consolidation_view = QTextEdit()
         self.consolidation_view.setReadOnly(True)
+        self.timing_view = QTextEdit()
+        self.timing_view.setReadOnly(True)
         center_pane = QWidget()
         center_layout = QVBoxLayout(center_pane)
         center_layout.setContentsMargins(
             Spacing.PANEL_MAJOR, Spacing.PANEL_MAJOR, Spacing.PANEL_MAJOR, Spacing.PANEL_MAJOR
         )
         center_layout.addWidget(QLabel("Timed Text Evidence Workspace"))
+        center_layout.addWidget(QLabel("Raw Timed Caption Stream"))
+        center_layout.addWidget(self.raw_stream_view)
+        center_layout.addWidget(QLabel("Consolidation / Reconstruction Explanation"))
         center_layout.addWidget(self.consolidation_view)
+        center_layout.addWidget(QLabel("Timing / Collision Track"))
+        center_layout.addWidget(self.timing_view)
 
         priorities = {cue.id: _priority_for_cue(cue.id, diagnostics_by_cue_id) for cue in cues}
 
@@ -153,25 +247,27 @@ class PathBWorkspace:
         self.window = self.qa.window
         self.queue = self.qa.queue
 
-        self.export_button = QPushButton("Export")
-        self.export_readable_transcript_button = QPushButton("Export Readable Transcript")
-        self.export_ai_ready_transcript_button = QPushButton("Export AI-ready Transcript")
-        self.status_label = QLabel("Source protected — writes normalized output to a new file")
-        self.qa.add_right_pane_widget(self.export_button)
-        self.qa.add_right_pane_widget(self.export_readable_transcript_button)
-        self.qa.add_right_pane_widget(self.export_ai_ready_transcript_button)
-        self.qa.add_right_pane_widget(self.status_label)
-        self.export_button.clicked.connect(self._on_export_button_clicked)
-        self.export_readable_transcript_button.clicked.connect(
-            self._on_export_readable_transcript_clicked
+        self.ingestion_profile_label = QLabel(
+            _ingestion_profile_text(source_path, observations_by_id, cues)
         )
-        self.export_ai_ready_transcript_button.clicked.connect(
-            self._on_export_ai_ready_transcript_clicked
+        self.ingestion_profile_label.setWordWrap(True)
+        self.qa.add_left_pane_widget(self.ingestion_profile_label)
+
+        self.export_controls = ExportControls(
+            get_cues=lambda: self.qa.cues,
+            commit_pending_edits=self.qa.commit_pending_edits,
+            source_path=source_path,
         )
+        self.qa.add_right_pane_widget(self.export_controls.widget)
 
         self.import_warnings_label = QLabel(_import_warnings_text(import_warnings or []))
         self.import_warnings_label.setWordWrap(True)
         self.qa.add_right_pane_widget(self.import_warnings_label)
+
+        self.open_video_button = QPushButton("Open Video (Path A)…")
+        self.open_video_button.setEnabled(on_open_video is not None)
+        self.open_video_button.clicked.connect(self._on_open_video_clicked)
+        self.qa.add_right_pane_widget(self.open_video_button)
 
         self._on_active_cue_changed(self.qa.active_cue)
 
@@ -184,73 +280,32 @@ class PathBWorkspace:
         return self.qa.active_cue
 
     def _on_active_cue_changed(self, cue: Cue | None) -> None:
+        self.raw_stream_view.setPlainText(
+            _raw_timed_caption_stream_text(cue, self._observations_by_id)
+        )
         self.consolidation_view.setPlainText(
             _consolidation_explanation(cue, self._observations_by_id, self._diagnostics_by_cue_id)
         )
+        self.timing_view.setPlainText(
+            _timing_collision_track_text(cue, self._observations_by_id, self._diagnostics_by_cue_id)
+        )
 
     def export(self) -> Path:
-        """Write the current cues to the export destination.
+        return self.export_controls.export()
 
-        Refuses to overwrite the source file, regardless of what
-        destination the workspace was constructed with -- this check
-        lives here (not only in the orchestration layer that picks the
-        default destination) so no caller of this class can accidentally
-        bypass it.
-        """
-        if self._export_destination.resolve() == self._source_path.resolve():
-            raise ValueError(
-                "Export refused: destination must not overwrite the source file"
-            )
-        # A live, un-Approved hand-edit sitting in the active language-
-        # layer text edit must not be silently lost just because the
-        # user exports immediately without Approving or navigating away
-        # first -- commit it before reading `self.qa.cues`. This never
-        # changes review_state; it is not an implicit Approve.
-        self.qa.commit_pending_edits()
-        self._adapter.write(self.qa.cues, self._export_destination)
-        self.status_label.setText(f"Exported to {self._export_destination}")
-        return self._export_destination
+    def switch_to_video(self, path: Path) -> None:
+        """Reaches Path A directly from an already-open Path B
+        workbench (DESIGN.md section 9): switching paths is changing
+        evidence-source mode inside one product, not restarting the
+        app. Delegates to the shared entry (`GlyphCueEntry`) via the
+        injected callback so the same window-transition logic used at
+        first launch is reused, not duplicated."""
+        if self._on_open_video is not None:
+            self._on_open_video(path)
 
-    def _on_export_button_clicked(self) -> None:
-        try:
-            self.export()
-        except ValueError as exc:
-            self.status_label.setText(str(exc))
-
-    def _transcript_destination(self, suffix: str) -> Path:
-        return self._source_path.with_name(f"{self._source_path.stem}{suffix}")
-
-    def _export_transcript(self, destination: Path, writer) -> Path:
-        """Shared write path for both transcript presets: same
-        non-destructive-source refusal and pending-edit-commit contract
-        as `export()`'s SRT/VTT path (DESIGN.md section 16)."""
-        if destination.resolve() == self._source_path.resolve():
-            raise ValueError(
-                "Export refused: destination must not overwrite the source file"
-            )
-        self.qa.commit_pending_edits()
-        writer(self.qa.cues, destination)
-        self.status_label.setText(f"Exported to {destination}")
-        return destination
-
-    def export_readable_transcript(self) -> Path:
-        return self._export_transcript(
-            self._transcript_destination(".transcript.txt"), write_readable_transcript
+    def _on_open_video_clicked(self) -> None:
+        path_str, _selected_filter = QFileDialog.getOpenFileName(
+            None, "Open Video", "", "Video files (*.mp4 *.mkv *.mov *.avi *.webm)"
         )
-
-    def export_ai_ready_transcript(self) -> Path:
-        return self._export_transcript(
-            self._transcript_destination(".transcript.ai.md"), write_ai_ready_transcript
-        )
-
-    def _on_export_readable_transcript_clicked(self) -> None:
-        try:
-            self.export_readable_transcript()
-        except ValueError as exc:
-            self.status_label.setText(str(exc))
-
-    def _on_export_ai_ready_transcript_clicked(self) -> None:
-        try:
-            self.export_ai_ready_transcript()
-        except ValueError as exc:
-            self.status_label.setText(str(exc))
+        if path_str:
+            self.switch_to_video(Path(path_str))

@@ -225,6 +225,7 @@ class ReconstructionQaWorkspace:
             Spacing.PANEL_MAJOR, Spacing.PANEL_MAJOR, Spacing.PANEL_MAJOR, Spacing.PANEL_MAJOR
         )
         left_layout.addWidget(self.queue)
+        self._left_layout = left_layout
 
         right_pane = QWidget()
         right_layout = QVBoxLayout(right_pane)
@@ -586,3 +587,11 @@ class ReconstructionQaWorkspace:
         Review Priority/diagnostics display, which stay identical
         across paths."""
         self._right_layout.addWidget(widget)
+
+    def add_left_pane_widget(self, widget: QWidget) -> None:
+        """Appends `widget` below the review queue in the left pane --
+        the seam a caller uses for path-specific structural context
+        that legitimately differs from Path A (DESIGN.md section 15's
+        Path B ingestion/normalization profile: source filename,
+        format, source/output cue counts, source-protected status)."""
+        self._left_layout.addWidget(widget)

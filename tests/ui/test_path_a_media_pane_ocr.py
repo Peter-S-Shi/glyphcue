@@ -395,3 +395,77 @@ def test_run_ocr_uses_the_live_processing_range_selection(
 
     assert pane.current_ocr_job.state is JobState.SUCCEEDED
     assert pane._current_processing_end_time == pytest.approx(0.3)
+
+
+def test_reversed_processing_range_shows_invalid_status_and_never_starts_a_job(
+    qapp_guard, track_group_repository, db_path, test_video
+):
+    engine = FakeOcrEngine(regions=[OcrTextRegion(text="Hello there", language="en", confidence=0.9)])
+    pane = PathAMediaPane(track_group_repository, ocr_engine=engine, db_path=db_path)
+    pane.open_video(test_video)
+
+    pane.limit_processing_range_checkbox.setChecked(True)
+    pane.processing_range_start_spin.setValue(0.3)
+    pane.processing_range_end_spin.setValue(0.1)
+
+    pane.run_ocr_button.click()
+
+    assert pane.current_ocr_job is None
+    assert "invalid" in pane.ocr_status_label.text().lower()
+
+
+def test_zero_duration_processing_range_shows_invalid_status_and_never_starts_a_job(
+    qapp_guard, track_group_repository, db_path, test_video
+):
+    engine = FakeOcrEngine(regions=[OcrTextRegion(text="Hello there", language="en", confidence=0.9)])
+    pane = PathAMediaPane(track_group_repository, ocr_engine=engine, db_path=db_path)
+    pane.open_video(test_video)
+
+    pane.limit_processing_range_checkbox.setChecked(True)
+    pane.processing_range_start_spin.setValue(0.0)
+    pane.processing_range_end_spin.setValue(0.0)
+
+    pane.run_ocr_button.click()
+
+    assert pane.current_ocr_job is None
+    assert "invalid" in pane.ocr_status_label.text().lower()
+
+
+def test_out_of_media_processing_range_shows_invalid_status_and_never_starts_a_job(
+    qapp_guard, track_group_repository, db_path, test_video
+):
+    engine = FakeOcrEngine(regions=[OcrTextRegion(text="Hello there", language="en", confidence=0.9)])
+    pane = PathAMediaPane(track_group_repository, ocr_engine=engine, db_path=db_path)
+    pane.open_video(test_video)
+    real_duration = probe_media(test_video).duration_seconds
+
+    pane.limit_processing_range_checkbox.setChecked(True)
+    pane.processing_range_start_spin.setValue(0.0)
+    # setRange() during open_video already caps the spin box at the
+    # real duration -- force a value past it to prove the boundary
+    # application layer (not just the widget) refuses it too.
+    pane.processing_range_end_spin.setRange(0.0, real_duration * 10)
+    pane.processing_range_end_spin.setValue(real_duration + 5.0)
+
+    pane.run_ocr_button.click()
+
+    assert pane.current_ocr_job is None
+    assert "invalid" in pane.ocr_status_label.text().lower()
+
+
+def test_valid_limited_processing_range_still_starts_a_real_job(
+    qapp_guard, track_group_repository, db_path, test_video
+):
+    engine = FakeOcrEngine(regions=[OcrTextRegion(text="Hello there", language="en", confidence=0.9)])
+    pane = PathAMediaPane(track_group_repository, ocr_engine=engine, db_path=db_path)
+    pane.open_video(test_video)
+
+    pane.limit_processing_range_checkbox.setChecked(True)
+    pane.processing_range_start_spin.setValue(0.0)
+    pane.processing_range_end_spin.setValue(0.3)
+
+    pane.run_ocr_button.click()
+    _wait_for(pane.current_ocr_job)
+
+    assert pane.current_ocr_job.state is JobState.SUCCEEDED
+    assert "invalid" not in pane.ocr_status_label.text().lower()

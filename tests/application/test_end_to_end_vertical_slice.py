@@ -23,7 +23,7 @@ def test_full_vertical_slice_import_review_approve_export(qapp_guard, tmp_path):
 
     cues, observations_by_id, diagnostics_by_cue_id, _import_warnings = parse_and_reconstruct(source)
     workspace = PathBWorkspace(
-        cues, observations_by_id, source, destination, diagnostics_by_cue_id=diagnostics_by_cue_id
+        cues, observations_by_id, source, diagnostics_by_cue_id=diagnostics_by_cue_id
     )
 
     # Queue selection + active Cue + source observations
@@ -40,7 +40,7 @@ def test_full_vertical_slice_import_review_approve_export(qapp_guard, tmp_path):
     assert workspace.cues[0].language_layers[0].text == "Hello world, how are you doing"
 
     # Export (non-destructive)
-    workspace.export_button.click()
+    workspace.export_controls.export_button.click()
 
     assert source.read_text(encoding="utf-8") == _ROLLING_SRT
     assert destination.exists()

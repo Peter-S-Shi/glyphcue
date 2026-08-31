@@ -100,3 +100,39 @@ Good line two
 
     assert workspace.queue.count() == 2
     assert "1" in workspace.import_warnings_label.text()
+
+
+def test_path_a_workbench_can_switch_directly_to_path_b_without_restarting(qapp_guard, tmp_path):
+    # DESIGN.md section 9: switching paths is changing evidence-source
+    # mode inside one product -- an already-open Path A workbench must
+    # be able to reach Path B directly, not require the app to be
+    # relaunched through the entry state again.
+    video_path = tmp_path / "clip.mp4"
+    _write_test_video(video_path)
+    source = tmp_path / "input.srt"
+    source.write_text(_SRT_TEXT, encoding="utf-8")
+    _app, entry = create_app(db_path=tmp_path / "glyphcue.sqlite3")
+    path_a_pane = entry.open_video(video_path)
+    assert path_a_pane.window.isVisible() is True
+
+    path_a_pane.switch_to_caption_file(source)
+
+    assert isinstance(entry.path_b_workspace, PathBWorkspace)
+    assert entry.path_b_workspace.window.isVisible() is True
+    assert path_a_pane.window.isVisible() is False
+
+
+def test_path_b_workbench_can_switch_directly_to_path_a_without_restarting(qapp_guard, tmp_path):
+    source = tmp_path / "input.srt"
+    source.write_text(_SRT_TEXT, encoding="utf-8")
+    video_path = tmp_path / "clip.mp4"
+    _write_test_video(video_path)
+    _app, entry = create_app(db_path=tmp_path / "glyphcue.sqlite3")
+    path_b_workspace = entry.open_caption_file(source)
+    assert path_b_workspace.window.isVisible() is True
+
+    path_b_workspace.switch_to_video(video_path)
+
+    assert isinstance(entry.path_a_pane, PathAMediaPane)
+    assert entry.path_a_pane.window.isVisible() is True
+    assert path_b_workspace.window.isVisible() is False
