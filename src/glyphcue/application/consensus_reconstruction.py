@@ -22,7 +22,7 @@ an opaque model. 0.5 tolerates a handful of OCR-noise character errors
 on typical subtitle-length text without merging two genuinely different
 captions that happen to share a few characters. Only consulted when the
 observation carries no real state-transition evidence from M4 (see
-_group_into_state_runs) -- a detected change is only ever treated as
+group_into_state_runs) -- a detected change is only ever treated as
 CANDIDATE evidence, never trusted outright, and an unconfirmed
 candidate never gets to override the vote on its own (see
 `_confirmed_by_next_evidence` and `_reconstruct_one_cue`)."""
@@ -36,7 +36,7 @@ pixel-difference detector: a moving/flickering background behind static
 burned-in text, a compression artifact, or similar can cross that
 threshold without the subtitle itself changing. A candidate is only
 promoted to a real run boundary once subsequent evidence continues to
-support the new reading -- see `_group_into_state_runs` and
+support the new reading -- see `group_into_state_runs` and
 `_confirmed_by_next_evidence`. A TRAILING candidate -- one with no
 further evidence at all after it in the evidence run -- is neither
 confirmed nor refuted: it never opens a new run on its own, and it is
@@ -130,7 +130,7 @@ def _confirmed_by_next_evidence(
     return character_similarity(candidate_text, next_text) >= similarity_threshold
 
 
-def _group_into_state_runs(
+def group_into_state_runs(
     ordered: list[Observation], similarity_threshold: float
 ) -> list[tuple[list[Observation], float | None, set[str]]]:
     """Segments source-PTS-ordered, same-frame-aggregated observations
@@ -258,7 +258,7 @@ def _group_into_state_runs(
     return entries
 
 
-def _tie_break_index(candidate_indices: list[int], run: list[Observation]) -> int:
+def tie_break_index(candidate_indices: list[int], run: list[Observation]) -> int:
     """Deterministic, explainable tie-break shared by text and language
     voting: the tied candidate's highest-confidence observation wins,
     then earliest occurrence in the run. Returns the winning index into
@@ -271,7 +271,7 @@ def _tie_break_index(candidate_indices: list[int], run: list[Observation]) -> in
     return max(candidate_indices, key=score)
 
 
-def _consensus_value(values: list[str], run: list[Observation]) -> tuple[str, int, int]:
+def consensus_value(values: list[str], run: list[Observation]) -> tuple[str, int, int]:
     """Majority vote among `values` (one per observation in `run`, same
     order and same length -- e.g. Observation.text, which is never
     None so this list is always fully aligned with `run`).
@@ -285,7 +285,7 @@ def _consensus_value(values: list[str], run: list[Observation]) -> tuple[str, in
         return tied[0], len(votes), top_count
 
     candidate_indices = [index for index, value in enumerate(values) if value in tied]
-    winning_index = _tie_break_index(candidate_indices, run)
+    winning_index = tie_break_index(candidate_indices, run)
     return values[winning_index], len(votes), top_count
 
 
@@ -297,7 +297,7 @@ def _consensus_language(run: list[Observation]) -> str:
     Reads `observation.language` straight off `run` by index rather
     than voting over a separately built, pre-filtered list: a
     pre-filtered list is shorter than `run` whenever any observation
-    has no language, which previously caused `_consensus_value`'s
+    has no language, which previously caused `consensus_value`'s
     `values[index]` tie-break lookup (indexed by `enumerate(run)`, the
     UNfiltered length) to read past the end of the filtered list --
     an IndexError whenever a tie occurred with a None-language
@@ -315,8 +315,33 @@ def _consensus_language(run: list[Observation]) -> str:
         return tied[0]
 
     tied_indices = [index for index in candidate_indices if run[index].language in tied]
-    winning_index = _tie_break_index(tied_indices, run)
+    winning_index = tie_break_index(tied_indices, run)
     return run[winning_index].language
+
+
+def resolve_cue_timing(
+    run: list[Observation], boundary_time: float | None, processing_end_time: float | None
+) -> tuple[float, float]:
+    """The shared start/end-time resolution rule for a reconstructed
+    run, factored out so a caller reconstructing something other than a
+    single-language Cue from the same run structure (see Milestone 6's
+    multilingual reconstruction, which reuses `group_into_state_runs`
+    directly) times its own Cue identically, not by re-deriving this
+    fallback chain a second time.
+
+    `boundary_time` wins when real evidence closed the run; otherwise
+    `processing_end_time` if the caller supplied it; otherwise the
+    run's own last reading's `end_time` -- an honest, documented
+    fallback, not a duration claim (see `reconstruct_cues_with_consensus`).
+    """
+    start_time = run[0].start_time
+    if boundary_time is not None:
+        end_time = boundary_time
+    elif processing_end_time is not None:
+        end_time = processing_end_time
+    else:
+        end_time = run[-1].end_time
+    return start_time, end_time
 
 
 def _reconstruct_one_cue(
@@ -327,7 +352,7 @@ def _reconstruct_one_cue(
 ) -> tuple[Cue, ConsensusDiagnostics]:
     # The text/language vote only ever counts confirmed evidence: blank
     # (OCR-empty) readings can never sensibly win a text vote, and
-    # unconfirmed trailing candidates (see `_group_into_state_runs`)
+    # unconfirmed trailing candidates (see `group_into_state_runs`)
     # must not override the run's established reading just because they
     # carry a higher OCR confidence. Both are still kept in `run` --
     # and therefore in `observation_ids` below -- for full provenance.
@@ -337,7 +362,7 @@ def _reconstruct_one_cue(
         if observation.text and observation.id not in non_voting_ids
     ]
     texts = [observation.text for observation in voting_run]
-    winning_text, distinct_text_count, top_count = _consensus_value(texts, voting_run)
+    winning_text, distinct_text_count, top_count = consensus_value(texts, voting_run)
 
     winning_language = _consensus_language(voting_run)
 
@@ -349,17 +374,10 @@ def _reconstruct_one_cue(
         text=winning_text,
         observation_ids=observation_ids,
     )
-    if boundary_time is not None:
-        end_time = boundary_time
-    elif processing_end_time is not None:
-        end_time = processing_end_time
-    else:
-        # No better evidence available: an honest, documented fallback,
-        # not a claim about real duration -- see the module docstring.
-        end_time = run[-1].end_time
+    start_time, end_time = resolve_cue_timing(run, boundary_time, processing_end_time)
     cue = Cue(
         id=f"cue-{run[0].id}",
-        start_time=run[0].start_time,
+        start_time=start_time,
         end_time=end_time,
         language_layers=(layer,),
     )
@@ -404,7 +422,7 @@ def reconstruct_cues_with_consensus(
        must have already scoped them to one evidence_run_id -- see
        `reconstruct_cues_for_evidence_run`).
     2. Group consecutive readings into "state runs" (see
-       `_group_into_state_runs`): a run only splits on real M4
+       `group_into_state_runs`): a run only splits on real M4
        state-change evidence when available (never guessed from text
        alone), with character-level similarity (CJK-safe) as the
        fallback signal when no such evidence exists. Blank-text readings
@@ -427,7 +445,7 @@ def reconstruct_cues_with_consensus(
        known-imprecise fallback, not a duration claim.
 
     `similarity_threshold` is the one explainable, tunable knob (default
-    0.5) -- see `_group_into_state_runs`. Deterministic: same input
+    0.5) -- see `group_into_state_runs`. Deterministic: same input
     (any order) always produces the same output.
     """
     ordered = sorted(observations, key=lambda observation: observation.start_time)
@@ -435,7 +453,7 @@ def reconstruct_cues_with_consensus(
     # Re-sort: aggregation can reorder within a frame group but
     # start_time ordering across frames must hold for grouping.
     aggregated = sorted(aggregated, key=lambda observation: observation.start_time)
-    entries = _group_into_state_runs(aggregated, similarity_threshold)
+    entries = group_into_state_runs(aggregated, similarity_threshold)
 
     cues: list[Cue] = []
     diagnostics: list[ConsensusDiagnostics] = []

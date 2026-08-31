@@ -31,7 +31,12 @@ def test_main_launches_the_path_a_workflow_not_the_placeholder_shell(
     exit_code = app_module.main(db_path=tmp_path / "glyphcue.sqlite3")
 
     assert exit_code == 0
-    new_windows = set(captured_widgets) - before
+    # Only VISIBLE new top-level widgets count as "windows main()
+    # launched" -- some widgets (e.g. QComboBox, used by Milestone 6's
+    # language selection picker) lazily create an internal, never-shown
+    # top-level popup frame purely as an implementation detail, which
+    # would otherwise be miscounted as a second launched window.
+    new_windows = {widget for widget in set(captured_widgets) - before if widget.isVisible()}
     assert len(new_windows) == 1
     (window,) = new_windows
     assert window.findChild(QVideoWidget) is not None

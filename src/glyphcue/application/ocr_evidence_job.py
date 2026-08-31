@@ -20,7 +20,7 @@ from glyphcue.jobs.job import Job, JobContext
 from glyphcue.persistence.database import connect
 from glyphcue.persistence.observation_repository import ObservationRepository
 
-_INSTANT_SPAN_SECONDS = 0.001
+INSTANT_SPAN_SECONDS = 0.001
 """An OCR observation is a point-in-time sample, not a duration claim --
 Observation requires end_time > start_time, so this is a small fixed
 span marking "this is an instant," not a measured/estimated duration.
@@ -142,7 +142,7 @@ def build_ocr_evidence_job(
                                 id=str(uuid.uuid4()),
                                 text=region.text,
                                 start_time=timestamp,
-                                end_time=timestamp + _INSTANT_SPAN_SECONDS,
+                                end_time=timestamp + INSTANT_SPAN_SECONDS,
                                 provenance=Provenance(
                                     kind=ProvenanceKind.OCR_ENGINE,
                                     source=runtime_info.engine_name,
@@ -171,7 +171,7 @@ def build_ocr_evidence_job(
                             id=str(uuid.uuid4()),
                             text="",
                             start_time=timestamp,
-                            end_time=timestamp + _INSTANT_SPAN_SECONDS,
+                            end_time=timestamp + INSTANT_SPAN_SECONDS,
                             provenance=Provenance(
                                 kind=ProvenanceKind.OCR_ENGINE,
                                 source=runtime_info.engine_name,

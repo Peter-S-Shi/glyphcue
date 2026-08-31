@@ -29,21 +29,31 @@ def create_path_a_app(db_path: Path = DEFAULT_DB_PATH) -> tuple[QApplication, Pa
     TrackGroup/ROI and OCR-evidence (Observation) persistence wired in.
 
     `PaddleOcrEngine` is the V1 default runtime (see
-    docs/adr/0001-ocr-runtime-selection.md). Constructing it here does
-    not import the real `paddleocr` package -- that import is deferred
-    until the Run OCR Evidence button actually calls `.initialize()` --
-    so this stays safe to construct even when the optional `[ocr]`
-    extra isn't installed.
+    docs/adr/0001-ocr-runtime-selection.md). It is wired as a factory so
+    the live Track Group language selects the engine that is actually
+    constructed. The real `paddleocr` import remains deferred until
+    the Run OCR Evidence button calls `.initialize()`, so this stays
+    safe to construct even when the optional `[ocr]` extra isn't
+    installed.
 
     `PathAMediaPane` is given `db_path` (not a ready-made
     ObservationRepository) so it can open its own connection for
     UI-thread reads, kept separate from the connection the OCR job
     opens on its own worker thread when it runs.
+
+    Only `ocr_engine_factory=PaddleOcrEngine` is wired (Milestone 6):
+    `PathAMediaPane` uses it once per configured language, including a
+    single-language Track Group. A plain `ocr_engine` remains available
+    only to direct callers as a test/injection compatibility fallback.
     """
     app = QApplication.instance() or QApplication(sys.argv)
     conn = connect(db_path)
     track_group_repository = TrackGroupRepository(conn)
-    pane = PathAMediaPane(track_group_repository, ocr_engine=PaddleOcrEngine(), db_path=db_path)
+    pane = PathAMediaPane(
+        track_group_repository,
+        ocr_engine_factory=PaddleOcrEngine,
+        db_path=db_path,
+    )
     return app, pane
 
 

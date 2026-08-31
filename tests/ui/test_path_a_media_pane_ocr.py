@@ -7,6 +7,9 @@ import pytest
 from PySide6.QtCore import QEventLoop, QTimer
 
 from glyphcue.adapters.ocr_types import OcrTextRegion
+from glyphcue.adapters.pyav_media_source import probe_media
+from glyphcue.domain.roi import ROI
+from glyphcue.domain.track_group import TrackGroup
 from glyphcue.jobs.job import JobState
 from glyphcue.persistence.database import connect
 from glyphcue.persistence.track_group_repository import TrackGroupRepository
@@ -133,6 +136,208 @@ def test_cancel_ocr_button_shows_cancelled_status_and_keeps_partial_evidence(
     status = pane.ocr_status_label.text()
     assert "Cancelled" in status
     assert "Done" not in status
+
+
+def test_multilingual_track_group_uses_the_multi_engine_job_and_shows_layers(
+    qapp_guard, track_group_repository, db_path, test_video
+):
+    # A Track Group configured with 2 languages must actually drive a
+    # per-language engine set and the multilingual reconstruction path
+    # -- not silently fall back to a single engine -- and the result
+    # must land somewhere the user can see it (LanguageLayersPanel).
+    track_group_repository.save(
+        TrackGroup(id="default", roi=ROI(0.0, 0.0, 1.0, 1.0), languages=("en", "zh"))
+    )
+    engine_calls: list[str] = []
+    # Real script content per language (not just a distinct string) --
+    # script detection is the real production separation signal (see
+    # docs/multilingual/track_group_reconstruction.md), so a fake
+    # engine's text has to actually look like its language for the
+    # separation to succeed, exactly like real PaddleOCR output would.
+    texts = {"en": "Hello there", "zh": "你好朋友"}
+
+    def factory(language: str) -> FakeOcrEngine:
+        engine_calls.append(language)
+        return FakeOcrEngine(
+            regions=[OcrTextRegion(text=texts[language], language=language, confidence=0.9)]
+        )
+
+    pane = PathAMediaPane(track_group_repository, ocr_engine_factory=factory, db_path=db_path)
+    pane.open_video(test_video)
+
+    pane.run_ocr_button.click()
+    _wait_for(pane.current_ocr_job)
+
+    assert pane.current_ocr_job.state is JobState.SUCCEEDED
+    # Both configured languages' engines were actually constructed and
+    # used -- proof this did not silently run a single-engine job.
+    assert set(engine_calls) == {"en", "zh"}
+    assert len(pane.language_layers_panel.cards) == 2
+    texts_by_language = {card.language: card.text_label.text() for card in pane.language_layers_panel.cards}
+    assert texts_by_language == {"en": "Hello there", "zh": "你好朋友"}
+
+
+def test_single_language_track_group_still_uses_the_single_engine_job(
+    qapp_guard, track_group_repository, db_path, test_video
+):
+    # A single-language Track Group (M4/M5's existing behavior) must
+    # not be routed through the multi-engine path just because a
+    # factory is available -- only one engine gets constructed, and the
+    # layer presentation panel stays empty (no multilingual Cue was
+    # ever reconstructed for it here).
+    track_group_repository.save(
+        TrackGroup(id="default", roi=ROI(0.0, 0.0, 1.0, 1.0), languages=("en",))
+    )
+    engine_calls: list[str] = []
+
+    def factory(language: str) -> FakeOcrEngine:
+        engine_calls.append(language)
+        return FakeOcrEngine(regions=[OcrTextRegion(text="captured", language=language, confidence=0.9)])
+
+    pane = PathAMediaPane(track_group_repository, ocr_engine_factory=factory, db_path=db_path)
+    pane.open_video(test_video)
+
+    pane.run_ocr_button.click()
+    _wait_for(pane.current_ocr_job)
+
+    assert pane.current_ocr_job.state is JobState.SUCCEEDED
+    assert engine_calls == ["en"]
+    assert pane.language_layers_panel.cards == []
+
+
+def test_single_language_factory_follows_the_live_selection_when_plain_engine_is_also_wired(
+    qapp_guard, track_group_repository, db_path, test_video
+):
+    # Production used to wire both PaddleOcrEngine() and
+    # PaddleOcrEngine.  The live Track Group language must choose the
+    # factory engine rather than silently reusing that default-English
+    # plain engine.
+    default_english_engine = FakeOcrEngine()
+    factory_calls: list[str] = []
+
+    def factory(language: str) -> FakeOcrEngine:
+        factory_calls.append(language)
+        return FakeOcrEngine(
+            regions=[OcrTextRegion(text="你好朋友", language=language, confidence=0.9)]
+        )
+
+    pane = PathAMediaPane(
+        track_group_repository,
+        ocr_engine=default_english_engine,
+        ocr_engine_factory=factory,
+        db_path=db_path,
+    )
+    pane.language_selection_panel.set_languages(("zh",))
+    pane.open_video(test_video)
+
+    pane.run_ocr_button.click()
+    _wait_for(pane.current_ocr_job)
+
+    assert pane.current_ocr_job.state is JobState.SUCCEEDED
+    assert factory_calls == ["zh"]
+    assert default_english_engine.recognize_call_count == 0
+
+
+def test_legacy_und_is_removed_before_a_restored_zh_track_group_runs(
+    qapp_guard, track_group_repository, db_path, test_video
+):
+    track_group_repository.save(
+        TrackGroup(
+            id="default",
+            roi=ROI(0.0, 0.0, 1.0, 1.0),
+            languages=("und", "zh"),
+        )
+    )
+    factory_calls: list[str] = []
+
+    def factory(language: str) -> FakeOcrEngine:
+        factory_calls.append(language)
+        return FakeOcrEngine(
+            regions=[OcrTextRegion(text="你好朋友", language=language, confidence=0.9)]
+        )
+
+    pane = PathAMediaPane(track_group_repository, ocr_engine_factory=factory, db_path=db_path)
+    assert pane.language_selection_panel.selected_languages() == ("zh",)
+    pane.open_video(test_video)
+
+    pane.run_ocr_button.click()
+    _wait_for(pane.current_ocr_job)
+
+    assert pane.current_ocr_job.state is JobState.SUCCEEDED
+    assert factory_calls == ["zh"]
+
+
+def test_user_configured_language_selection_persists_and_drives_the_real_multi_engine_run(
+    qapp_guard, track_group_repository, db_path, test_video
+):
+    # No test-code shortcut of pre-seeding a multilingual TrackGroup
+    # directly into the repository -- the user configures it through
+    # the real UI surface, saves it, and a FRESH pane instance (a
+    # stand-in for reopening the app) must restore and run with it.
+    texts = {"en": "Hello there", "zh": "你好朋友"}
+
+    def factory(language: str) -> FakeOcrEngine:
+        return FakeOcrEngine(
+            regions=[OcrTextRegion(text=texts[language], language=language, confidence=0.9)]
+        )
+
+    first_pane = PathAMediaPane(track_group_repository, ocr_engine_factory=factory, db_path=db_path)
+    # Starts as a single legal language, never the "und" placeholder.
+    assert first_pane.language_selection_panel.selected_languages() == ("en",)
+
+    first_pane.language_selection_panel.add_combo.setCurrentText("zh")
+    first_pane.language_selection_panel.add_button.click()
+    assert first_pane.language_selection_panel.selected_languages() == ("en", "zh")
+    first_pane.save_roi_button.click()
+
+    # Simulate reopening the app: a brand new pane over the same
+    # repository, not the same live widget.
+    second_pane = PathAMediaPane(track_group_repository, ocr_engine_factory=factory, db_path=db_path)
+    assert second_pane.language_selection_panel.selected_languages() == ("en", "zh")
+
+    second_pane.open_video(test_video)
+    second_pane.run_ocr_button.click()
+    _wait_for(second_pane.current_ocr_job)
+
+    assert second_pane.current_ocr_job.state is JobState.SUCCEEDED
+    assert len(second_pane.language_layers_panel.cards) == 2
+    texts_by_language = {
+        card.language: card.text_label.text() for card in second_pane.language_layers_panel.cards
+    }
+    assert texts_by_language == {"en": "Hello there", "zh": "你好朋友"}
+
+
+def test_final_multilingual_cue_uses_the_real_processing_range_end_not_a_1ms_instant(
+    qapp_guard, track_group_repository, db_path, test_video
+):
+    # A subtitle state that runs to the end of the whole-media
+    # processing range must have its final Cue's end_time reflect the
+    # real resolved range end, not the ~1ms OCR-instant-marker fallback
+    # (ROADMAP M5's frozen final-boundary contract, extended here to
+    # multilingual reconstruction).
+    track_group_repository.save(
+        TrackGroup(id="default", roi=ROI(0.0, 0.0, 1.0, 1.0), languages=("en", "zh"))
+    )
+    texts = {"en": "Hello there", "zh": "你好朋友"}
+
+    def factory(language: str) -> FakeOcrEngine:
+        return FakeOcrEngine(
+            regions=[OcrTextRegion(text=texts[language], language=language, confidence=0.9)]
+        )
+
+    pane = PathAMediaPane(track_group_repository, ocr_engine_factory=factory, db_path=db_path)
+    pane.open_video(test_video)
+    real_range_end = probe_media(test_video).duration_seconds
+
+    pane.run_ocr_button.click()
+    _wait_for(pane.current_ocr_job)
+
+    assert pane.current_ocr_job.state is JobState.SUCCEEDED
+    assert pane.last_reconstructed_cues is not None
+    assert len(pane.last_reconstructed_cues) == 1
+    final_cue = pane.last_reconstructed_cues[-1]
+    assert final_cue.end_time == pytest.approx(real_range_end)
+    assert final_cue.end_time - final_cue.start_time > 0.01  # not a ~1ms instant marker
 
 
 def test_failed_ocr_job_shows_failed_status_never_done(
