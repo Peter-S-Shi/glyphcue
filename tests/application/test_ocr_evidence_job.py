@@ -8,6 +8,7 @@ import pytest
 from PySide6.QtCore import QEventLoop, QTimer
 
 from glyphcue.adapters.ocr_types import OcrRuntimeInfo, OcrTextRegion
+from glyphcue.adapters.pyav_media_source import probe_media
 from glyphcue.application.ocr_evidence_job import build_ocr_evidence_job
 from glyphcue.application.ocr_invocation_policy import NaiveDenseOcrPolicy
 from glyphcue.application.pipeline_metrics import PipelineMetrics
@@ -225,6 +226,11 @@ def test_cancelling_the_job_stops_before_the_end_and_keeps_partial_evidence(qapp
     assert metrics.frames_analyzed < 100
     # Whatever evidence was already found before cancellation stays saved.
     assert len(_read_repository(db_path).list_all()) == metrics.observations_created
+    # Cancellation must never fake a 100%-complete range: an independent
+    # probe of the real source duration proves media_seconds_processed
+    # stayed short of the full range, not silently forced to completion.
+    metadata = probe_media(path)
+    assert metrics.media_seconds_processed < metadata.duration_seconds
 
 
 def test_observation_provenance_preserves_required_evidence_fields(
@@ -379,12 +385,17 @@ def test_processing_range_progress_and_media_seconds_processed_are_relative_to_t
     # 0.2s reports ~0.0 processed, not 0.2.
     processed_values = [processed for processed, _total in reported]
     assert processed_values[0] == pytest.approx(0.0)
-    assert max(processed_values) <= range_length + 1e-9
-    # media_seconds_processed reflects range-relative progress, so
-    # effective_processing_speed isn't inflated by the 0.2s source
-    # offset: it must not exceed what the range length could produce.
-    assert metrics.media_seconds_processed <= range_length + 1e-9
-    assert metrics.media_seconds_processed > 0
+    # A successful job's range progress reaches completion exactly --
+    # the last frame processed (0.4s absolute -> 0.2s relative) falls
+    # short of the full 0.3s range, so this only holds if the job emits
+    # an explicit final completion progress at processed == total, not
+    # just whatever the last *frame's* relative timestamp happened to be.
+    assert processed_values[-1] == pytest.approx(range_length)
+    # media_seconds_processed reflects range-relative progress and, for
+    # a job that ran to completion, ends exactly at the range length --
+    # so effective_processing_speed is never inflated by the 0.2s source
+    # offset, and never silently falls short of 100% either.
+    assert metrics.media_seconds_processed == pytest.approx(range_length)
 
 
 def test_partial_range_effective_processing_speed_is_not_amplified_by_source_offset(
@@ -414,6 +425,40 @@ def test_partial_range_effective_processing_speed_is_not_amplified_by_source_off
     range_length = 2.3 - 2.0
     # If the ~2.0s source offset had leaked into media_seconds_processed
     # (e.g. by using absolute PTS directly), this would be violated --
-    # only ~0.3s of range was actually processed, not ~2.3s.
-    assert metrics.media_seconds_processed <= range_length + 1e-9
-    assert metrics.media_seconds_processed > 0
+    # only ~0.3s of range was actually processed, not ~2.3s. A completed
+    # job reaches exactly the range length, not just "under" it.
+    assert metrics.media_seconds_processed == pytest.approx(range_length)
+
+
+def test_setup_failure_after_engine_initialize_still_releases_the_engine_and_fails_the_job(
+    qapp_guard, tmp_path, changing_subtitle_video
+):
+    # ocr_engine.initialize() succeeds, but the DB connection can never
+    # be acquired (its parent path component is a plain file, not a
+    # directory, so connect()'s mkdir(parents=True) fails). Before this
+    # fix, the try/finally guarding cleanup only started after
+    # source.open() succeeded, so a failure here would leak the already
+    # -initialized engine (never shut down) and any already-opened
+    # connection.
+    blocker_file = tmp_path / "not_a_directory"
+    blocker_file.write_text("x")
+    unusable_db_path = blocker_file / "db.sqlite3"
+
+    engine = _fake_engine()
+    job = build_ocr_evidence_job(
+        changing_subtitle_video,
+        ProcessingRange(),
+        _FULL_FRAME_ROI,
+        engine,
+        unusable_db_path,
+        PipelineMetrics(),
+        _new_run_id(),
+    )
+
+    _run(job)
+
+    assert job.state is JobState.FAILED
+    # The engine was initialized (before the connect() failure) and
+    # must have been released, not leaked.
+    assert engine.shutdown_call_count == 1
+    assert engine.initialized is False

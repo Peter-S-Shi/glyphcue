@@ -52,10 +52,13 @@ class PathAMediaPane:
     Run OCR Evidence builds and starts a `build_ocr_evidence_job` over
     the current video/ROI, with cancellation and an embedded
     `OcrEvidencePane` for inspecting the resulting Observations.
-    `ocr_engine`/`observation_repository` are optional so this pane
-    still constructs (with OCR controls disabled) without them --
-    `create_path_a_app` wires real ones in for the production
-    entrypoint. Final QA/review workspace is a later milestone (M5+).
+    `ocr_engine`/`db_path` are optional so this pane still constructs
+    (with OCR controls disabled) without them -- `create_path_a_app`
+    wires real ones in for the production entrypoint. `db_path` (not a
+    ready-made repository) lets the pane open its own connection for
+    UI-thread reads, kept separate from the connection
+    `build_ocr_evidence_job` opens on its own worker thread when a run
+    starts. Final QA/review workspace is a later milestone (M5+).
     """
 
     def __init__(

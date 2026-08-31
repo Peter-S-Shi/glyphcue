@@ -48,7 +48,7 @@ def create_path_a_app(db_path: Path = DEFAULT_DB_PATH) -> tuple[QApplication, Pa
 
 
 def main(db_path: Path | None = None) -> int:
-    """Production entrypoint: the M2 minimal Path A workflow.
+    """Production entrypoint: the current Path A workflow.
 
     `db_path` defaults to the real user database (DEFAULT_DB_PATH),
     resolved at call time rather than baked in as a mutable default

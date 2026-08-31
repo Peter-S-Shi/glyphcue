@@ -89,12 +89,24 @@ def build_ocr_evidence_job(
         range_start, range_end = processing_range.resolve(metadata.duration_seconds)
         range_duration = range_end - range_start
 
-        ocr_engine.initialize()
-        conn = connect(db_path)
-        observation_repository = ObservationRepository(conn)
-        source = PyAvMediaFrameSource()
-        source.open(path)
+        # Every resource below is acquired inside this single
+        # try/finally, in the order acquired, so a failure at any step
+        # (engine init, DB connect, source open) still releases whatever
+        # was already acquired before it -- never just the ones after
+        # the last resource that happened to succeed.
+        engine_initialized = False
+        conn = None
+        source = None
         try:
+            ocr_engine.initialize()
+            engine_initialized = True
+
+            conn = connect(db_path)
+            observation_repository = ObservationRepository(conn)
+
+            source = PyAvMediaFrameSource()
+            source.open(path)
+
             for timestamp, frame in source.frames(range_start, range_end):
                 if context.is_cancel_requested():
                     return
@@ -135,10 +147,24 @@ def build_ocr_evidence_job(
                 metrics.media_seconds_processed = processed_in_range
                 metrics.elapsed_seconds = time.monotonic() - wall_start
                 context.report_progress("ocr_evidence", processed_in_range, range_duration)
+
+            # The frame iterator was exhausted naturally -- not by a
+            # cancel-triggered `return` above and not by an exception
+            # (either would skip this) -- so this really did complete.
+            # Emit one final completion progress at exactly the range
+            # total: the last frame's own relative timestamp can fall
+            # short of range_duration, and a successful run must still
+            # report 100%, not "close to it."
+            metrics.media_seconds_processed = range_duration
+            metrics.elapsed_seconds = time.monotonic() - wall_start
+            context.report_progress("ocr_evidence", range_duration, range_duration)
         finally:
-            source.close()
-            ocr_engine.shutdown()
-            conn.close()
+            if source is not None:
+                source.close()
+            if engine_initialized:
+                ocr_engine.shutdown()
+            if conn is not None:
+                conn.close()
             metrics.elapsed_seconds = time.monotonic() - wall_start
 
     return Job(work=work)
