@@ -4,7 +4,8 @@ from pathlib import Path
 
 from PySide6.QtWidgets import QLabel, QPushButton, QTextEdit, QVBoxLayout, QWidget
 
-from glyphcue.adapters.pysubs2_subtitle_io import Pysubs2SubtitleFormatAdapter
+from glyphcue.adapters.pysubs2_subtitle_io import ImportWarning, Pysubs2SubtitleFormatAdapter
+from glyphcue.adapters.transcript_export import write_ai_ready_transcript, write_readable_transcript
 from glyphcue.application.reconstruction import PathBDiagnostics
 from glyphcue.application.review_priority import (
     ReviewPriority,
@@ -59,6 +60,21 @@ def _normalization_kind_line(diagnostics: PathBDiagnostics | None) -> str | None
     return "Normalization: " + ", ".join(kinds)
 
 
+def _import_warnings_text(import_warnings: list[ImportWarning]) -> str:
+    """A minimal, DESIGN-conformant presentation of M8's per-event
+    import warnings (ROADMAP M9): a real recoverable-skipped-event
+    count plus each event's own source index/reason, never a log
+    console or diagnostic-JSON UI (DESIGN.md section 29). Empty when
+    there is nothing to report -- most imports have no warnings."""
+    if not import_warnings:
+        return ""
+    count = len(import_warnings)
+    noun = "event" if count == 1 else "events"
+    header = f"{count} source {noun} skipped on import (kept the rest):"
+    details = [f"  #{warning.source_index}: {warning.reason}" for warning in import_warnings]
+    return "\n".join([header, *details])
+
+
 def _consolidation_explanation(
     cue: Cue | None,
     observations_by_id: dict[str, Observation],
@@ -106,6 +122,7 @@ class PathBWorkspace:
         source_path: Path,
         export_destination: Path,
         diagnostics_by_cue_id: dict[str, PathBDiagnostics] | None = None,
+        import_warnings: list[ImportWarning] | None = None,
     ) -> None:
         self._source_path = source_path
         self._export_destination = export_destination
@@ -137,10 +154,24 @@ class PathBWorkspace:
         self.queue = self.qa.queue
 
         self.export_button = QPushButton("Export")
+        self.export_readable_transcript_button = QPushButton("Export Readable Transcript")
+        self.export_ai_ready_transcript_button = QPushButton("Export AI-ready Transcript")
         self.status_label = QLabel("Source protected — writes normalized output to a new file")
         self.qa.add_right_pane_widget(self.export_button)
+        self.qa.add_right_pane_widget(self.export_readable_transcript_button)
+        self.qa.add_right_pane_widget(self.export_ai_ready_transcript_button)
         self.qa.add_right_pane_widget(self.status_label)
         self.export_button.clicked.connect(self._on_export_button_clicked)
+        self.export_readable_transcript_button.clicked.connect(
+            self._on_export_readable_transcript_clicked
+        )
+        self.export_ai_ready_transcript_button.clicked.connect(
+            self._on_export_ai_ready_transcript_clicked
+        )
+
+        self.import_warnings_label = QLabel(_import_warnings_text(import_warnings or []))
+        self.import_warnings_label.setWordWrap(True)
+        self.qa.add_right_pane_widget(self.import_warnings_label)
 
         self._on_active_cue_changed(self.qa.active_cue)
 
@@ -183,5 +214,43 @@ class PathBWorkspace:
     def _on_export_button_clicked(self) -> None:
         try:
             self.export()
+        except ValueError as exc:
+            self.status_label.setText(str(exc))
+
+    def _transcript_destination(self, suffix: str) -> Path:
+        return self._source_path.with_name(f"{self._source_path.stem}{suffix}")
+
+    def _export_transcript(self, destination: Path, writer) -> Path:
+        """Shared write path for both transcript presets: same
+        non-destructive-source refusal and pending-edit-commit contract
+        as `export()`'s SRT/VTT path (DESIGN.md section 16)."""
+        if destination.resolve() == self._source_path.resolve():
+            raise ValueError(
+                "Export refused: destination must not overwrite the source file"
+            )
+        self.qa.commit_pending_edits()
+        writer(self.qa.cues, destination)
+        self.status_label.setText(f"Exported to {destination}")
+        return destination
+
+    def export_readable_transcript(self) -> Path:
+        return self._export_transcript(
+            self._transcript_destination(".transcript.txt"), write_readable_transcript
+        )
+
+    def export_ai_ready_transcript(self) -> Path:
+        return self._export_transcript(
+            self._transcript_destination(".transcript.ai.md"), write_ai_ready_transcript
+        )
+
+    def _on_export_readable_transcript_clicked(self) -> None:
+        try:
+            self.export_readable_transcript()
+        except ValueError as exc:
+            self.status_label.setText(str(exc))
+
+    def _on_export_ai_ready_transcript_clicked(self) -> None:
+        try:
+            self.export_ai_ready_transcript()
         except ValueError as exc:
             self.status_label.setText(str(exc))

@@ -8,6 +8,7 @@ from PySide6.QtCore import QEventLoop, QTimer
 
 from glyphcue.adapters.ocr_types import OcrTextRegion
 from glyphcue.adapters.pyav_media_source import probe_media
+from glyphcue.application.processing_range import ProcessingRange
 from glyphcue.domain.roi import ROI
 from glyphcue.domain.track_group import TrackGroup
 from glyphcue.jobs.job import JobState
@@ -354,3 +355,43 @@ def test_failed_ocr_job_shows_failed_status_never_done(
     status = pane.ocr_status_label.text()
     assert "Failed" in status
     assert "Done" not in status
+
+
+def test_processing_range_defaults_to_whole_media(
+    qapp_guard, track_group_repository, db_path, test_video
+):
+    pane = PathAMediaPane(track_group_repository, db_path=db_path)
+    pane.open_video(test_video)
+
+    assert pane.current_processing_range() == ProcessingRange()
+
+
+def test_limiting_the_processing_range_via_ui_produces_a_real_restricted_range(
+    qapp_guard, track_group_repository, db_path, test_video
+):
+    pane = PathAMediaPane(track_group_repository, db_path=db_path)
+    pane.open_video(test_video)
+
+    pane.limit_processing_range_checkbox.setChecked(True)
+    pane.processing_range_start_spin.setValue(0.1)
+    pane.processing_range_end_spin.setValue(0.3)
+
+    assert pane.current_processing_range() == ProcessingRange(start_time=0.1, end_time=0.3)
+
+
+def test_run_ocr_uses_the_live_processing_range_selection(
+    qapp_guard, track_group_repository, db_path, test_video
+):
+    engine = FakeOcrEngine(regions=[OcrTextRegion(text="Hello there", language="en", confidence=0.9)])
+    pane = PathAMediaPane(track_group_repository, ocr_engine=engine, db_path=db_path)
+    pane.open_video(test_video)
+
+    pane.limit_processing_range_checkbox.setChecked(True)
+    pane.processing_range_start_spin.setValue(0.1)
+    pane.processing_range_end_spin.setValue(0.3)
+
+    pane.run_ocr_button.click()
+    _wait_for(pane.current_ocr_job)
+
+    assert pane.current_ocr_job.state is JobState.SUCCEEDED
+    assert pane._current_processing_end_time == pytest.approx(0.3)

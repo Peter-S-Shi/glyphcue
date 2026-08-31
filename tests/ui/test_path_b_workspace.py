@@ -1,5 +1,6 @@
 import pytest
 
+from glyphcue.adapters.pysubs2_subtitle_io import ImportWarning
 from glyphcue.domain.cue import Cue
 from glyphcue.domain.language_layer import LanguageLayer
 from glyphcue.domain.observation import Observation
@@ -224,3 +225,47 @@ def test_path_b_real_m8_diagnostics_drive_a_real_review_priority(qapp_guard, tmp
     workspace.queue.setCurrentRow(row_of_c2)
     assert "None" not in workspace.qa.priority_label.text()
     assert "segmentation" in workspace.qa.diagnostics_view.toPlainText().lower()
+
+
+def test_export_readable_transcript_button_writes_a_readable_transcript(qapp_guard, tmp_path):
+    cues = [_cue("c1", "final text")]
+    workspace = PathBWorkspace(cues, {}, tmp_path / "input.srt", tmp_path / "out.srt")
+    workspace.queue.setCurrentRow(0)
+
+    workspace.export_readable_transcript_button.click()
+
+    destination = tmp_path / "input.transcript.txt"
+    assert destination.exists()
+    assert "final text" in destination.read_text(encoding="utf-8")
+
+
+def test_export_ai_ready_transcript_button_writes_an_ai_ready_transcript(qapp_guard, tmp_path):
+    cues = [_cue("c1", "final text")]
+    workspace = PathBWorkspace(cues, {}, tmp_path / "input.srt", tmp_path / "out.srt")
+    workspace.queue.setCurrentRow(0)
+
+    workspace.export_ai_ready_transcript_button.click()
+
+    destination = tmp_path / "input.transcript.ai.md"
+    assert destination.exists()
+    assert "final text" in destination.read_text(encoding="utf-8")
+
+
+def test_workspace_with_no_import_warnings_shows_no_warning_notice(qapp_guard, tmp_path):
+    cues = [_cue("c1", "clean import")]
+    workspace = PathBWorkspace(cues, {}, tmp_path / "input.srt", tmp_path / "out.srt")
+
+    assert workspace.import_warnings_label.text() == ""
+
+
+def test_workspace_surfaces_import_warnings_from_a_recoverable_skipped_event(qapp_guard, tmp_path):
+    cues = [_cue("c1", "clean import")]
+    warnings = [ImportWarning(source_index=3, reason="Observation.end_time must be after start_time")]
+    workspace = PathBWorkspace(
+        cues, {}, tmp_path / "input.srt", tmp_path / "out.srt", import_warnings=warnings
+    )
+
+    text = workspace.import_warnings_label.text()
+    assert "1" in text
+    assert "3" in text
+    assert "end_time" in text

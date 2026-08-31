@@ -3,7 +3,7 @@
 **Document type:** Authoritative V1 milestone roadmap  
 **Project:** GlyphCue  
 **Repository:** `Peter-S-Shi/glyphcue`  
-**Lifecycle phase:** Production Development in progress → Milestone 8 complete, Milestone 9 next  
+**Lifecycle phase:** Production Development in progress → Milestone 9 complete, Feature Freeze ACTIVE, Milestone 10 next  
 **Status:** Current V1 execution roadmap  
 **Last updated:** 2026-08-31
 
@@ -1191,6 +1191,28 @@ M9 closes only when:
 - architectural restraint;
 - feature-freeze governance.
 
+## Feature Freeze closure record
+
+**Audit findings (done / internal-seam-only / missing / out-of-scope), closed this milestone:**
+
+- Production entrypoint launched only Path A (`create_path_a_app`) — Path B (`PathBWorkspace`) existed only as a seam other code/tests could construct, never reachable from `main()`. Closed: `glyphcue.ui.app.GlyphCueEntry` is now the single production entrypoint, offering `Open Video` (Path A) / `Open Caption File` (Path B) from one launch screen (DESIGN.md section 85), transitioning into the existing unmodified `PathAMediaPane` / `PathBWorkspace` shells.
+- Path A had **no export mechanism at all** in production. Closed: `glyphcue.ui.export_controls.ExportControls` (SRT/VTT/Readable/AI-ready, one non-destructive-destination contract) is now wired into `PathAMediaPane`, reusing the same required export surface Path B already had.
+- `ProcessingRange` was constructed with defaults only — no UI ever set a real range, so partial-video processing was a unit seam, not a reachable workflow. Closed: `PathAMediaPane` gained a `Limit processing range` checkbox + start/end fields; `current_processing_range()` drives the real OCR job run, same "what you see is what runs" contract as ROI/languages.
+- M8's per-event import warnings (`parse_and_reconstruct`'s 4th return value) were computed but never surfaced anywhere a user could see them. Closed: `PathBWorkspace.import_warnings_label` shows a minimal count + per-event reason line (no log console, no diagnostic-JSON UI, per DESIGN.md section 29).
+- Readable Transcript / AI-ready Transcript export presets did not exist. Closed: `glyphcue.adapters.transcript_export` (`write_readable_transcript`, `write_ai_ready_transcript`) — plain export-preset functions over the existing `Cue` model, no new document/AI subsystem.
+- Soft-subtitle muxing / burn-in rendering: **deferred**, not implemented. Neither an existing media-transform seam nor a near-zero implementation cost exists today (`glyphcue.adapters.pyav_media_source` only probes/reads; there is no encode/mux path anywhere in the codebase) — building either would be a new integration surface, not "thin," failing the conditional gate in this section's own Scope. Recorded as RC/hardening-lane deferred work, not a V1 blocker.
+- Scope audit: none of ASR, YouTube acquisition, subtitle removal/inpainting, a long-term learning system, a full subtitle/video editor, built-in AI summary, evidence-free batch approve, unrequested Path B linked video, or a user-facing diagnostic-JSON export were added during this milestone. All V1-excluded items above remain excluded.
+
+**Gate closure:**
+
+1. Accepted V1 workflows complete — Path A import → setup(ROI/languages/processing range) → process → QA → export, and Path B import → normalize + import-warning visibility → QA → export, both reachable end-to-end from `main()`.
+2. No known feature blocker remains for the required V1 output surface (SRT, VTT, Readable Transcript, AI-ready Transcript).
+3. UI conforms to `DESIGN.md` sections 9, 28, 29, 30, 84, 85 as audited above.
+4. Automated regression suite is green on GitHub Actions CI (Ubuntu).
+5. Known issues are classified as deferred/hardening work (soft-mux/burn-in), not silently dropped.
+6. **Feature Freeze is formally declared** as of this milestone's merge.
+7. Any new feature from this point forward requires Stop-Building Rule justification (GLYPHCUE_PRODUCT_ARCHITECTURE.md section 30) before acceptance.
+
 ---
 
 # 17. Milestone 10 — Evaluation & Career Evidence Closure
@@ -1818,8 +1840,10 @@ Milestone 5 — Multi-Frame Consensus & Cue Reconstruction ✓ complete
 Milestone 6 — Multilingual Track Group Reconstruction ✓ complete
 Milestone 7 — Reconstruction QA & Review Priority ✓ complete
 Milestone 8 — Path B Deepening: CJK / Rolling Normalization ✓ complete
+Milestone 9 — V1 Product Completion & Feature Freeze ✓ complete
 
 Production Development                 IN PROGRESS
+Feature Freeze                          ACTIVE
 ```
 
 ---
@@ -1828,19 +1852,21 @@ Production Development                 IN PROGRESS
 
 The next engineering action is:
 
-> **Milestone 9 — V1 Product Completion & Feature Freeze**
+> **Milestone 10 — Evaluation & Career Evidence Closure**
 
 Do not ask AG2.0 to implement the whole roadmap.
 
 Advance one milestone at a time.
 
-After M9 is pushed:
+Feature Freeze is now ACTIVE (Milestone 9's gate 7): any new feature proposed from here forward must be justified against the Stop-Building Rule before it is accepted, not built by default.
+
+After M10 is pushed:
 
 1. inspect the remote repository;
 2. verify the milestone against its acceptance gate;
 3. correct deficiencies;
 4. merge only when the milestone is genuinely accepted;
-5. then issue the M10 prompt.
+5. then issue the M11 prompt.
 
 ---
 
@@ -1898,7 +1924,9 @@ M1 de-risks the canonical spine.
 
 M8 completes the second ingestion path.
 
-M9–M13 convert engineering work into a finished, evaluated, hardened, shipped, and professionally legible product.
+M9 closes the accepted V1 product surface and formally declares Feature Freeze.
+
+M10–M13 convert engineering work into a finished, evaluated, hardened, shipped, and professionally legible product.
 
 ---
 

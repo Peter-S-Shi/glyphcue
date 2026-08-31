@@ -6,6 +6,7 @@ from typing import Callable
 
 from PySide6.QtMultimediaWidgets import QVideoWidget
 from PySide6.QtWidgets import (
+    QCheckBox,
     QDoubleSpinBox,
     QFileDialog,
     QFormLayout,
@@ -40,6 +41,7 @@ from glyphcue.persistence.database import connect
 from glyphcue.persistence.observation_repository import ObservationRepository
 from glyphcue.persistence.track_group_repository import TrackGroupRepository
 from glyphcue.ui.design_tokens import Spacing
+from glyphcue.ui.export_controls import ExportControls
 from glyphcue.ui.language_selection_panel import LanguageSelectionPanel
 from glyphcue.ui.ocr_evidence_pane import OcrEvidencePane
 from glyphcue.ui.playback_controller import PlaybackController
@@ -139,6 +141,22 @@ class PathAMediaPane:
         self.language_selection_panel = LanguageSelectionPanel(available_languages)
         self.save_roi_button = QPushButton("Save Track Group")
 
+        # DESIGN.md section 84: partial-video processing is a first-
+        # class Path A concept and the selected range must be visible,
+        # not just implemented internally. Unchecked (the default)
+        # means whole-media, matching ProcessingRange()'s own default.
+        self.limit_processing_range_checkbox = QCheckBox("Limit processing range")
+        self.processing_range_start_spin = _roi_spin_box(maximum=1_000_000.0)
+        self.processing_range_end_spin = _roi_spin_box(maximum=1_000_000.0)
+        self.processing_range_start_spin.setEnabled(False)
+        self.processing_range_end_spin.setEnabled(False)
+        self.limit_processing_range_checkbox.toggled.connect(
+            self.processing_range_start_spin.setEnabled
+        )
+        self.limit_processing_range_checkbox.toggled.connect(
+            self.processing_range_end_spin.setEnabled
+        )
+
         self.run_ocr_button = QPushButton("Run OCR Evidence")
         self.cancel_ocr_button = QPushButton("Cancel")
         self.ocr_status_label = QLabel("OCR evidence not run yet")
@@ -175,6 +193,13 @@ class PathAMediaPane:
         roi_form.addRow("ROI width", self.roi_width_spin)
         roi_form.addRow("ROI height", self.roi_height_spin)
         layout.addLayout(roi_form)
+
+        processing_range_form = QFormLayout()
+        processing_range_form.addRow(self.limit_processing_range_checkbox)
+        processing_range_form.addRow("Range start (s)", self.processing_range_start_spin)
+        processing_range_form.addRow("Range end (s)", self.processing_range_end_spin)
+        layout.addLayout(processing_range_form)
+
         layout.addWidget(self.language_selection_panel)
         layout.addWidget(self.save_roi_button)
 
@@ -203,6 +228,18 @@ class PathAMediaPane:
         )
         self.window = self.qa.window
 
+        # ROADMAP M9: Path A previously had no export mechanism at all.
+        # Reuses the same required export surface Path B offers
+        # (DESIGN.md section 67's shared product grammar) rather than a
+        # second bespoke implementation. Disabled until a video is
+        # loaded and `set_source_path` gives it something real to
+        # export from -- see `open_video`.
+        self.export_controls = ExportControls(
+            get_cues=lambda: self.qa.cues,
+            commit_pending_edits=self.qa.commit_pending_edits,
+        )
+        self.qa.add_right_pane_widget(self.export_controls.widget)
+
     def _on_replay(self, cue) -> None:
         self.controller.play_span(cue.start_time, cue.end_time)
 
@@ -222,6 +259,7 @@ class PathAMediaPane:
             f"{metadata.width}x{metadata.height} · "
             f"{metadata.duration_seconds:.2f}s · {metadata.codec_name}"
         )
+        self.export_controls.set_source_path(path)
 
     def current_roi(self) -> ROI:
         return ROI(
@@ -229,6 +267,18 @@ class PathAMediaPane:
             y=self.roi_y_spin.value(),
             width=self.roi_width_spin.value(),
             height=self.roi_height_spin.value(),
+        )
+
+    def current_processing_range(self) -> ProcessingRange:
+        """The live processing-range selection -- "what you see is what
+        runs", the same contract `current_roi()` already has. Unchecked
+        means whole-media, never a stale value left over from a
+        previous video."""
+        if not self.limit_processing_range_checkbox.isChecked():
+            return ProcessingRange()
+        return ProcessingRange(
+            start_time=self.processing_range_start_spin.value(),
+            end_time=self.processing_range_end_spin.value(),
         )
 
     def _restore_roi(self) -> None:
@@ -281,6 +331,7 @@ class PathAMediaPane:
 
         self.ocr_metrics = PipelineMetrics()
         self.current_evidence_run_id = str(uuid.uuid4())
+        self._processing_range = self.current_processing_range()
 
         # Real, resolved processing-end evidence -- the SAME
         # ProcessingRange the job itself is about to run with -- so the

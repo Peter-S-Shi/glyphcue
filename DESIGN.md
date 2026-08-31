@@ -3,7 +3,7 @@
 **Document type:** Production-facing UI / UX design authority  
 **Project:** GlyphCue  
 **Repository:** `Peter-S-Shi/glyphcue`  
-**Lifecycle phase:** Production Development in progress → Milestone 8 complete, Milestone 9 next  
+**Lifecycle phase:** Production Development in progress → Milestone 9 complete, Feature Freeze ACTIVE, Milestone 10 next  
 **Status:** Authoritative V1 design specification  
 **Last updated:** 2026-08-31
 
@@ -2488,7 +2488,7 @@ Depends on actual reconstruction algorithm.
 
 ## O6 — Home / first-launch surface
 
-Needs only a lightweight product decision before implementation.
+✓ Closed in Milestone 9: `GlyphCueEntry` (`src/glyphcue/ui/app.py`) implements the minimal entry surface from section 85 — `Open Video` / `Open Caption File`, no dashboard — as the production entrypoint.
 
 ---
 
