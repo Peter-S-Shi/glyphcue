@@ -1,6 +1,6 @@
 {
-  "total_cases": 16,
-  "total_pass": 16,
+  "total_cases": 17,
+  "total_pass": 17,
   "total_fail": 0,
   "per_category": {
     "clean_preservation": {
@@ -8,7 +8,7 @@
       "fail": 0
     },
     "rolling_reconstruction": {
-      "pass": 7,
+      "pass": 8,
       "fail": 0
     },
     "over_merge_guard": {
@@ -26,7 +26,7 @@
   },
   "per_language": {
     "en": {
-      "pass": 10,
+      "pass": 11,
       "fail": 0
     },
     "cjk": {

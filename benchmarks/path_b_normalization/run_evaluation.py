@@ -67,6 +67,13 @@ class Case:
     # merge does NOT happen (the over-merge-guard category's whole
     # point).
     forbidden_flags: tuple[str, ...] = ()
+    # Optional expected (start_time, end_time) per resulting Cue, in
+    # order -- checked only when provided. Text/flag assertions alone
+    # cannot catch a timing-normalization regression (e.g. a Cue span
+    # silently reverting to "last Observation's end" instead of the
+    # latest end across all supporting evidence); this lets a case
+    # assert the real span without requiring every case to.
+    expected_spans: tuple[tuple[float, float], ...] | None = None
 
 
 _CASES: list[Case] = [
@@ -80,6 +87,7 @@ _CASES: list[Case] = [
             _obs("o2", "Second complete sentence.", 2.1, 4.0),
         ],
         expected_texts=["First complete sentence.", "Second complete sentence."],
+        expected_spans=((0.0, 2.0), (2.1, 4.0)),
     ),
     Case(
         name="clean_cjk_two_cues",
@@ -90,6 +98,7 @@ _CASES: list[Case] = [
             _obs("o2", "第二句話。", 2.1, 4.0, language="zh"),
         ],
         expected_texts=["第一句話。", "第二句話。"],
+        expected_spans=((0.0, 2.0), (2.1, 4.0)),
     ),
     # -- Rolling reconstruction (real temporal evidence) -----------------------
     Case(
@@ -162,6 +171,17 @@ _CASES: list[Case] = [
         required_flags=("repetition_collapsed",),
     ),
     Case(
+        name="english_backtrack_pure_suffix_repetition_within_bounded_gap",
+        category="rolling_reconstruction",
+        language="en",
+        observations=[
+            _obs("o1", "Hello world, how are you", 0.0, 2.0),
+            _obs("o2", "how are you", 2.1, 4.0),  # repeats the tail, adds nothing new
+        ],
+        expected_texts=["Hello world, how are you"],
+        required_flags=("repetition_collapsed",),
+    ),
+    Case(
         name="english_irregular_timing_span_covers_latest_end",
         category="rolling_reconstruction",
         language="en",
@@ -171,6 +191,7 @@ _CASES: list[Case] = [
         ],
         expected_texts=["Hello world"],
         required_flags=("rolling_growth",),
+        expected_spans=((0.0, 5.0),),
     ),
     # -- Over-merge guard: must NOT merge, no matter how strong the text match --
     Case(
@@ -256,13 +277,16 @@ def _evaluate_reconstruction_cases() -> tuple[dict, dict, list[dict]]:
         actual_texts = [cue.language_layers[0].text for cue in cues]
         text_ok = actual_texts == case.expected_texts
 
+        actual_spans = [(cue.start_time, cue.end_time) for cue in cues]
+        spans_ok = case.expected_spans is None or actual_spans == list(case.expected_spans)
+
         all_flags_true = {
             flag_name for entry in diagnostics for flag_name, value in vars(entry).items() if value is True
         }
         flags_ok = all(flag in all_flags_true for flag in case.required_flags)
         forbidden_ok = not any(flag in all_flags_true for flag in case.forbidden_flags)
 
-        passed = text_ok and flags_ok and forbidden_ok
+        passed = text_ok and spans_ok and flags_ok and forbidden_ok
 
         per_category.setdefault(case.category, {"pass": 0, "fail": 0})
         per_category[case.category]["pass" if passed else "fail"] += 1
@@ -277,6 +301,8 @@ def _evaluate_reconstruction_cases() -> tuple[dict, dict, list[dict]]:
                     "language": case.language,
                     "expected_texts": case.expected_texts,
                     "actual_texts": actual_texts,
+                    "expected_spans": list(case.expected_spans) if case.expected_spans else None,
+                    "actual_spans": actual_spans,
                     "required_flags": list(case.required_flags),
                     "forbidden_flags": list(case.forbidden_flags),
                     "observed_flags": sorted(all_flags_true),
