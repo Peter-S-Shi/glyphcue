@@ -22,8 +22,10 @@ an opaque model. 0.5 tolerates a handful of OCR-noise character errors
 on typical subtitle-length text without merging two genuinely different
 captions that happen to share a few characters. Only consulted when the
 observation carries no real state-transition evidence from M4 (see
-_group_into_state_runs) -- a detected change always wins over
-similarity, and text is never used to override it."""
+_group_into_state_runs) -- a detected change is only ever treated as
+CANDIDATE evidence, never trusted outright, and an unconfirmed
+candidate never gets to override the vote on its own (see
+`_confirmed_by_next_evidence` and `_reconstruct_one_cue`)."""
 
 _STATE_CHANGE_TRIGGERS = {"first_frame", "change_detected"}
 """M4 trigger reasons (ChangeTriggeredOcrPolicy.last_trigger_reason,
@@ -35,10 +37,15 @@ burned-in text, a compression artifact, or similar can cross that
 threshold without the subtitle itself changing. A candidate is only
 promoted to a real run boundary once subsequent evidence continues to
 support the new reading -- see `_group_into_state_runs` and
-`_confirmed_by_next_evidence`. "periodic_confirmation" (or no trigger
-info at all, e.g. non-M4 provenance) never triggers this candidate
-mechanism at all: it falls straight to similarity voting, since it
-means "state believed unchanged" or "unknown," never "state changed"."""
+`_confirmed_by_next_evidence`. A TRAILING candidate -- one with no
+further evidence at all after it in the evidence run -- is neither
+confirmed nor refuted: it never opens a new run on its own, and it is
+excluded from the run's own text/language vote so it can't silently
+override the already-established reading just by carrying a higher OCR
+confidence score. "periodic_confirmation" (or no trigger info at all,
+e.g. non-M4 provenance) never triggers this candidate mechanism at
+all: it falls straight to similarity voting, since it means "state
+believed unchanged" or "unknown," never "state changed"."""
 
 
 @dataclass(frozen=True)
@@ -87,35 +94,60 @@ def _next_non_blank_text(ordered: list[Observation], from_index: int) -> str | N
     return None
 
 
+_MIN_TRAILING_BLANK_CONFIRMATION = 2
+"""A single trailing OCR-empty (blank) candidate at the very end of an
+evidence run has no later reading to confirm or refute it, so on its
+own it must not truncate the current Cue -- the same "no evidence to
+contradict it" situation is just as inconclusive as it is for a
+trailing state-change candidate (see `_confirmed_by_next_evidence`).
+Two or more consecutive trailing blank reads is treated as the minimum
+sustained evidence needed to confirm a real blank gap even with no
+later non-blank reading to compare against."""
+
+
 def _confirmed_by_next_evidence(
     ordered: list[Observation], index: int, candidate_text: str, similarity_threshold: float
-) -> bool:
+) -> bool | None:
     """Whether a candidate state-change boundary at `ordered[index]`
     should be treated as a real, confirmed new state, per ROADMAP M5's
     corrective: a cheap visual-change detection is only candidate
-    evidence, not a confirmed state change. Confirmed when the next
-    real (non-blank) reading continues to support the candidate's text;
-    rejected when it doesn't. With no further evidence at all (the
-    candidate is the last reading in this evidence run), there is
-    nothing to contradict it, so it is trusted by default.
+    evidence, not a confirmed state change.
+
+    Returns True when the next real (non-blank) reading continues to
+    support the candidate's text (confirmed); False when it reverts to
+    something else (rejected, a false-positive detection); or None when
+    there is no further evidence at all in this evidence run (a
+    TRAILING candidate). None is deliberately distinct from True: with
+    nothing to contradict it, a trailing candidate is not *proven*
+    wrong, but it is not confirmed either -- it must not be trusted to
+    open a new Cue, and it must not be allowed to win a text/language
+    vote against the run's already-established reading just because it
+    happens to carry a higher OCR confidence (see `_reconstruct_one_cue`).
     """
     next_text = _next_non_blank_text(ordered, index)
     if next_text is None:
-        return True
+        return None
     return character_similarity(candidate_text, next_text) >= similarity_threshold
 
 
 def _group_into_state_runs(
     ordered: list[Observation], similarity_threshold: float
-) -> list[tuple[list[Observation], float | None]]:
+) -> list[tuple[list[Observation], float | None, set[str]]]:
     """Segments source-PTS-ordered, same-frame-aggregated observations
-    into (run, boundary_time) pairs. `boundary_time` is the start_time
-    of whatever real evidence closed this run -- either the FIRST of a
-    confirmed sequence of blank-marker candidates, or the next kept
-    state's first observation -- or None if nothing in this evidence
-    run says what happened after it (the caller must supply real
-    processing-end evidence, or accept the documented instant-marker
-    fallback -- see `reconstruct_cues_with_consensus`).
+    into (run, boundary_time, non_voting_ids) triples. `boundary_time`
+    is the start_time of whatever real evidence closed this run --
+    either the FIRST of a confirmed sequence of blank-marker
+    candidates, or the next kept state's first observation -- or None
+    if nothing in this evidence run says what happened after it (the
+    caller must supply real processing-end evidence, or accept the
+    documented instant-marker fallback -- see
+    `reconstruct_cues_with_consensus`). `non_voting_ids` is the set of
+    `Observation.id`s within `run` that are kept for provenance but
+    must NOT count toward that run's text/language majority vote (see
+    `_reconstruct_one_cue`) -- unconfirmed trailing state-change
+    candidates land here; blank-text observations are always excluded
+    from the vote regardless of this set, since an empty reading can
+    never sensibly win a text vote.
 
     Both blank markers and "change_detected"/"first_frame" readings are
     treated as CANDIDATES, not confirmed facts, per ROADMAP M5's
@@ -131,23 +163,32 @@ def _group_into_state_runs(
       doesn't match, the blank gap is confirmed real, and the run ends
       at the FIRST blank candidate's start_time (not the last) -- that
       is when the state actually started going blank. With no further
-      evidence at all, a pending blank is confirmed by default (see
-      `reconstruct_cues_with_consensus`'s trailing handling).
+      evidence at all (the blanks are trailing), at least
+      `_MIN_TRAILING_BLANK_CONFIRMATION` consecutive blank reads are
+      required to confirm the gap; fewer than that is inconclusive and
+      is absorbed into the run instead, uninterrupted, exactly like a
+      rejected mid-run blank.
     - A "change_detected"/"first_frame" reading whose text genuinely
       differs from the run's current text is a CANDIDATE new state --
       see `_confirmed_by_next_evidence`. If confirmed, it starts a new
-      run; if not, it is absorbed into the current run as an outlier,
-      exactly like a periodic-confirmation misread. A
-      "change_detected" reading whose text is unchanged from the run's
-      current text needed no candidate/confirmation step at all: no
-      real state change is even being proposed, so it is absorbed
-      immediately, same as any other matching reading.
+      run. If refuted by a later real reading, it is absorbed into the
+      current run as an outlier and still counts toward that run's
+      vote, exactly like a periodic-confirmation misread. If there is
+      no later evidence at all (a trailing candidate), it is likewise
+      absorbed into the current run for provenance, but it is added to
+      `non_voting_ids` so it cannot itself decide the run's winning
+      text/language. A "change_detected" reading whose text is
+      unchanged from the run's current text needed no
+      candidate/confirmation step at all: no real state change is even
+      being proposed, so it is absorbed immediately, same as any other
+      matching reading.
     - Everything else (no trigger evidence, or "periodic_confirmation")
       falls back to character-level similarity voting, the same
       CJK-safe mechanism as before.
     """
-    entries: list[tuple[list[Observation], float | None]] = []
+    entries: list[tuple[list[Observation], float | None, set[str]]] = []
     current_run: list[Observation] = []
+    non_voting_ids: set[str] = set()
     pending_blanks: list[Observation] = []
 
     for index, observation in enumerate(ordered):
@@ -165,8 +206,9 @@ def _group_into_state_runs(
             else:
                 # Confirmed real blank gap: the run really ended at the
                 # FIRST blank candidate, not the last.
-                entries.append((current_run, pending_blanks[0].start_time))
+                entries.append((current_run, pending_blanks[0].start_time, non_voting_ids))
                 current_run = []
+                non_voting_ids = set()
             pending_blanks = []
 
         if not current_run:
@@ -178,26 +220,41 @@ def _group_into_state_runs(
             _state_trigger(observation) in _STATE_CHANGE_TRIGGERS
             and observation.text != reference_text
         ):
-            if _confirmed_by_next_evidence(ordered, index, observation.text, similarity_threshold):
-                entries.append((current_run, observation.start_time))
+            resolution = _confirmed_by_next_evidence(
+                ordered, index, observation.text, similarity_threshold
+            )
+            if resolution is True:
+                entries.append((current_run, observation.start_time, non_voting_ids))
                 current_run = [observation]
-            else:
+                non_voting_ids = set()
+            elif resolution is False:
                 current_run.append(observation)  # rejected candidate, absorbed as an outlier
+            else:  # None: trailing candidate, no evidence to confirm or refute it
+                current_run.append(observation)
+                non_voting_ids.add(observation.id)
         elif character_similarity(reference_text, observation.text) >= similarity_threshold:
             current_run.append(observation)
         else:
-            entries.append((current_run, observation.start_time))
+            entries.append((current_run, observation.start_time, non_voting_ids))
             current_run = [observation]
+            non_voting_ids = set()
 
     if pending_blanks:
-        # No further evidence after the pending blank(s): confirmed by
-        # default, same policy as a state-change candidate with nothing
-        # to contradict it.
-        if current_run:
-            entries.append((current_run, pending_blanks[0].start_time))
-        current_run = []
+        if len(pending_blanks) >= _MIN_TRAILING_BLANK_CONFIRMATION:
+            # Sustained trailing blank evidence: confirmed, backdated to
+            # the FIRST blank candidate, same as a mid-run confirmed gap.
+            if current_run:
+                entries.append((current_run, pending_blanks[0].start_time, non_voting_ids))
+            current_run = []
+            non_voting_ids = set()
+        elif current_run:
+            # A single trailing blank candidate has nothing to confirm
+            # or refute it: inconclusive, absorbed for provenance only,
+            # the run continues uninterrupted (it is never a voter --
+            # see the blank-exclusion rule above).
+            current_run.extend(pending_blanks)
     if current_run:
-        entries.append((current_run, None))
+        entries.append((current_run, None, non_voting_ids))
     return entries
 
 
@@ -263,12 +320,26 @@ def _consensus_language(run: list[Observation]) -> str:
 
 
 def _reconstruct_one_cue(
-    run: list[Observation], boundary_time: float | None, processing_end_time: float | None
+    run: list[Observation],
+    boundary_time: float | None,
+    processing_end_time: float | None,
+    non_voting_ids: set[str],
 ) -> tuple[Cue, ConsensusDiagnostics]:
-    texts = [observation.text for observation in run]
-    winning_text, distinct_text_count, top_count = _consensus_value(texts, run)
+    # The text/language vote only ever counts confirmed evidence: blank
+    # (OCR-empty) readings can never sensibly win a text vote, and
+    # unconfirmed trailing candidates (see `_group_into_state_runs`)
+    # must not override the run's established reading just because they
+    # carry a higher OCR confidence. Both are still kept in `run` --
+    # and therefore in `observation_ids` below -- for full provenance.
+    voting_run = [
+        observation
+        for observation in run
+        if observation.text and observation.id not in non_voting_ids
+    ]
+    texts = [observation.text for observation in voting_run]
+    winning_text, distinct_text_count, top_count = _consensus_value(texts, voting_run)
 
-    winning_language = _consensus_language(run)
+    winning_language = _consensus_language(voting_run)
 
     observation_ids = tuple(
         member_id for observation in run for member_id in member_observation_ids(observation)
@@ -296,7 +367,7 @@ def _reconstruct_one_cue(
         cue_id=cue.id,
         observation_count=len(run),
         distinct_text_count=distinct_text_count,
-        agreement_ratio=top_count / len(run),
+        agreement_ratio=top_count / len(voting_run),
         had_disagreement=distinct_text_count > 1,
     )
     return cue, diagnostics
@@ -368,8 +439,10 @@ def reconstruct_cues_with_consensus(
 
     cues: list[Cue] = []
     diagnostics: list[ConsensusDiagnostics] = []
-    for run, boundary_time in entries:
-        cue, cue_diagnostics = _reconstruct_one_cue(run, boundary_time, processing_end_time)
+    for run, boundary_time, non_voting_ids in entries:
+        cue, cue_diagnostics = _reconstruct_one_cue(
+            run, boundary_time, processing_end_time, non_voting_ids
+        )
         cues.append(cue)
         diagnostics.append(cue_diagnostics)
     return cues, diagnostics

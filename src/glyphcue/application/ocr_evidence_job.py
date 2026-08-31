@@ -156,13 +156,16 @@ def build_ocr_evidence_job(
                             observation_repository.add(observation, evidence_run_id)
                             metrics.observations_created += 1
                     else:
-                        # Confirmed blank: the engine found no readable
-                        # text at all on this OCR call. Persisting an
+                        # OCR-empty candidate: the engine found no
+                        # readable text at all on this OCR call -- this
+                        # is only candidate evidence that the subtitle
+                        # went blank, not a confirmed fact (Milestone 5
+                        # decides confirmation, not M4). Persisting an
                         # empty-text marker (rather than silently doing
-                        # nothing) gives Milestone 5 real evidence that
-                        # the subtitle state actually went blank here,
-                        # as opposed to "no OCR call happened to run" --
-                        # the two are otherwise indistinguishable.
+                        # nothing) gives Milestone 5 real evidence to
+                        # work with in the first place, as opposed to
+                        # "no OCR call happened to run" -- the two are
+                        # otherwise indistinguishable.
                         observation = Observation(
                             id=str(uuid.uuid4()),
                             text="",

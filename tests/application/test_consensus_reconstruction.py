@@ -243,13 +243,22 @@ def test_same_frame_regions_are_aggregated_before_cross_frame_consensus():
 def test_detected_change_forces_a_new_cue_even_when_text_is_very_similar():
     # "Hello world today" -> "Hello world today!" is well above the
     # 0.5 similarity threshold, so pairwise text similarity alone would
-    # wrongly merge these -- but the second observation carries real
-    # M4 evidence that a visual change was actually detected, which
-    # must win.
+    # wrongly merge these -- but the second observation carries real M4
+    # evidence that a visual change was actually detected, and a third
+    # reading confirms it (a candidate with no confirming evidence at
+    # all must not open a new Cue on its own -- see
+    # test_unconfirmed_trailing_change_candidate_does_not_override_the_established_text).
     observations = [
         _obs("o1", "Hello world today", start=1.0, end=1.001, state_trigger="first_frame"),
         _obs(
             "o2", "Hello world today!", start=4.0, end=4.001, state_trigger="change_detected"
+        ),
+        _obs(
+            "o3",
+            "Hello world today!",
+            start=6.0,
+            end=6.001,
+            state_trigger="periodic_confirmation",
         ),
     ]
 
@@ -393,6 +402,80 @@ def test_sustained_blank_evidence_confirms_a_real_gap_backdated_to_the_first_can
     # the last one before confirmation (o3 at 5.0).
     assert cues[0].end_time == 3.0
     assert cues[1].start_time == 7.0
+
+
+def test_a_single_trailing_blank_candidate_does_not_truncate_the_cue():
+    # A -> one blank -> EOF: no later reading exists to confirm or
+    # refute the trailing blank candidate, so it must not end the Cue
+    # on its own -- the Cue keeps running to processing_end_time.
+    observations = [_obs("o1", "Subtitle stays here", start=1.0, end=1.001)]
+    observations.append(_obs("o2", "", start=3.0, end=3.001))
+
+    cues, _diagnostics = reconstruct_cues_with_consensus(observations, processing_end_time=9.5)
+
+    assert len(cues) == 1
+    assert cues[0].language_layers[0].text == "Subtitle stays here"
+    assert cues[0].start_time == 1.0
+    assert cues[0].end_time == 9.5
+
+
+def test_two_consecutive_trailing_blanks_confirm_a_real_gap():
+    # A -> blank -> blank -> EOF: two consecutive trailing blank reads
+    # is enough sustained evidence to confirm a real blank gap even
+    # with no later non-blank reading to compare against. The Cue ends
+    # at the FIRST blank candidate's start_time, and there is nothing
+    # after the confirmed gap to produce a second Cue.
+    observations = [
+        _obs("o1", "Subtitle stays here", start=1.0, end=1.001),
+        _obs("o2", "", start=3.0, end=3.001),
+        _obs("o3", "", start=5.0, end=5.001),
+    ]
+
+    cues, _diagnostics = reconstruct_cues_with_consensus(observations, processing_end_time=9.5)
+
+    assert len(cues) == 1
+    assert cues[0].language_layers[0].text == "Subtitle stays here"
+    assert cues[0].end_time == 3.0
+
+
+def test_unconfirmed_trailing_change_candidate_does_not_override_the_established_text():
+    # A low-confidence, already-established reading followed by a
+    # HIGHER-confidence but wholly unconfirmed trailing change_detected
+    # candidate must not flip the Cue's text -- there is no later
+    # evidence to confirm the candidate represents a real state change,
+    # so a bigger confidence score alone must not decide the vote.
+    observations = [
+        _obs("o1", "Reading A", start=1.0, confidence=0.2, state_trigger="first_frame"),
+        _obs("o2", "Reading B", start=2.0, confidence=0.99, state_trigger="change_detected"),
+    ]
+
+    cues, diagnostics = reconstruct_cues_with_consensus(observations)
+
+    assert len(cues) == 1
+    assert cues[0].language_layers[0].text == "Reading A"
+    # The unconfirmed candidate is still kept for provenance.
+    assert cues[0].language_layers[0].observation_ids == ("o1", "o2")
+    assert diagnostics[0].had_disagreement is False
+
+
+def test_blank_evidence_never_wins_the_text_vote_by_sheer_count():
+    # A -> blank -> blank -> blank -> A: the sustained blanks are
+    # rejected as an OCR-empty glitch once the final reading reverts to
+    # the original text, and are kept in the run for provenance -- but
+    # they must NEVER be allowed to outvote the two real "A" readings
+    # just because there are more of them.
+    observations = [
+        _obs("o1", "A", start=1.0, end=1.001),
+        _obs("o2", "", start=3.0, end=3.001),
+        _obs("o3", "", start=5.0, end=5.001),
+        _obs("o4", "", start=7.0, end=7.001),
+        _obs("o5", "A", start=9.0, end=9.001),
+    ]
+
+    cues, _diagnostics = reconstruct_cues_with_consensus(observations)
+
+    assert len(cues) == 1
+    assert cues[0].language_layers[0].text == "A"
 
 
 def test_a_blank_marker_with_nothing_before_it_produces_no_cue():

@@ -223,8 +223,8 @@ def test_subtitle_blank_subtitle_produces_two_cues_not_three(qapp_guard, tmp_pat
         regions_by_call=[
             [OcrTextRegion(text="The quick brown fox", confidence=0.9, language="en")],
             [OcrTextRegion(text="The quick brown fox", confidence=0.9, language="en")],
-            [],  # confirmed blank
-            [],  # confirmed blank (periodic confirmation)
+            [],  # blank candidate
+            [],  # blank candidate (periodic confirmation) -- 2 in a row confirms the gap
             [OcrTextRegion(text="Bright orange sunsets glow", confidence=0.9, language="en")],
         ]
     )
