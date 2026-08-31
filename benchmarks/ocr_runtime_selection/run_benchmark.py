@@ -27,7 +27,8 @@ Methodology:
   before every sample can itself pull memory down below what a
   non-GC'd reading would show. Treat it as a conservative, reproducible
   lower-bound-ish indicator of memory pressure, not an exact peak.
-- CER uses a plain Levenshtein edit distance (see cer.py) against the
+- CER uses a plain Levenshtein edit distance (see
+  glyphcue.evaluation.metrics.character_error_rate) against the
   known ground truth strings in corpus.py -- no external ASR/OCR
   ground-truth tool is used, so results are independently checkable by
   reading corpus.py.
@@ -49,8 +50,10 @@ import psutil
 from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).parent))
-from cer import character_error_rate  # noqa: E402
 from corpus import CORPUS, generate_corpus  # noqa: E402
+
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
+from glyphcue.evaluation.metrics import character_error_rate  # noqa: E402
 
 CORPUS_DIR = Path(__file__).parent / "generated_corpus"
 RESULTS_PATH = Path(__file__).parent / "benchmark_results.json"

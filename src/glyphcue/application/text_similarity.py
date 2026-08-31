@@ -39,7 +39,7 @@ def character_similarity(a: str, b: str) -> float:
     `1 - (Levenshtein distance / max(len(a), len(b)))`: a *symmetric*
     similarity (a and b are interchangeable), normalized by the longer
     of the two strings. This is deliberately a different formula from
-    M3's CER (`benchmarks/ocr_runtime_selection/cer.py`), which is
+    M3's CER (`glyphcue.evaluation.metrics.character_error_rate`), which is
     *asymmetric* -- it normalizes by the reference string's length only
     (`distance / len(reference)`), because CER specifically measures
     error relative to a known-correct ground truth, not similarity
