@@ -9,8 +9,12 @@ from glyphcue.adapters.ocr_types import (
 
 # GlyphCue-owned canonical language codes. PaddleOCR's own `lang=` codes
 # ("ch", "japan") are a vendor detail and must never leak past this
-# module -- see _CANONICAL_TO_PADDLE_LANG.
-_CANONICAL_LANGUAGES = ("en", "zh", "ja")
+# module -- see _CANONICAL_TO_PADDLE_LANG. Public: this is also the
+# single source of truth for which languages the real production Path A
+# Track Group language picker can offer a user (see
+# ui/language_selection_panel.py) -- never a placeholder like "und",
+# which this engine cannot actually be constructed with.
+CANONICAL_LANGUAGES = ("en", "zh", "ja")
 _CANONICAL_TO_PADDLE_LANG = {"en": "en", "zh": "ch", "ja": "japan"}
 
 
@@ -73,7 +77,7 @@ class PaddleOcrEngine:
         if language not in _CANONICAL_TO_PADDLE_LANG:
             raise ValueError(
                 f"Unsupported language {language!r}; PaddleOcrEngine only accepts "
-                f"GlyphCue canonical codes {_CANONICAL_LANGUAGES}"
+                f"GlyphCue canonical codes {CANONICAL_LANGUAGES}"
             )
         self._language = language
         self._engine = None
@@ -115,7 +119,7 @@ class PaddleOcrEngine:
         return regions
 
     def supported_languages(self) -> tuple[str, ...]:
-        return _CANONICAL_LANGUAGES
+        return CANONICAL_LANGUAGES
 
     def runtime_info(self) -> OcrRuntimeInfo:
         return OcrRuntimeInfo(

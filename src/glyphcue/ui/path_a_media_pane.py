@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
 )
 
 from glyphcue.adapters.ocr_engine import OcrEngine
+from glyphcue.adapters.paddleocr_engine import CANONICAL_LANGUAGES
 from glyphcue.adapters.pyav_media_source import probe_media
 from glyphcue.application.multilingual_ocr_evidence_job import build_multilingual_ocr_evidence_job
 from glyphcue.application.multilingual_reconstruction import (
@@ -25,6 +26,7 @@ from glyphcue.application.multilingual_reconstruction import (
 from glyphcue.application.ocr_evidence_job import build_ocr_evidence_job
 from glyphcue.application.pipeline_metrics import PipelineMetrics
 from glyphcue.application.processing_range import ProcessingRange
+from glyphcue.domain.cue import Cue
 from glyphcue.domain.roi import ROI
 from glyphcue.domain.track_group import TrackGroup
 from glyphcue.jobs.job import Job, JobState
@@ -33,12 +35,12 @@ from glyphcue.persistence.observation_repository import ObservationRepository
 from glyphcue.persistence.track_group_repository import TrackGroupRepository
 from glyphcue.ui.design_tokens import Spacing
 from glyphcue.ui.language_layer_presentation import LanguageLayersPanel
+from glyphcue.ui.language_selection_panel import LanguageSelectionPanel
 from glyphcue.ui.main_window import MainWindow
 from glyphcue.ui.ocr_evidence_pane import OcrEvidencePane
 from glyphcue.ui.playback_controller import PlaybackController
 
 _DEFAULT_TRACK_GROUP_ID = "default"
-_DEFAULT_LANGUAGE = "und"
 
 
 def _roi_spin_box(maximum: float = 1.0) -> QDoubleSpinBox:
@@ -77,6 +79,16 @@ class PathAMediaPane:
     `ocr_engine_factory(language)`, and `build_ocr_evidence_job`
     exactly as before M6 -- unchanged M4/M5 behavior, not a
     reimplementation of it.
+
+    `language_selection_panel` (Milestone 6) is the real, user-reachable
+    1..N language configuration surface (DESIGN.md section 11): a
+    generic add/remove/select list, never hard-coded to "Language A" /
+    "Language B", constrained to `available_languages` (defaults to
+    `PaddleOcrEngine.CANONICAL_LANGUAGES` -- the only languages the
+    real production OCR runtime can actually be constructed for; never
+    the old "und" placeholder, which it cannot). Saving persists both
+    ROI and the selected languages together into one `TrackGroup`;
+    reconstructing this pane over the same repository restores both.
     """
 
     def __init__(
@@ -86,6 +98,7 @@ class PathAMediaPane:
         ocr_engine: OcrEngine | None = None,
         ocr_engine_factory: Callable[[str], OcrEngine] | None = None,
         db_path: Path | None = None,
+        available_languages: tuple[str, ...] = CANONICAL_LANGUAGES,
     ) -> None:
         self._repository = track_group_repository
         self._track_group_id = track_group_id
@@ -93,6 +106,8 @@ class PathAMediaPane:
         self._ocr_engine_factory = ocr_engine_factory
         self._db_path = db_path
         self._current_track_group: TrackGroup | None = None
+        self._processing_range = ProcessingRange()
+        self.last_reconstructed_cues: list[Cue] | None = None
         # A connection of its own on the UI thread, separate from
         # whatever connection the OCR job opens on its own worker
         # thread (build_ocr_evidence_job owns that one) -- never shared
@@ -118,7 +133,8 @@ class PathAMediaPane:
         self.roi_y_spin = _roi_spin_box()
         self.roi_width_spin = _roi_spin_box()
         self.roi_height_spin = _roi_spin_box()
-        self.save_roi_button = QPushButton("Save ROI")
+        self.language_selection_panel = LanguageSelectionPanel(available_languages)
+        self.save_roi_button = QPushButton("Save Track Group")
 
         self.run_ocr_button = QPushButton("Run OCR Evidence")
         self.cancel_ocr_button = QPushButton("Cancel")
@@ -135,6 +151,7 @@ class PathAMediaPane:
         self.cancel_ocr_button.clicked.connect(self._on_cancel_ocr_clicked)
 
         self._restore_roi()
+        self._restore_languages()
 
         center_pane = QWidget()
         layout = QVBoxLayout(center_pane)
@@ -156,6 +173,7 @@ class PathAMediaPane:
         roi_form.addRow("ROI width", self.roi_width_spin)
         roi_form.addRow("ROI height", self.roi_height_spin)
         layout.addLayout(roi_form)
+        layout.addWidget(self.language_selection_panel)
         layout.addWidget(self.save_roi_button)
 
         ocr_controls = QHBoxLayout()
@@ -193,11 +211,16 @@ class PathAMediaPane:
         self.roi_width_spin.setValue(roi.width)
         self.roi_height_spin.setValue(roi.height)
 
+    def _restore_languages(self) -> None:
+        track_group = self._repository.get(self._track_group_id)
+        if track_group is not None:
+            self.language_selection_panel.set_languages(track_group.languages)
+
     def _on_save_roi_clicked(self) -> None:
-        existing = self._repository.get(self._track_group_id)
-        languages = existing.languages if existing is not None else (_DEFAULT_LANGUAGE,)
         track_group = TrackGroup(
-            id=self._track_group_id, roi=self.current_roi(), languages=languages
+            id=self._track_group_id,
+            roi=self.current_roi(),
+            languages=self.language_selection_panel.selected_languages(),
         )
         self._repository.save(track_group)
 
@@ -221,13 +244,25 @@ class PathAMediaPane:
         if self._ocr_engine is None and self._ocr_engine_factory is None:
             return
 
-        existing = self._repository.get(self._track_group_id)
-        languages = existing.languages if existing is not None else (_DEFAULT_LANGUAGE,)
+        # The live language selection is what actually runs -- the same
+        # "what you see is what runs" contract `current_roi()` already
+        # has, rather than requiring an explicit prior Save first.
+        languages = self.language_selection_panel.selected_languages()
         track_group = TrackGroup(id=self._track_group_id, roi=self.current_roi(), languages=languages)
         self._current_track_group = track_group
 
         self.ocr_metrics = PipelineMetrics()
         self.current_evidence_run_id = str(uuid.uuid4())
+
+        # Real, resolved processing-end evidence -- the SAME
+        # ProcessingRange the job itself is about to run with -- so the
+        # final reconstructed Cue can use it instead of an ~1ms
+        # OCR-instant-marker fallback (ROADMAP M5's frozen final-
+        # boundary contract; see reconstruct_multilingual_cues_for_track_group).
+        media_duration = probe_media(self._video_path).duration_seconds
+        _range_start, self._current_processing_end_time = self._processing_range.resolve(
+            media_duration
+        )
 
         if len(languages) == 1:
             # Unchanged M4/M5 single-engine path: a plain `ocr_engine`
@@ -238,7 +273,7 @@ class PathAMediaPane:
             )
             self.current_ocr_job = build_ocr_evidence_job(
                 self._video_path,
-                ProcessingRange(),
+                self._processing_range,
                 track_group.roi,
                 engine,
                 self._db_path,
@@ -258,7 +293,7 @@ class PathAMediaPane:
             engines = {language: self._ocr_engine_factory(language) for language in languages}
             self.current_ocr_job = build_multilingual_ocr_evidence_job(
                 self._video_path,
-                ProcessingRange(),
+                self._processing_range,
                 track_group,
                 engines,
                 self._db_path,
@@ -302,6 +337,7 @@ class PathAMediaPane:
         # thinnest wiring that makes "configure N languages, see N
         # layers" actually reachable, not a full QA workspace (M7).
         self.language_layers_panel.set_cue(None)
+        self.last_reconstructed_cues = None
         if (
             state is JobState.SUCCEEDED
             and self._current_track_group is not None
@@ -309,8 +345,11 @@ class PathAMediaPane:
             and observations_for_run
         ):
             cues, _diagnostics = reconstruct_multilingual_cues_for_track_group(
-                observations_for_run, self._current_track_group
+                observations_for_run,
+                self._current_track_group,
+                processing_end_time=self._current_processing_end_time,
             )
+            self.last_reconstructed_cues = cues
             if cues:
                 self.language_layers_panel.set_cue(cues[0])
 
