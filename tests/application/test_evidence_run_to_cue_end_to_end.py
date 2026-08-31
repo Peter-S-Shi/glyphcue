@@ -22,6 +22,7 @@ from glyphcue.adapters.ocr_types import OcrTextRegion
 from glyphcue.adapters.pyav_media_source import probe_media
 from glyphcue.application.evidence_run_reconstruction import reconstruct_cues_for_evidence_run
 from glyphcue.application.ocr_evidence_job import build_ocr_evidence_job
+from glyphcue.application.ocr_invocation_policy import ChangeTriggeredOcrPolicy
 from glyphcue.application.pipeline_metrics import PipelineMetrics
 from glyphcue.application.processing_range import ProcessingRange
 from glyphcue.domain.roi import ROI
@@ -212,15 +213,19 @@ def test_subtitle_blank_subtitle_produces_two_cues_not_three(qapp_guard, tmp_pat
 
     db_path = tmp_path / "glyphcue.sqlite3"
     # 5 OCR calls expected (first_frame, then a real pixel change at
-    # each subsequent gray-value transition): "Subtitle A" while gray
-    # =50, blank while gray=200, "Subtitle B" once gray=50 returns.
+    # each subsequent gray-value transition): a clean subtitle line
+    # while gray=50, blank while gray=200, a CLEARLY DIFFERENT subtitle
+    # line once gray=50 returns -- deliberately dissimilar text (not
+    # just "A"/"B") so the blank-confirmation check (which compares the
+    # reading after the blank against the reading before it) isn't
+    # accidentally fooled by two texts that merely look alike.
     engine = _ScriptedOcrEngine(
         regions_by_call=[
-            [OcrTextRegion(text="Subtitle A", confidence=0.9, language="en")],
-            [OcrTextRegion(text="Subtitle A", confidence=0.9, language="en")],
+            [OcrTextRegion(text="The quick brown fox", confidence=0.9, language="en")],
+            [OcrTextRegion(text="The quick brown fox", confidence=0.9, language="en")],
             [],  # confirmed blank
             [],  # confirmed blank (periodic confirmation)
-            [OcrTextRegion(text="Subtitle B", confidence=0.9, language="en")],
+            [OcrTextRegion(text="Bright orange sunsets glow", confidence=0.9, language="en")],
         ]
     )
     metrics = PipelineMetrics()
@@ -236,7 +241,10 @@ def test_subtitle_blank_subtitle_produces_two_cues_not_three(qapp_guard, tmp_pat
     observation_repository = ObservationRepository(connect(db_path))
     cues, _diagnostics = reconstruct_cues_for_evidence_run(observation_repository, evidence_run_id)
 
-    assert [cue.language_layers[0].text for cue in cues] == ["Subtitle A", "Subtitle B"]
+    assert [cue.language_layers[0].text for cue in cues] == [
+        "The quick brown fox",
+        "Bright orange sunsets glow",
+    ]
     # The blank gap really shortened the first Cue -- it does not run
     # all the way to the second subtitle's start.
     assert cues[0].end_time < cues[1].start_time
@@ -269,3 +277,61 @@ def test_final_single_observation_uses_real_processing_end_not_a_1ms_cue(qapp_gu
     assert len(cues) == 1
     assert cues[0].end_time == metadata.duration_seconds
     assert cues[0].end_time - cues[0].start_time > 0.01  # not a ~1ms instant marker
+
+
+def test_visual_false_positive_change_detection_does_not_over_split(qapp_guard, tmp_path):
+    """Real M4->M5 verification: an oscillating background (real pixel
+    content that genuinely crosses ChangeTriggeredOcrPolicy's
+    change_threshold every frame) fires real "change_detected" triggers
+    repeatedly, while the (scripted) OCR reading itself never changes --
+    exactly the "cheap visual detector flags a candidate that isn't a
+    real state change" scenario the M5 corrective's confirmation rule
+    exists for. Goes through the real ChangeTriggeredOcrPolicy (not a
+    stub), the real state_trigger provenance stamping, and the real
+    consensus grouping -- unlike benchmarks/multi_frame_consensus/,
+    which evaluates real OCR output but does not exercise M4's
+    invocation-policy/trigger semantics at all (see that benchmark's
+    module docstring)."""
+    video_path = tmp_path / "flicker.mp4"
+    _write_test_video(
+        video_path, [(0, 50), (200, 200), (400, 50), (600, 200), (800, 50), (1000, 200)]
+    )
+
+    db_path = tmp_path / "glyphcue.sqlite3"
+    engine = _ScriptedOcrEngine(texts_by_call=["Stable subtitle text"])
+    metrics = PipelineMetrics()
+    evidence_run_id = "run-flicker"
+    # A sensitive change_threshold guarantees the real oscillating gray
+    # value (50 <-> 200) crosses it every single frame -- real,
+    # repeated change_detected evidence, not a rare edge case.
+    policy = ChangeTriggeredOcrPolicy(change_threshold=0.01, max_gap_seconds=100.0)
+    job = build_ocr_evidence_job(
+        video_path,
+        ProcessingRange(),
+        _FULL_FRAME_ROI,
+        engine,
+        db_path,
+        metrics,
+        evidence_run_id,
+        policy=policy,
+    )
+    waiter = _FinishedWaiter(job)
+    job.start()
+    waiter.wait()
+    assert job.state is JobState.SUCCEEDED
+
+    observation_repository = ObservationRepository(connect(db_path))
+    all_observations = observation_repository.list_for_run(evidence_run_id)
+    # Confirm the test actually exercised real change_detected evidence
+    # (not just first_frame + periodic_confirmation) before trusting the
+    # "did not over-split" assertion below.
+    assert metrics.ocr_calls >= 5
+    assert any(
+        observation.provenance.detail.get("state_trigger") == "change_detected"
+        for observation in all_observations
+    )
+
+    cues, _diagnostics = reconstruct_cues_for_evidence_run(observation_repository, evidence_run_id)
+
+    assert len(cues) == 1
+    assert cues[0].language_layers[0].text == "Stable subtitle text"

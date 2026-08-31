@@ -166,6 +166,26 @@ def test_language_field_is_decided_by_majority_vote_with_und_fallback():
     assert cues[0].language_layers[0].language == "en"
 
 
+def test_language_tie_break_does_not_crash_when_some_observations_have_no_language():
+    # Regression: the tie-break path used to index into a `values` list
+    # that had already been filtered to drop None languages, while
+    # iterating `enumerate(run)` (unfiltered) -- a length/index
+    # mismatch that crashed (or silently misaligned) as soon as a tie
+    # occurred with any None-language observation present.
+    observations = [
+        _obs("o1", "Hello", start=1.0, language="en", confidence=0.5),
+        _obs("o2", "Hello", start=2.0, language=None, confidence=0.99),
+        _obs("o3", "Hello", start=3.0, language="zh", confidence=0.9),
+    ]
+
+    cues, _diagnostics = reconstruct_cues_with_consensus(observations)
+
+    # "en" and "zh" are tied 1-1 (None is excluded from voting); the
+    # tie is broken by confidence among the tied candidates -- "zh" (0.9)
+    # beats "en" (0.5). The None-language observation is not a candidate.
+    assert cues[0].language_layers[0].language == "zh"
+
+
 def test_language_falls_back_to_und_when_no_observation_reports_one():
     observations = [_obs("o1", "Hello", start=1.0, language=None)]
 
@@ -240,6 +260,61 @@ def test_detected_change_forces_a_new_cue_even_when_text_is_very_similar():
     assert cues[1].language_layers[0].text == "Hello world today!"
 
 
+def test_change_detected_with_an_unchanged_reading_does_not_split():
+    # ChangeTriggeredOcrPolicy's change_detected is only a CANDIDATE
+    # boundary from a cheap visual detector -- e.g. a moving/flickering
+    # background behind static burned-in text can cross the pixel-diff
+    # threshold without the subtitle itself changing. If the OCR
+    # reading stays exactly the same, that candidate must not create a
+    # duplicate Cue.
+    observations = [
+        _obs("o1", "Hello world", start=1.0, state_trigger="first_frame"),
+        _obs("o2", "Hello world", start=2.0, state_trigger="change_detected"),
+        _obs("o3", "Hello world", start=3.0, state_trigger="change_detected"),
+    ]
+
+    cues, _diagnostics = reconstruct_cues_with_consensus(observations)
+
+    assert len(cues) == 1
+    assert cues[0].language_layers[0].text == "Hello world"
+
+
+def test_change_detected_candidate_rejected_when_next_evidence_reverts():
+    # A momentary garbage misread coincides with a change_detected
+    # candidate, but the very next reading reverts to the real,
+    # unchanged state -- the candidate is a false positive and must be
+    # absorbed as an outlier, not promoted to its own Cue.
+    observations = [
+        _obs("o1", "Hello world", start=1.0, state_trigger="first_frame"),
+        _obs("o2", "###???", start=2.0, state_trigger="change_detected"),
+        _obs("o3", "Hello world", start=3.0, state_trigger="periodic_confirmation"),
+    ]
+
+    cues, diagnostics = reconstruct_cues_with_consensus(observations)
+
+    assert len(cues) == 1
+    assert cues[0].language_layers[0].text == "Hello world"
+    assert cues[0].language_layers[0].observation_ids == ("o1", "o2", "o3")
+    assert diagnostics[0].had_disagreement is True
+
+
+def test_change_detected_candidate_confirmed_when_next_evidence_supports_it():
+    # A real A->B transition, confirmed because the reading AFTER the
+    # candidate continues to support B rather than reverting to A.
+    observations = [
+        _obs("o1", "Hello world today", start=1.0, state_trigger="first_frame"),
+        _obs("o2", "Hello world today!", start=4.0, state_trigger="change_detected"),
+        _obs("o3", "Hello world today!", start=6.0, state_trigger="periodic_confirmation"),
+    ]
+
+    cues, _diagnostics = reconstruct_cues_with_consensus(observations)
+
+    assert len(cues) == 2
+    assert cues[0].language_layers[0].text == "Hello world today"
+    assert cues[1].language_layers[0].text == "Hello world today!"
+    assert cues[1].language_layers[0].observation_ids == ("o2", "o3")
+
+
 def test_periodic_confirmation_of_the_same_state_still_uses_similarity_voting():
     # A noisy outlier from a periodic-confirmation OCR call (state
     # hasn't visually changed) must still be absorbed by consensus, not
@@ -258,21 +333,66 @@ def test_periodic_confirmation_of_the_same_state_still_uses_similarity_voting():
 
 
 def test_blank_marker_ends_the_preceding_cue_without_becoming_a_cue_itself():
+    # Texts are deliberately dissimilar (not just different): the blank
+    # must be confirmed by subsequent evidence that does NOT support the
+    # old reading -- see test_a_single_ocr_empty_read_does_not_end_a_cue
+    # for the case where it should be rejected instead.
     observations = [
-        _obs("o1", "Subtitle A", start=1.0, end=1.001),
-        _obs("o2", "", start=3.0, end=3.001),  # confirmed blank
-        _obs("o3", "Subtitle B", start=5.0, end=5.001),
+        _obs("o1", "The quick brown fox", start=1.0, end=1.001),
+        _obs("o2", "", start=3.0, end=3.001),  # blank candidate
+        _obs("o3", "Bright orange sunsets glow", start=5.0, end=5.001),
     ]
 
     cues, _diagnostics = reconstruct_cues_with_consensus(observations)
 
     assert len(cues) == 2
-    assert [cue.language_layers[0].text for cue in cues] == ["Subtitle A", "Subtitle B"]
+    assert [cue.language_layers[0].text for cue in cues] == [
+        "The quick brown fox",
+        "Bright orange sunsets glow",
+    ]
     # The first Cue ends at the blank marker's start_time (honest
     # transition-to-blank evidence), not at the second subtitle's
     # start_time -- which would wrongly stretch it across the blank gap.
     assert cues[0].end_time == 3.0
     assert cues[1].start_time == 5.0
+
+
+def test_a_single_ocr_empty_read_does_not_end_a_cue():
+    # A→one empty→A: the blank candidate is rejected once the very next
+    # reading reverts to the same real state -- this is an OCR-empty
+    # glitch (e.g. a momentary detection miss), not a real blank gap.
+    observations = [
+        _obs("o1", "Subtitle stays here", start=1.0, end=1.001),
+        _obs("o2", "", start=3.0, end=3.001),  # OCR-empty candidate, not confirmed
+        _obs("o3", "Subtitle stays here", start=5.0, end=5.001),
+    ]
+
+    cues, diagnostics = reconstruct_cues_with_consensus(observations)
+
+    assert len(cues) == 1
+    assert cues[0].language_layers[0].text == "Subtitle stays here"
+    # The rejected blank candidate is still kept for provenance.
+    assert cues[0].language_layers[0].observation_ids == ("o1", "o2", "o3")
+
+
+def test_sustained_blank_evidence_confirms_a_real_gap_backdated_to_the_first_candidate():
+    observations = [
+        _obs("o1", "The quick brown fox", start=1.0, end=1.001),
+        _obs("o2", "", start=3.0, end=3.001),  # first blank candidate
+        _obs("o3", "", start=5.0, end=5.001),  # sustained blank evidence
+        _obs("o4", "Bright orange sunsets glow", start=7.0, end=7.001),
+    ]
+
+    cues, _diagnostics = reconstruct_cues_with_consensus(observations)
+
+    assert [cue.language_layers[0].text for cue in cues] == [
+        "The quick brown fox",
+        "Bright orange sunsets glow",
+    ]
+    # Boundary backdates to the FIRST blank candidate (o2 at 3.0), not
+    # the last one before confirmation (o3 at 5.0).
+    assert cues[0].end_time == 3.0
+    assert cues[1].start_time == 7.0
 
 
 def test_a_blank_marker_with_nothing_before_it_produces_no_cue():

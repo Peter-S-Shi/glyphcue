@@ -30,7 +30,9 @@ def test_single_region_frame_passes_through_unchanged():
     assert member_observation_ids(result[0]) == ("o1",)
 
 
-def test_two_regions_from_the_same_frame_are_combined_into_one_reading():
+def test_two_regions_from_the_same_frame_with_no_geometry_are_joined_without_a_separator():
+    # No geometry evidence to detect a real line break, so this falls
+    # back to the previous no-separator behavior rather than guessing.
     region_a = _obs("o1", "Line one", start=1.0, frame_reference="v.mp4@1.000000s")
     region_b = _obs("o2", "Line two", start=1.0, frame_reference="v.mp4@1.000000s")
 
@@ -44,9 +46,11 @@ def test_two_regions_from_the_same_frame_are_combined_into_one_reading():
     assert member_observation_ids(combined) == ("o1", "o2")
 
 
-def test_reading_order_follows_geometry_top_to_bottom():
-    # Deliberately scripted out of reading order to prove the aggregator
-    # reorders by position, not by input order.
+def test_two_visually_distinct_lines_are_joined_with_a_real_newline():
+    # A genuine two-line subtitle: two regions with non-overlapping
+    # vertical extents must not be glued together with no separator at
+    # all -- that silently loses the real line break a reader (and any
+    # downstream text processing) needs.
     bottom = _obs(
         "o_bottom", "Second line", start=1.0, frame_reference="v.mp4@1.000000s",
         geometry=((0.0, 20.0), (10.0, 20.0), (10.0, 30.0), (0.0, 30.0)),
@@ -58,8 +62,25 @@ def test_reading_order_follows_geometry_top_to_bottom():
 
     result = aggregate_same_frame_observations([bottom, top])
 
-    assert result[0].text == "First lineSecond line"
+    assert result[0].text == "First line\nSecond line"
     assert member_observation_ids(result[0]) == ("o_top", "o_bottom")
+
+
+def test_two_regions_on_the_same_visual_line_are_not_split_with_a_newline():
+    # Two boxes side by side on one line (overlapping Y-ranges) -- a
+    # real visual line boundary was NOT crossed, so no "\n" is inserted.
+    left = _obs(
+        "o_left", "Left", start=1.0, frame_reference="v.mp4@1.000000s",
+        geometry=((0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (0.0, 10.0)),
+    )
+    right = _obs(
+        "o_right", "Right", start=1.0, frame_reference="v.mp4@1.000000s",
+        geometry=((15.0, 1.0), (25.0, 1.0), (25.0, 11.0), (15.0, 11.0)),
+    )
+
+    result = aggregate_same_frame_observations([left, right])
+
+    assert result[0].text == "LeftRight"
 
 
 def test_regions_from_different_frames_are_not_combined():

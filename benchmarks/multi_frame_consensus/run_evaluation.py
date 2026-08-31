@@ -19,10 +19,24 @@ itself), then compares:
   the production pipeline uses) -- what a pipeline with no cross-frame
   consensus step would show the user;
 - multi-frame consensus: the real `reconstruct_cues_with_consensus`
-  output over ALL 5 variants' region Observations -- same production
-  entrypoint `reconstruct_cues_for_evidence_run` calls, so this
-  evaluation exercises the identical aggregation + consensus path a
-  real evidence run would.
+  output over ALL 5 variants' region Observations -- the identical
+  aggregation + grouping + majority-vote code a real evidence run
+  would execute.
+
+Scope, stated precisely: this evaluation exercises real OCR output
+through the real production `aggregate_same_frame_observations` /
+`reconstruct_cues_with_consensus` functions. It does NOT exercise real
+M4 invocation-policy/trigger semantics -- the Observations here are
+built directly by this script with a fixed `start_time` per variant and
+no `state_trigger` provenance at all, never through a real
+`ChangeTriggeredOcrPolicy` decision or `build_ocr_evidence_job` run. It
+therefore cannot demonstrate the "change_detected is only a candidate,
+not a confirmed state change" confirmation rule this benchmark's
+grouping code contains -- that is verified separately, with a real
+`ChangeTriggeredOcrPolicy` and real `state_trigger` stamping (still
+synthetic pixel content, not real OCR), by
+`tests/application/test_evidence_run_to_cue_end_to_end.py::
+test_visual_false_positive_change_detection_does_not_over_split`.
 
 CER (Character Error Rate) is the real formula from
 `benchmarks/ocr_runtime_selection/cer.py`: Levenshtein distance /

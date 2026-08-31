@@ -94,12 +94,12 @@
           "cer": 0.0455
         },
         "consensus": {
-          "text": "lazy dogThe quick brown fox jumps ov",
-          "cer": 0.5455,
-          "cue_count": 3,
-          "observations_in_winning_cue": 5
+          "text": "The quick brown fox jumhe lazy dog.",
+          "cer": 0.2045,
+          "cue_count": 4,
+          "observations_in_winning_cue": 3
         },
-        "cer_improvement": -0.5
+        "cer_improvement": -0.159
       },
       {
         "id": "chinese_line",
@@ -119,8 +119,8 @@
         "consensus": {
           "text": "今天天气非常好，我们一起去公园散",
           "cer": 0.1111,
-          "cue_count": 3,
-          "observations_in_winning_cue": 4
+          "cue_count": 1,
+          "observations_in_winning_cue": 8
         },
         "cer_improvement": 0.0
       },
@@ -142,13 +142,13 @@
         "consensus": {
           "text": "今日はとても良い天気ですね。",
           "cer": 0.0,
-          "cue_count": 3,
-          "observations_in_winning_cue": 5
+          "cue_count": 1,
+          "observations_in_winning_cue": 9
         },
         "cer_improvement": 0.0
       }
     ],
     "mean_single_frame_cer": 0.0522,
-    "mean_consensus_cer": 0.2189
+    "mean_consensus_cer": 0.1052
   }
 }

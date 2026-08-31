@@ -22,9 +22,14 @@ def aggregate_same_frame_observations(observations: list[Observation]) -> list[O
     group -- non-OCR provenance, e.g. subtitle-file import, has no
     frame concept) and joins each group's text top-to-bottom by
     geometry (falling back to original order when geometry is
-    unavailable, via a stable sort). Every contributing Observation's id
-    is preserved -- see `member_observation_ids` -- even though the
-    combined reading gets one new id.
+    unavailable, via a stable sort). Regions whose vertical extent
+    (from `geometry`) doesn't overlap at all with the previous region's
+    are joined with a real newline ("\n") -- genuine evidence of a
+    separate visual line, e.g. a two-line subtitle; without geometry for
+    either region there's no such evidence, so they're joined directly
+    with no separator. Every contributing Observation's id is preserved
+    -- see `member_observation_ids` -- even though the combined reading
+    gets one new id.
     """
     if not observations:
         return []
@@ -64,9 +69,39 @@ def _reading_order_key(observation: Observation) -> tuple[float, float]:
     return (0.0, 0.0)  # no geometry: stable sort keeps original scripted/detection order
 
 
+def _y_range(observation: Observation) -> tuple[float, float] | None:
+    if not observation.geometry:
+        return None
+    ys = [point[1] for point in observation.geometry]
+    return (min(ys), max(ys))
+
+
+def _on_a_new_visual_line(previous_y_range: tuple[float, float] | None, current_y_range: tuple[float, float] | None) -> bool:
+    """Whether `current_y_range` is a real, visually distinct line below
+    `previous_y_range` -- i.e. their vertical extents don't overlap at
+    all. Without geometry for either region, there's no evidence of a
+    line break, so this defaults to False (same behavior as before
+    geometry-aware joining existed) rather than guessing."""
+    if previous_y_range is None or current_y_range is None:
+        return False
+    previous_min, previous_max = previous_y_range
+    current_min, current_max = current_y_range
+    overlap = min(previous_max, current_max) - max(previous_min, current_min)
+    return overlap <= 0
+
+
 def _combine(group: list[Observation]) -> Observation:
     ordered = sorted(group, key=_reading_order_key)  # stable: ties keep original order
-    combined_text = "".join(observation.text for observation in ordered)
+
+    parts: list[str] = []
+    previous_y_range: tuple[float, float] | None = None
+    for observation in ordered:
+        current_y_range = _y_range(observation)
+        if parts and _on_a_new_visual_line(previous_y_range, current_y_range):
+            parts.append("\n")
+        parts.append(observation.text)
+        previous_y_range = current_y_range
+    combined_text = "".join(parts)
 
     confidences = [observation.confidence for observation in ordered if observation.confidence is not None]
     combined_confidence = sum(confidences) / len(confidences) if confidences else None
