@@ -34,7 +34,14 @@ class OcrEngine(Protocol):
         ...
 
     def supported_languages(self) -> tuple[str, ...]:
-        """Language/script codes this engine can recognize."""
+        """GlyphCue canonical language/script codes this implementation
+        can be configured to recognize (e.g. via its constructor) --
+        not the subset already loaded/initialized by this particular
+        instance. A constructed-for-"en" instance still reports every
+        code the implementation supports, since recognize() results
+        only ever reflect the language it was constructed for; callers
+        needing another language construct a separate instance for it.
+        """
         ...
 
     def runtime_info(self) -> OcrRuntimeInfo:

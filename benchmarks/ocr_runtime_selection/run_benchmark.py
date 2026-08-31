@@ -9,18 +9,24 @@ Methodology:
   (discarded) immediately after construction, before its timed calls
   begin -- not just the first/default language -- so per-item latency
   never silently includes a language's first-call JIT/session-setup
-  cost. "Startup" below is engine construction (model load) time for
-  the first/default language only; per-language construction cost for
-  additional languages (PaddleOCR only) is folded into that language's
-  own warm-up, not into its reported per-item latency.
+  cost.
+- "startup_seconds" is import + default-language engine construction
+  ONLY, for both engines -- warm-up is deliberately excluded so the two
+  engines are timed on the same basis. PaddleOCR's per-language
+  construction cost for additional languages is reported separately in
+  "startup_seconds_by_language" (also construction-only, warm-up
+  excluded there too).
 - Per-item latency is the median of 3 timed calls after warm-up.
-- Process RSS is sampled via psutil at baseline (before importing the
-  vendor package), after each language's model load, and after every
-  per-item call; "peak" is the running maximum of all of these
-  samples, not a single post-hoc snapshot -- so it reflects the actual
-  highest memory point observed during the run, including transient
-  peaks that a single end-of-run sample could miss or that GC could
-  have already reclaimed by the time a final sample is taken.
+- Process RSS is sampled via psutil (each sample runs gc.collect()
+  first) at baseline (before importing the vendor package), after each
+  language's model load, after each language's warm-up call, and after
+  every per-item call. "max_observed_rss_mb" is the maximum of these
+  explicit, discrete post-step samples -- NOT a true/continuous peak.
+  It can miss a transient spike that occurs and is released again
+  *during* a call, between two samples, and the forced gc.collect()
+  before every sample can itself pull memory down below what a
+  non-GC'd reading would show. Treat it as a conservative, reproducible
+  lower-bound-ish indicator of memory pressure, not an exact peak.
 - CER uses a plain Levenshtein edit distance (see cer.py) against the
   known ground truth strings in corpus.py -- no external ASR/OCR
   ground-truth tool is used, so results are independently checkable by
@@ -56,21 +62,27 @@ def _rss_mb() -> float:
     return PROCESS.memory_info().rss / (1024 * 1024)
 
 
-class _PeakRss:
-    """Tracks the running maximum RSS across repeated `sample()` calls.
+class _MaxObservedRss:
+    """Tracks the maximum RSS across repeated, explicit `sample()` calls.
 
-    A single end-of-run RSS snapshot is not a "peak": memory can rise
-    and fall (e.g. GC) between the heaviest moment and the final sample.
-    Call `sample()` after every load/inference step to get a genuine
-    running maximum instead.
+    This is NOT a true/continuous peak tracker: it only knows the RSS at
+    the discrete moments `sample()` is called (each of which forces a
+    gc.collect() first -- see _rss_mb). A single end-of-run RSS snapshot
+    would be worse (it could miss the heaviest point in the run
+    entirely), so `sample()` is called after every load/warm-up/
+    inference step to approximate the peak -- but a transient spike that
+    rises and falls entirely between two sample points is still
+    invisible to this, and gc.collect() before each sample can itself
+    lower the reading relative to an un-collected true peak. Report this
+    value as "max_observed_rss_mb", never as "peak" or "true peak".
     """
 
     def __init__(self, initial_mb: float) -> None:
-        self.peak_mb = initial_mb
+        self.max_observed_mb = initial_mb
 
     def sample(self) -> float:
         current_mb = _rss_mb()
-        self.peak_mb = max(self.peak_mb, current_mb)
+        self.max_observed_mb = max(self.max_observed_mb, current_mb)
         return current_mb
 
 
@@ -95,7 +107,7 @@ def _score(item, texts: list[str]) -> dict:
 
 def benchmark_rapidocr() -> dict:
     baseline_mb = _rss_mb()
-    peak = _PeakRss(baseline_mb)
+    peak = _MaxObservedRss(baseline_mb)
     t0 = time.perf_counter()
     from rapidocr_onnxruntime import RapidOCR
 
@@ -129,46 +141,60 @@ def benchmark_rapidocr() -> dict:
         "memory_baseline_mb": round(baseline_mb, 1),
         "memory_after_load_mb": round(after_load_mb, 1),
         "memory_after_load_delta_mb": round(after_load_mb - baseline_mb, 1),
-        "memory_peak_mb": round(peak.peak_mb, 1),
+        "max_observed_rss_mb": round(peak.max_observed_mb, 1),
         "per_item": per_item,
     }
 
 
 def benchmark_paddleocr() -> dict:
     baseline_mb = _rss_mb()
-    peak = _PeakRss(baseline_mb)
+    peak = _MaxObservedRss(baseline_mb)
     t0 = time.perf_counter()
     from paddleocr import PaddleOCR
 
     warmup_image = np.array(Image.open(CORPUS_DIR / f"{CORPUS[0].id}.png").convert("RGB"))
     engines_by_lang: dict[str, "PaddleOCR"] = {}
     startup_seconds_by_lang: dict[str, float] = {}
+    warmed_up_langs: set[str] = set()
+
+    def _construct(lang: str) -> None:
+        lang_t0 = time.perf_counter()
+        # enable_mkldnn=False works around a real crash observed with
+        # this paddleocr==3.7.0 / paddlepaddle==3.3.1 pairing:
+        # NotImplementedError: (Unimplemented)
+        # ConvertPirAttribute2RuntimeAttribute not support
+        # [pir::ArrayAttribute<pir::DoubleAttribute>] -- the default
+        # oneDNN-accelerated CPU path is broken in this environment.
+        # See the ADR for this as packaging-friction evidence.
+        engines_by_lang[lang] = PaddleOCR(
+            lang=lang,
+            use_doc_orientation_classify=False,
+            use_doc_unwarping=False,
+            use_textline_orientation=False,
+            enable_mkldnn=False,
+        )
+        # Construction-only elapsed -- warm-up (below, in get_engine) is
+        # timed and reported separately so it never inflates this.
+        startup_seconds_by_lang[lang] = time.perf_counter() - lang_t0
+        peak.sample()
 
     def get_engine(lang: str):
+        """Construct (first use only) and warm up (first use only) the
+        engine for `lang`, returning it ready for timed calls."""
         if lang not in engines_by_lang:
-            lang_t0 = time.perf_counter()
-            # enable_mkldnn=False works around a real crash observed with
-            # this paddleocr==3.7.0 / paddlepaddle==3.3.1 pairing:
-            # NotImplementedError: (Unimplemented)
-            # ConvertPirAttribute2RuntimeAttribute not support
-            # [pir::ArrayAttribute<pir::DoubleAttribute>] -- the default
-            # oneDNN-accelerated CPU path is broken in this environment.
-            # See the ADR for this as packaging-friction evidence.
-            engine = PaddleOCR(
-                lang=lang,
-                use_doc_orientation_classify=False,
-                use_doc_unwarping=False,
-                use_textline_orientation=False,
-                enable_mkldnn=False,
-            )
-            startup_seconds_by_lang[lang] = time.perf_counter() - lang_t0
+            _construct(lang)
+        if lang not in warmed_up_langs:
+            engines_by_lang[lang].predict(warmup_image)  # warm-up call, discarded
             peak.sample()
-            engine.predict(warmup_image)  # per-language warm-up call, discarded
-            peak.sample()
-            engines_by_lang[lang] = engine
+            warmed_up_langs.add(lang)
         return engines_by_lang[lang]
 
-    get_engine("en")
+    _construct("en")
+    # startup_seconds = import + default-language construction ONLY,
+    # matching RapidOCR's definition above -- warm-up is excluded here
+    # (get_engine's warm-up for "en" happens later, on first use in the
+    # per-item loop below) so the two engines are timed on the same
+    # basis.
     startup_seconds = time.perf_counter() - t0
     after_load_mb = peak.sample()
 
@@ -184,7 +210,7 @@ def benchmark_paddleocr() -> dict:
     per_item = {}
     for item in CORPUS:
         lang = lang_by_item[item.id]
-        engine = get_engine(lang)  # warms up on first use of a new language
+        engine = get_engine(lang)  # constructs + warms up on first use of a language
         image = np.array(Image.open(CORPUS_DIR / f"{item.id}.png").convert("RGB"))
 
         def _call():
@@ -208,7 +234,7 @@ def benchmark_paddleocr() -> dict:
         "memory_baseline_mb": round(baseline_mb, 1),
         "memory_after_load_mb": round(after_load_mb, 1),
         "memory_after_load_delta_mb": round(after_load_mb - baseline_mb, 1),
-        "memory_peak_mb": round(peak.peak_mb, 1),
+        "max_observed_rss_mb": round(peak.max_observed_mb, 1),
         "languages_requiring_separate_model_load": sorted(engines_by_lang.keys()),
         "per_item": per_item,
     }
