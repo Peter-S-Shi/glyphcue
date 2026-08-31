@@ -512,6 +512,27 @@ def test_left_pane_context_reflects_a_limited_processing_range(
     assert "0.3" in context_text
 
 
+def test_left_pane_context_live_refreshes_languages_on_add_and_remove_without_save(
+    qapp_guard, track_group_repository, db_path, test_video
+):
+    pane = PathAMediaPane(track_group_repository, db_path=db_path)
+    pane.open_video(test_video)
+
+    pane.language_selection_panel.add_combo.setCurrentText("zh")
+    pane.language_selection_panel.add_button.click()
+
+    context_text = pane.context_label.text()
+    assert "zh" in context_text
+
+    pane.language_selection_panel.language_list.setCurrentRow(
+        pane.language_selection_panel.selected_languages().index("zh")
+    )
+    pane.language_selection_panel.remove_button.click()
+
+    context_text = pane.context_label.text()
+    assert "zh" not in context_text
+
+
 def test_opening_a_video_shows_the_roi_visualization_matching_current_roi(
     qapp_guard, track_group_repository, db_path, test_video
 ):

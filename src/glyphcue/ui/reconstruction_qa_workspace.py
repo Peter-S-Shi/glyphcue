@@ -171,6 +171,7 @@ class ReconstructionQaWorkspace:
         replay_callback: Callable[[Cue], None] | None = None,
         on_active_cue_changed: Callable[[Cue | None], None] | None = None,
         filter_labels: tuple[str, str, str] = ("All", "Review Needed", "Clean / Approved"),
+        third_filter_predicate: Callable[[Cue], bool] | None = None,
     ) -> None:
         self._cues = list(cues)
         self._observations_by_id = observations_by_id
@@ -179,6 +180,7 @@ class ReconstructionQaWorkspace:
         self._replay_callback = replay_callback
         self._on_active_cue_changed = on_active_cue_changed
         self._filter_labels = filter_labels
+        self._third_filter_predicate = third_filter_predicate
         self._displayed_cue_id: str | None = None
         self._approve_filter = _CtrlEnterApproveFilter(lambda: self.approve_and_advance())
 
@@ -387,16 +389,45 @@ class ReconstructionQaWorkspace:
 
     def _matches_filter(self, cue: Cue) -> bool:
         selection = self.filter_combo.currentText()
-        all_label, review_needed_label, _clean_label = self._filter_labels
+        all_label, review_needed_label, _third_label = self._filter_labels
         if selection == all_label:
             return True
-        priority = self._priority_for(cue.id)
         if selection == review_needed_label:
-            return priority.level != "None"
+            return self._is_review_needed(cue)
         # Third option (label differs by path, e.g. "Clean / Approved"
-        # vs "Preserved"): no real Review Priority signal, or the user
-        # already Approved it despite one existing.
-        return priority.level == "None" or cue.review_state == ReviewState.APPROVED
+        # vs "Preserved"). A caller-supplied predicate (Path B's real
+        # PathBDiagnostics check) takes over the bucket's meaning
+        # entirely when given -- it is never inferred from Review
+        # Priority for a path where that inference would be wrong.
+        if self._third_filter_predicate is not None:
+            return self._third_filter_predicate(cue)
+        return self._is_clean_or_approved(cue)
+
+    def _is_review_needed(self, cue: Cue) -> bool:
+        # Real human-review state wins first: an Approved/Rejected Cue
+        # is a settled decision and never stays in Review Needed no
+        # matter what its (possibly stale) Review Priority score says.
+        # A NEEDS_REVIEW Cue (e.g. fresh out of Split/Merge) belongs
+        # here even with priority.level == "None" -- a machine split/
+        # merge is never itself a correct reconstruction, independent
+        # of whether any heuristic flagged it.
+        if cue.review_state in (ReviewState.APPROVED, ReviewState.REJECTED):
+            return False
+        if cue.review_state == ReviewState.NEEDS_REVIEW:
+            return True
+        return self._priority_for(cue.id).level != "None"
+
+    def _is_clean_or_approved(self, cue: Cue) -> bool:
+        # Path A's default third bucket: a genuinely clean Cue (no
+        # Review Priority flag, and not Rejected/NEEDS_REVIEW), or a
+        # Cue the user has already Approved. A Rejected Cue never
+        # counts as clean just because it happens to carry no priority
+        # flag -- Discard is itself a review decision, not silence.
+        if cue.review_state == ReviewState.APPROVED:
+            return True
+        if cue.review_state in (ReviewState.REJECTED, ReviewState.NEEDS_REVIEW):
+            return False
+        return self._priority_for(cue.id).level == "None"
 
     def _on_search_or_filter_changed(self) -> None:
         # A live text-edit search/filter change is not itself a Cue

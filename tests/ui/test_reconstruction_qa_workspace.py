@@ -128,6 +128,73 @@ def test_clean_or_approved_filter_shows_cues_with_no_flag_or_that_are_approved(q
     assert shown_ids == {"c1", "c3"}
 
 
+def test_approved_flagged_cue_leaves_review_needed(qapp_guard):
+    cues = [_cue("c1", 0.0, 1.0), _cue("c2", 1.0, 2.0)]
+    priorities = {"c1": _none_priority("c1"), "c2": _priority("c2", 0.9, "High")}
+    workspace = ReconstructionQaWorkspace(cues, {}, priorities, QWidget())
+    workspace.queue.setCurrentRow(next(
+        row for row in range(workspace.queue.count()) if workspace.cue_id_for_row(row) == "c2"
+    ))
+    workspace.approve_and_advance()
+
+    workspace.filter_combo.setCurrentText("Review Needed")
+
+    assert workspace.queue.count() == 0
+
+
+def test_needs_review_state_from_split_appears_in_review_needed_even_with_no_priority_signal(
+    qapp_guard,
+):
+    # A clean parent Cue with NO Review Priority flag is Split. Both
+    # halves inherit the parent's priority ("None" here) but
+    # cue_review_actions.split_cue always marks them NEEDS_REVIEW -- a
+    # machine split is never itself a correct reconstruction, so the
+    # human review-state signal (not the heuristic priority score) must
+    # be what puts them in Review Needed.
+    cues = [_cue("c1", 0.0, 2.0)]
+    priorities = {"c1": _none_priority("c1")}
+    workspace = ReconstructionQaWorkspace(cues, {}, priorities, QWidget())
+    workspace.split_time_spin.setValue(1.0)
+    workspace.split_active_cue()
+
+    workspace.filter_combo.setCurrentText("Review Needed")
+
+    assert workspace.queue.count() == 2
+
+
+def test_rejected_cue_with_no_priority_signal_is_not_clean_or_approved(qapp_guard):
+    cues = [_cue("c1", 0.0, 1.0), _cue("c2", 1.0, 2.0)]
+    priorities = {"c1": _none_priority("c1"), "c2": _none_priority("c2")}
+    workspace = ReconstructionQaWorkspace(cues, {}, priorities, QWidget())
+    workspace.queue.setCurrentRow(next(
+        row for row in range(workspace.queue.count()) if workspace.cue_id_for_row(row) == "c2"
+    ))
+    workspace.discard_active_cue()
+
+    workspace.filter_combo.setCurrentText("Clean / Approved")
+
+    shown_ids = {workspace.cue_id_for_row(row) for row in range(workspace.queue.count())}
+    assert shown_ids == {"c1"}
+
+
+def test_third_filter_predicate_overrides_the_default_clean_or_approved_semantics(qapp_guard):
+    # A path-specific caller (Path B) can override the third filter
+    # bucket's meaning entirely -- e.g. "Preserved" must be judged from
+    # real PathBDiagnostics, never inferred from Review Priority.
+    cues = [_cue("c1", 0.0, 1.0), _cue("c2", 1.0, 2.0)]
+    priorities = {"c1": _none_priority("c1"), "c2": _none_priority("c2")}
+    workspace = ReconstructionQaWorkspace(
+        cues, {}, priorities, QWidget(),
+        filter_labels=("All Reconstructed", "Review Needed", "Preserved"),
+        third_filter_predicate=lambda cue: cue.id == "c2",
+    )
+
+    workspace.filter_combo.setCurrentText("Preserved")
+
+    shown_ids = {workspace.cue_id_for_row(row) for row in range(workspace.queue.count())}
+    assert shown_ids == {"c2"}
+
+
 def test_active_cue_starts_as_the_top_of_the_queue(qapp_guard):
     cues = [_cue("c1", 0.0, 1.0), _cue("c2", 1.0, 2.0)]
     priorities = {"c1": _none_priority("c1"), "c2": _priority("c2", 0.9, "High")}

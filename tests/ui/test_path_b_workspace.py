@@ -203,6 +203,70 @@ def test_path_b_uses_its_own_frozen_filter_baseline(qapp_guard, tmp_path):
     assert labels == ["All Reconstructed", "Review Needed", "Preserved"]
 
 
+def test_preserved_filter_excludes_a_confidently_resolved_rolling_cue(qapp_guard, tmp_path):
+    # A confidently-resolved rolling_growth Cue has NO Review Priority
+    # flag (M8's whole point), so it must never leak into "Preserved"
+    # just because priority.level == "None" -- Preserved is judged from
+    # real PathBDiagnostics, not inferred from the review-priority score.
+    from glyphcue.application.reconstruction import PathBDiagnostics
+
+    cues = [_cue("c1", "rolling"), _cue("c2", "clean")]
+    diagnostics_by_cue_id = {
+        "c1": PathBDiagnostics(
+            cue_id="c1", source_order_issue=False, rolling_growth=True,
+            sliding_overlap=False, repetition_collapsed=False,
+            timing_collision=False, segmentation_ambiguous=False,
+        ),
+        "c2": PathBDiagnostics(
+            cue_id="c2", source_order_issue=False, rolling_growth=False,
+            sliding_overlap=False, repetition_collapsed=False,
+            timing_collision=False, segmentation_ambiguous=False,
+        ),
+    }
+    workspace = PathBWorkspace(
+        cues, {}, tmp_path / "input.srt", diagnostics_by_cue_id=diagnostics_by_cue_id
+    )
+
+    workspace.qa.filter_combo.setCurrentText("Preserved")
+
+    shown_ids = {workspace.qa.cue_id_for_row(row) for row in range(workspace.qa.queue.count())}
+    assert shown_ids == {"c2"}
+
+
+def test_preserved_filter_includes_a_real_clean_cue_with_all_false_diagnostics(qapp_guard, tmp_path):
+    from glyphcue.application.reconstruction import PathBDiagnostics
+
+    cues = [_cue("c1", "clean")]
+    diagnostics_by_cue_id = {
+        "c1": PathBDiagnostics(
+            cue_id="c1", source_order_issue=False, rolling_growth=False,
+            sliding_overlap=False, repetition_collapsed=False,
+            timing_collision=False, segmentation_ambiguous=False,
+        ),
+    }
+    workspace = PathBWorkspace(
+        cues, {}, tmp_path / "input.srt", diagnostics_by_cue_id=diagnostics_by_cue_id
+    )
+
+    workspace.qa.filter_combo.setCurrentText("Preserved")
+
+    shown_ids = {workspace.qa.cue_id_for_row(row) for row in range(workspace.qa.queue.count())}
+    assert shown_ids == {"c1"}
+
+
+def test_preserved_filter_excludes_a_cue_with_no_diagnostics_at_all(qapp_guard, tmp_path):
+    # A Split/Merge-produced Cue (or any Cue with no diagnostics record)
+    # must not pass as Preserved merely for lacking a Review Priority
+    # signal -- Preserved requires a real diagnostics record confirming
+    # nothing needed fixing, not the absence of a flag.
+    cues = [_cue("c1", "no diagnostics recorded")]
+    workspace = PathBWorkspace(cues, {}, tmp_path / "input.srt")
+
+    workspace.qa.filter_combo.setCurrentText("Preserved")
+
+    assert workspace.qa.queue.count() == 0
+
+
 def test_approve_updates_review_state_and_commits_edited_text(qapp_guard, tmp_path):
     cues = [_cue("c1", "original")]
     workspace = PathBWorkspace(cues, {}, tmp_path / "input.srt")

@@ -35,6 +35,31 @@ def _priority_for_cue(cue_id: str, diagnostics_by_cue_id: dict[str, PathBDiagnos
     return compute_review_priority(review_signals_from_path_b_diagnostics(diagnostics))
 
 
+def _is_preserved_cue(cue: Cue, diagnostics_by_cue_id: dict[str, PathBDiagnostics]) -> bool:
+    """DESIGN.md section 17's Preserved / No-Change state, as a real
+    filter predicate: Preserved must never be inferred from Review
+    Priority (a confidently-resolved rolling/sliding/repetition Cue has
+    NO priority flag by design -- M8's whole point -- but that is not
+    the same fact as "nothing needed fixing"). A Cue is Preserved only
+    when a real `PathBDiagnostics` record exists for it AND every one
+    of its normalization/problem fields is False -- the exact same
+    condition `_normalization_kind_line` already uses to show
+    "Preserved 1:1". A Cue with no diagnostics record at all (e.g. a
+    Split/Merge product with no re-run diagnostics) is never Preserved
+    -- absence of a flag is not evidence of nothing needed fixing."""
+    diagnostics = diagnostics_by_cue_id.get(cue.id)
+    if diagnostics is None:
+        return False
+    return not (
+        diagnostics.source_order_issue
+        or diagnostics.rolling_growth
+        or diagnostics.sliding_overlap
+        or diagnostics.repetition_collapsed
+        or diagnostics.timing_collision
+        or diagnostics.segmentation_ambiguous
+    )
+
+
 _NORMALIZATION_KIND_LABELS = (
     ("source_order_issue", "Source order issue"),
     ("timing_collision", "Timing collision"),
@@ -283,6 +308,7 @@ class PathBWorkspace:
             center_pane,
             on_active_cue_changed=self._on_active_cue_changed,
             filter_labels=("All Reconstructed", "Review Needed", "Preserved"),
+            third_filter_predicate=lambda cue: _is_preserved_cue(cue, diagnostics_by_cue_id),
         )
         self.window = self.qa.window
         self.queue = self.qa.queue

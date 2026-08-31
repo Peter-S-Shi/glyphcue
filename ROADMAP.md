@@ -1255,11 +1255,21 @@ M9 closes only when:
 | 68–71 | Do Not Turn GlyphCue Into a Full Editor / Video Editor / AI Dashboard / Developer Console | Scope prohibitions, respected — none were added |
 | 78 | Review Flow | Satisfied |
 | 80 | Data Integrity UX | Satisfied |
-| 84 | Processing Range | Contract-drift wording fixed this round — V1 frozen truth stated (absolute source timeline; rebasing is not a V1 output mode) |
+| 84 | Processing Range | Contract-drift wording fixed (third round) — V1 frozen truth stated (absolute source timeline; rebasing is not a V1 output mode) |
+| 88 | Theme | Satisfied — Dark Precision is the only V1 visual identity; `design_tokens.py`'s dark tokens + `base_stylesheet` are its production implementation. No light theme, no OS-integration theming was added. This is a table-completeness correction only (the section was previously omitted from this inventory, not previously in doubt) — it triggers no new UI work and does not reopen accessibility/contrast hardening (still M12, section 89) |
 
 **Remaining-gap count after this round: 0** across every FROZEN/`V1 FROZEN` section. The only non-blocking item logged (10.2's full recommended shortcut list) is explicitly named above, not silently deferred.
 
-**Truth fix, closed this round:** `PathBWorkspace`'s left-pane "Source cues" count previously used `len(observations_by_id)` — the count of successfully-parsed Observations, which understates the real number of structurally-read source events whenever the adapter had to skip one as a recoverable `ImportWarning`. It now adds the skipped-event count, so "Source cues" means what it says.
+**Truth fix (third round):** `PathBWorkspace`'s left-pane "Source cues" count previously used `len(observations_by_id)` — the count of successfully-parsed Observations, which understates the real number of structurally-read source events whenever the adapter had to skip one as a recoverable `ImportWarning`. It now adds the skipped-event count, so "Source cues" means what it says.
+
+**Fourth-round correctness fix — queue filter state semantics were not real human-review state.** `ReconstructionQaWorkspace._matches_filter()` previously defined "Review Needed" as `priority.level != "None"` and the third bucket as `priority.level == "None" or review_state == APPROVED` — both purely inferred from the heuristic Review Priority score, never from the Cue's actual `review_state`. Closed:
+
+- **Review Needed** is now `review_state == NEEDS_REVIEW`, OR a real Review Priority flag exists AND `review_state` is not yet `APPROVED`/`REJECTED`. An Approved or Rejected Cue never lingers in Review Needed regardless of its (possibly stale) priority score; a Split/Merge-produced `NEEDS_REVIEW` Cue appears even with `priority.level == "None"`, since a machine split/merge is never itself a correct reconstruction independent of any heuristic.
+- **Path A's "Clean / Approved"** is now a clean Cue (no priority flag, not `REJECTED`/`NEEDS_REVIEW`) or an `APPROVED` Cue — a `REJECTED` Cue with no priority flag no longer passes as clean; Discard is itself a review decision, not silence.
+- **Path B's "Preserved"** no longer infers anything from Review Priority at all. `ReconstructionQaWorkspace` gained a caller-supplied `third_filter_predicate` seam (the third filter bucket's meaning is fully overridable per path, without a second QA workspace); `PathBWorkspace` wires it to a real `PathBDiagnostics` check (`_is_preserved_cue`): a Cue is Preserved only when a real diagnostics record exists for it AND every one of its six normalization/problem fields is False. A confidently-resolved `rolling_growth`/`sliding_overlap`/`repetition_collapsed` Cue (which has no priority flag by M8 design) is correctly excluded; a Cue with no diagnostics record at all (e.g. fresh out of Split/Merge) is correctly excluded too, rather than passing for lack of a flag.
+- **Truth fix**: `PathAMediaPane.context_label`'s Languages line previously only reflected the last Saved Track Group, not the live Add/Remove selection — a user could add/remove a language and see the OLD list until pressing Save. `LanguageSelectionPanel` gained a minimal `languagesChanged` signal, emitted on Add/Remove, wired to the same live-refresh `context_label` already uses for ROI/range.
+
+No ROI/timeline/path-switching/export/processing-range/M4–M8 algorithm code was touched. No new FROZEN audit, UI surface, or feature was added this round.
 
 **Gate closure:**
 

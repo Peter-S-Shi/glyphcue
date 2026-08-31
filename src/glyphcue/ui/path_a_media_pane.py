@@ -287,6 +287,7 @@ class PathAMediaPane:
         self.limit_processing_range_checkbox.toggled.connect(
             lambda _checked: self._refresh_context_label()
         )
+        self.language_selection_panel.languagesChanged.connect(self._refresh_context_label)
 
         # ROADMAP M9: Path A previously had no export mechanism at all.
         # Reuses the same required export surface Path B offers
