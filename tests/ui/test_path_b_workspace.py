@@ -134,6 +134,38 @@ def test_editing_text_then_exporting_immediately_without_approving_exports_the_e
     assert workspace.cues[0].review_state == ReviewState.PENDING
 
 
+def test_confidently_resolved_rolling_cue_shows_normalization_kind_but_no_review_flags(
+    qapp_guard, tmp_path
+):
+    # A confidently-resolved rolling-growth Cue must still show "No
+    # Review Flags" (M8's whole point: content GlyphCue could reliably
+    # restore does not need a human to re-check it) -- but the reviewer
+    # must still be able to SEE, in the existing shared shell, that it
+    # actually went through rolling-growth consolidation, not just a
+    # blank "nothing to report." No second QA UI is built for this --
+    # it reuses the existing center-pane consolidation explanation.
+    from glyphcue.application.reconstruction import PathBDiagnostics
+
+    cues = [_cue("c1", "Hello world, how are you", observation_ids=("o1", "o2"))]
+    diagnostics_by_cue_id = {
+        "c1": PathBDiagnostics(
+            cue_id="c1", source_order_issue=False, rolling_growth=True,
+            sliding_overlap=False, repetition_collapsed=False,
+            timing_collision=False, segmentation_ambiguous=False,
+        ),
+    }
+    workspace = PathBWorkspace(
+        cues, {}, tmp_path / "input.srt", tmp_path / "out.srt",
+        diagnostics_by_cue_id=diagnostics_by_cue_id,
+    )
+
+    workspace.queue.setCurrentRow(0)
+
+    assert "None" in workspace.qa.priority_label.text()
+    consolidation_text = workspace.consolidation_view.toPlainText().lower()
+    assert "rolling growth" in consolidation_text
+
+
 def test_discarding_a_cue_then_exporting_excludes_it_from_the_output_file(qapp_guard, tmp_path):
     cues = [_cue("c1", "keep this line"), _cue("c2", "discard this garbage reading")]
     destination = tmp_path / "out.srt"

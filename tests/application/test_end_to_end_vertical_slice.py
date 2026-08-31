@@ -21,7 +21,7 @@ def test_full_vertical_slice_import_review_approve_export(qapp_guard, tmp_path):
     source.write_text(_ROLLING_SRT, encoding="utf-8")
     destination = tmp_path / "input.reconstructed.srt"
 
-    cues, observations_by_id, diagnostics_by_cue_id = parse_and_reconstruct(source)
+    cues, observations_by_id, diagnostics_by_cue_id, _import_warnings = parse_and_reconstruct(source)
     workspace = PathBWorkspace(
         cues, observations_by_id, source, destination, diagnostics_by_cue_id=diagnostics_by_cue_id
     )

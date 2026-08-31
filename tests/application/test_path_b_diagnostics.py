@@ -208,6 +208,133 @@ def test_a_single_coincidental_character_match_is_not_treated_as_real_continuati
     assert diagnostics[1].sliding_overlap is False
 
 
+# -- Temporal eligibility: text overlap alone must never merge ---------------
+
+
+def test_far_distant_identical_captions_are_not_collapsed():
+    # A real risk: two temporally UNRELATED captions that happen to
+    # have identical text (e.g. "Thank you for watching" repeated at
+    # the start and again minutes later) must stay two separate Cues.
+    # Text identity is not evidence of a rolling continuation across an
+    # arbitrary time gap.
+    observations = [
+        _observation("o1", "Thank you for watching", 0.0, 2.0),
+        _observation("o2", "Thank you for watching", 120.0, 122.0),
+    ]
+
+    cues, _diagnostics = reconstruct_cues_with_diagnostics(observations)
+
+    assert len(cues) == 2
+    assert cues[0].language_layers[0].text == "Thank you for watching"
+    assert cues[1].language_layers[0].text == "Thank you for watching"
+    assert (cues[0].start_time, cues[0].end_time) == (0.0, 2.0)
+    assert (cues[1].start_time, cues[1].end_time) == (120.0, 122.0)
+
+
+def test_non_overlapping_adjacent_sentences_with_a_coincidental_boundary_match_are_not_merged():
+    # Two ordinary, unrelated, non-overlapping sentences that happen to
+    # share a real (2+ character) suffix/prefix at their boundary --
+    # e.g. both mention "day" -- must not be merged just because the
+    # text overlap check alone would have accepted it. There is no
+    # temporal evidence of a rolling relationship at all.
+    observations = [
+        _observation("o1", "It was a bright cold day", 0.0, 2.0),
+        _observation("o2", "day after day it rained", 2.5, 4.0),
+    ]
+
+    cues, _diagnostics = reconstruct_cues_with_diagnostics(observations)
+
+    assert len(cues) == 2
+    assert cues[0].language_layers[0].text == "It was a bright cold day"
+    assert cues[1].language_layers[0].text == "day after day it rained"
+
+
+def test_near_adjacent_duplicate_within_the_bounded_gap_still_collapses():
+    # The one allowed exception: an EXACT duplicate reading (no new
+    # content at all) within a small, fixed, fixture-justified gap is
+    # still treated as a repeated/backtracking reading, not a real
+    # temporal-overlap requirement -- this mirrors how repeated OCR-like
+    # readings of the same caption can land in consecutive SRT entries
+    # with a small gap rather than genuine time overlap.
+    observations = [
+        _observation("o1", "Thank you for watching", 0.0, 2.0),
+        _observation("o2", "Thank you for watching", 2.3, 4.0),
+    ]
+
+    cues, diagnostics = reconstruct_cues_with_diagnostics(observations)
+
+    assert len(cues) == 1
+    assert cues[0].language_layers[0].text == "Thank you for watching"
+    assert diagnostics[0].repetition_collapsed is True
+
+
+# -- Irregular timing span: Cue end must cover ALL supporting evidence -------
+
+
+def test_merged_cue_span_covers_the_latest_end_time_not_just_the_last_observation():
+    # A run whose members' end_times are NOT monotonically increasing
+    # with start_time (e.g. a long-duration first reading, then a
+    # shorter-duration later reading nested inside it) must still span
+    # every supporting Observation's real evidence -- not silently
+    # truncate to whichever Observation happens to be last in the run.
+    observations = [
+        _observation("o1", "Hello", 0.0, 5.0),  # starts first, ends LATEST
+        _observation("o2", "Hello world", 1.0, 3.0),  # starts later, ends EARLIER
+    ]
+
+    cues, _diagnostics = reconstruct_cues_with_diagnostics(observations)
+
+    assert len(cues) == 1
+    assert cues[0].start_time == 0.0
+    assert cues[0].end_time == 5.0  # the latest real end_time among supporting evidence
+    assert cues[0].language_layers[0].text == "Hello world"
+
+
+# -- CJK: a real single-character whole-caption growth vs. a coincidence -----
+
+
+def test_cjk_single_character_whole_prefix_growth_is_real_rolling_growth():
+    # A one-character caption that grows into a longer one, retaining
+    # the ENTIRE original character as its own prefix, is genuine
+    # rolling growth even though the overlap length (1) is below the
+    # general coincidence-guard floor -- the floor exists to guard
+    # against a coincidental PARTIAL match on a much longer text, not
+    # to reject a real, fully-retained short caption.
+    observations = [
+        _observation("o1", "你", 0.0, 2.0, language="zh"),
+        _observation("o2", "你好，世界", 1.0, 4.0, language="zh"),
+    ]
+
+    cues, diagnostics = reconstruct_cues_with_diagnostics(observations)
+
+    assert len(cues) == 1
+    assert cues[0].language_layers[0].text == "你好，世界"
+    assert diagnostics[0].rolling_growth is True
+    assert diagnostics[0].segmentation_ambiguous is False
+
+
+def test_cjk_single_character_coincidental_boundary_match_is_not_growth():
+    # A longer CJK caption whose LAST character happens to match the
+    # FIRST character of a temporally-overlapping but textually
+    # UNRELATED next caption -- a coincidence, not evidence of growth
+    # (the accumulated text is NOT fully retained as a prefix; only its
+    # last character coincidentally matches). Must be treated exactly
+    # like the analogous English single-character coincidence case, not
+    # given CJK-specific leniency.
+    observations = [
+        _observation("o1", "今日は天気が良", 0.0, 2.0, language="ja"),
+        _observation("o2", "良かったね、また明日", 1.5, 4.0, language="ja"),
+    ]
+
+    cues, diagnostics = reconstruct_cues_with_diagnostics(observations)
+
+    assert len(cues) == 2
+    assert cues[0].language_layers[0].text == "今日は天気が良"
+    assert cues[1].language_layers[0].text == "良かったね、また明日"
+    assert diagnostics[1].segmentation_ambiguous is True
+    assert diagnostics[1].rolling_growth is False
+
+
 # -- Out-of-order source cues: diagnose, don't silently discard ---------------
 
 

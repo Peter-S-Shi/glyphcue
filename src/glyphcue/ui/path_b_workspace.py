@@ -32,20 +32,59 @@ def _priority_for_cue(cue_id: str, diagnostics_by_cue_id: dict[str, PathBDiagnos
     return compute_review_priority(review_signals_from_path_b_diagnostics(diagnostics))
 
 
-def _consolidation_explanation(cue: Cue | None, observations_by_id: dict[str, Observation]) -> str:
+_NORMALIZATION_KIND_LABELS = (
+    ("source_order_issue", "Source order issue"),
+    ("timing_collision", "Timing collision"),
+    ("segmentation_ambiguous", "Segmentation ambiguous"),
+    ("rolling_growth", "Rolling growth consolidated"),
+    ("sliding_overlap", "Sliding overlap consolidated"),
+    ("repetition_collapsed", "Repetition collapsed"),
+)
+
+
+def _normalization_kind_line(diagnostics: PathBDiagnostics | None) -> str | None:
+    """A plain-language line naming which M8 normalization phenomena
+    this Cue actually went through -- shown regardless of whether any
+    of them raised Review Priority. A confidently-resolved rolling/
+    sliding/repetition Cue stays "No Review Flags" (M8's whole point:
+    content GlyphCue could reliably restore doesn't need a human
+    re-check), but the reviewer must still be able to SEE what actually
+    happened, not just a blank center pane. Reuses the existing
+    consolidation explanation widget -- no second QA UI."""
+    if diagnostics is None:
+        return None
+    kinds = [label for field_name, label in _NORMALIZATION_KIND_LABELS if getattr(diagnostics, field_name)]
+    if not kinds:
+        return None
+    return "Normalization: " + ", ".join(kinds)
+
+
+def _consolidation_explanation(
+    cue: Cue | None,
+    observations_by_id: dict[str, Observation],
+    diagnostics_by_cue_id: dict[str, PathBDiagnostics],
+) -> str:
     """DESIGN.md section 14.2's "Consolidation / Reconstruction
     Explanation": which source observations became this reconstructed
     Cue -- descriptive, not falsely authoritative about an algorithm
-    that is only known by its behavior."""
+    that is only known by its behavior. Also names which M8
+    normalization phenomena (if any) were involved, independent of
+    whether that raised a Review Priority flag."""
     if cue is None:
         return ""
     source_ids = [
         observation_id for layer in cue.language_layers for observation_id in layer.observation_ids
     ]
     if not source_ids:
-        return f"Reconstructed Cue {cue.id} has no recorded source observations."
-    sources = " + ".join(source_ids)
-    return f"Source observations {sources}\n→ Reconstructed Cue {cue.id}"
+        base = f"Reconstructed Cue {cue.id} has no recorded source observations."
+    else:
+        sources = " + ".join(source_ids)
+        base = f"Source observations {sources}\n→ Reconstructed Cue {cue.id}"
+
+    kind_line = _normalization_kind_line(diagnostics_by_cue_id.get(cue.id))
+    if kind_line is None:
+        return base
+    return f"{base}\n{kind_line}"
 
 
 class PathBWorkspace:
@@ -72,7 +111,8 @@ class PathBWorkspace:
         self._export_destination = export_destination
         self._observations_by_id = observations_by_id
         self._adapter = Pysubs2SubtitleFormatAdapter()
-        diagnostics_by_cue_id = diagnostics_by_cue_id or {}
+        self._diagnostics_by_cue_id = diagnostics_by_cue_id or {}
+        diagnostics_by_cue_id = self._diagnostics_by_cue_id
 
         self.consolidation_view = QTextEdit()
         self.consolidation_view.setReadOnly(True)
@@ -114,7 +154,7 @@ class PathBWorkspace:
 
     def _on_active_cue_changed(self, cue: Cue | None) -> None:
         self.consolidation_view.setPlainText(
-            _consolidation_explanation(cue, self._observations_by_id)
+            _consolidation_explanation(cue, self._observations_by_id, self._diagnostics_by_cue_id)
         )
 
     def export(self) -> Path:

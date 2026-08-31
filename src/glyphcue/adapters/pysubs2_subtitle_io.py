@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 
 import pysubs2
@@ -10,6 +11,19 @@ from glyphcue.domain.provenance import Provenance, ProvenanceKind
 from glyphcue.domain.review_state import ReviewState
 
 
+@dataclass(frozen=True)
+class ImportWarning:
+    """One source event pysubs2 successfully parsed as a *structural*
+    entry, but that could not become a valid `Observation` on its own
+    (e.g. inverted/zero-duration timing) -- named explicitly (source
+    index + reason) rather than silently dropped. This is a per-event
+    defensive seam, not a parser rewrite: a file pysubs2 itself cannot
+    parse at all still fails fast, as before."""
+
+    source_index: int
+    reason: str
+
+
 class Pysubs2SubtitleFormatAdapter:
     """Concrete SubtitleFormatAdapter (SRT/VTT) backed by pysubs2.
 
@@ -17,23 +31,37 @@ class Pysubs2SubtitleFormatAdapter:
     boundary; only glyphcue domain types (Observation/Cue) do.
     """
 
-    def parse(self, path: Path) -> list[Observation]:
+    def parse_with_warnings(self, path: Path) -> tuple[list[Observation], list[ImportWarning]]:
+        """Like `parse`, but also returns an `ImportWarning` for every
+        source event pysubs2 could structurally read that nonetheless
+        failed `Observation`'s own domain invariants (negative or
+        inverted timing) -- one bad event does not take down the whole
+        file; the events around it are still recovered, and the skipped
+        one is never silently dropped."""
         subtitles = pysubs2.load(str(path))
         provenance = Provenance(kind=ProvenanceKind.SUBTITLE_IMPORT, source=str(path))
         observations: list[Observation] = []
+        warnings: list[ImportWarning] = []
         for index, event in enumerate(subtitles):
             text = event.plaintext.strip()
             if not text:
                 continue
-            observations.append(
-                Observation(
-                    id=f"{path.name}:{index}",
-                    text=text,
-                    start_time=event.start / 1000.0,
-                    end_time=event.end / 1000.0,
-                    provenance=provenance,
+            try:
+                observations.append(
+                    Observation(
+                        id=f"{path.name}:{index}",
+                        text=text,
+                        start_time=event.start / 1000.0,
+                        end_time=event.end / 1000.0,
+                        provenance=provenance,
+                    )
                 )
-            )
+            except ValueError as exc:
+                warnings.append(ImportWarning(source_index=index, reason=str(exc)))
+        return observations, warnings
+
+    def parse(self, path: Path) -> list[Observation]:
+        observations, _warnings = self.parse_with_warnings(path)
         return observations
 
     def write(self, cues: list[Cue], path: Path) -> None:

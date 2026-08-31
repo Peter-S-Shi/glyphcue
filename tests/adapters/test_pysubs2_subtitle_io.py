@@ -31,6 +31,49 @@ def test_parse_srt_strips_formatting_and_converts_ms_to_seconds(tmp_path):
     assert observations[1].start_time == 2.5
 
 
+_SRT_WITH_ONE_INVALID_EVENT = """1
+00:00:00,000 --> 00:00:02,000
+First valid line.
+
+2
+00:00:03,000 --> 00:00:02,500
+Invalid inverted timing line.
+
+3
+00:00:04,000 --> 00:00:06,000
+Second valid line.
+"""
+
+
+def test_parse_with_warnings_recovers_valid_events_around_one_invalid_event(tmp_path):
+    # A single domain-invalid event (here: inverted timing, end before
+    # start) must not take down the WHOLE file -- the two legitimate
+    # events around it are still recovered, and the skipped one is
+    # never silently dropped: it must be visible as an explicit
+    # ImportWarning naming which source event and why.
+    source = tmp_path / "mixed.srt"
+    source.write_text(_SRT_WITH_ONE_INVALID_EVENT, encoding="utf-8")
+
+    observations, warnings = Pysubs2SubtitleFormatAdapter().parse_with_warnings(source)
+
+    assert [o.text for o in observations] == ["First valid line.", "Second valid line."]
+    assert len(warnings) == 1
+    assert warnings[0].source_index == 1  # the second (0-indexed) event
+    assert "Invalid inverted timing line" not in [o.text for o in observations]
+
+
+def test_parse_stays_backward_compatible_and_silently_skips_the_invalid_event(tmp_path):
+    # parse() keeps its original signature (list[Observation]) for
+    # existing callers -- it still recovers the valid events, it just
+    # doesn't expose warnings itself (see parse_with_warnings for that).
+    source = tmp_path / "mixed.srt"
+    source.write_text(_SRT_WITH_ONE_INVALID_EVENT, encoding="utf-8")
+
+    observations = Pysubs2SubtitleFormatAdapter().parse(source)
+
+    assert [o.text for o in observations] == ["First valid line.", "Second valid line."]
+
+
 def test_parse_vtt_returns_observations(tmp_path):
     source = tmp_path / "input.vtt"
     source.write_text(_VTT_TEXT, encoding="utf-8")

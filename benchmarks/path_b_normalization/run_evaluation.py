@@ -8,9 +8,20 @@ called. This mirrors the fixture matrix in
 `tests/application/test_path_b_diagnostics.py` (a superset of it is used
 as the evaluation corpus here) but reports results as a reproducible,
 categorized artifact -- not just "tests passed" -- broken out by
-language (English / CJK) and failure class (clean-preservation,
-rolling-reconstruction, over-merge error, under-merge error,
-malformed-safe behavior), per ROADMAP M8's evaluation requirement.
+language (English / CJK) and failure class, per ROADMAP M8's evaluation
+requirement.
+
+Two failure classes are reported SEPARATELY on purpose, per a corrective
+pass over this evaluation's first draft: "out-of-order source" (a
+diagnosis-not-silently-discarded case, exercised at the
+`reconstruct_cues_with_diagnostics` level on hand-built Observations)
+and "malformed/recoverable import" (a real, distinct per-EVENT parser
+defensive seam, exercised at the `Pysubs2SubtitleFormatAdapter` level
+through real file I/O -- a domain-invalid event, e.g. inverted timing,
+must not take down the whole file). The first draft's "malformed_safe"
+category only ever covered the first of these and should not have
+implied it covered general malformed-input robustness; this version
+names and measures both explicitly.
 
 All fixture text is hand-authored, synthetic, and copyright-safe -- no
 scraped subtitle/transcript data.
@@ -22,9 +33,11 @@ Run manually:
 from __future__ import annotations
 
 import json
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
+from glyphcue.adapters.pysubs2_subtitle_io import Pysubs2SubtitleFormatAdapter
 from glyphcue.application.reconstruction import reconstruct_cues_with_diagnostics
 from glyphcue.domain.observation import Observation
 from glyphcue.domain.provenance import Provenance, ProvenanceKind
@@ -40,8 +53,8 @@ def _obs(id_: str, text: str, start: float, end: float, language: str | None = N
 @dataclass(frozen=True)
 class Case:
     name: str
-    category: str  # clean_preservation | rolling_reconstruction | over_merge_guard | malformed_safe
-    language: str  # en | cjk
+    category: str
+    language: str  # en | cjk | n/a
     observations: list[Observation]
     expected_texts: list[str]
     # Diagnostic flags that must be True on AT LEAST ONE resulting Cue,
@@ -49,9 +62,15 @@ class Case:
     # classification (e.g. this case exists to prove
     # segmentation_ambiguous fires, not just that text matches).
     required_flags: tuple[str, ...] = ()
+    # Diagnostic flags that must be False on every resulting Cue -- for
+    # cases that exist specifically to prove a DANGEROUS false-positive
+    # merge does NOT happen (the over-merge-guard category's whole
+    # point).
+    forbidden_flags: tuple[str, ...] = ()
 
 
 _CASES: list[Case] = [
+    # -- Clean preservation ---------------------------------------------------
     Case(
         name="clean_english_two_cues",
         category="clean_preservation",
@@ -72,6 +91,7 @@ _CASES: list[Case] = [
         ],
         expected_texts=["第一句話。", "第二句話。"],
     ),
+    # -- Rolling reconstruction (real temporal evidence) -----------------------
     Case(
         name="english_growing_window",
         category="rolling_reconstruction",
@@ -94,6 +114,17 @@ _CASES: list[Case] = [
             _obs("o3", "こんにちは世界、ようこそ", 3.0, 6.0, language="ja"),
         ],
         expected_texts=["こんにちは世界、ようこそ"],
+        required_flags=("rolling_growth",),
+    ),
+    Case(
+        name="cjk_single_character_whole_prefix_growth",
+        category="rolling_reconstruction",
+        language="cjk",
+        observations=[
+            _obs("o1", "你", 0.0, 2.0, language="zh"),
+            _obs("o2", "你好，世界", 1.0, 4.0, language="zh"),
+        ],
+        expected_texts=["你好，世界"],
         required_flags=("rolling_growth",),
     ),
     Case(
@@ -120,7 +151,7 @@ _CASES: list[Case] = [
         required_flags=("sliding_overlap",),
     ),
     Case(
-        name="english_exact_duplicate_repetition",
+        name="english_exact_duplicate_repetition_within_bounded_gap",
         category="rolling_reconstruction",
         language="en",
         observations=[
@@ -131,6 +162,18 @@ _CASES: list[Case] = [
         required_flags=("repetition_collapsed",),
     ),
     Case(
+        name="english_irregular_timing_span_covers_latest_end",
+        category="rolling_reconstruction",
+        language="en",
+        observations=[
+            _obs("o1", "Hello", 0.0, 5.0),  # starts first, ends LATEST
+            _obs("o2", "Hello world", 1.0, 3.0),  # starts later, ends earlier
+        ],
+        expected_texts=["Hello world"],
+        required_flags=("rolling_growth",),
+    ),
+    # -- Over-merge guard: must NOT merge, no matter how strong the text match --
+    Case(
         name="english_over_merge_guard_single_char_coincidence",
         category="over_merge_guard",
         language="en",
@@ -140,6 +183,19 @@ _CASES: list[Case] = [
         ],
         expected_texts=["Thanks a lot", "totally different topic"],
         required_flags=("segmentation_ambiguous",),
+        forbidden_flags=("rolling_growth", "sliding_overlap"),
+    ),
+    Case(
+        name="cjk_over_merge_guard_single_char_coincidence",
+        category="over_merge_guard",
+        language="cjk",
+        observations=[
+            _obs("o1", "今日は天気が良", 0.0, 2.0, language="ja"),
+            _obs("o2", "良かったね、また明日", 1.5, 4.0, language="ja"),
+        ],
+        expected_texts=["今日は天気が良", "良かったね、また明日"],
+        required_flags=("segmentation_ambiguous",),
+        forbidden_flags=("rolling_growth", "sliding_overlap"),
     ),
     Case(
         name="english_over_merge_guard_unrelated_overlapping_speakers",
@@ -151,10 +207,34 @@ _CASES: list[Case] = [
         ],
         expected_texts=["Speaker A says something long", "Speaker B interjects briefly"],
         required_flags=("timing_collision",),
+        forbidden_flags=("rolling_growth", "sliding_overlap", "repetition_collapsed"),
     ),
     Case(
-        name="english_malformed_out_of_order_source",
-        category="malformed_safe",
+        name="english_over_merge_guard_far_distant_identical_captions",
+        category="over_merge_guard",
+        language="en",
+        observations=[
+            _obs("o1", "Thank you for watching", 0.0, 2.0),
+            _obs("o2", "Thank you for watching", 120.0, 122.0),
+        ],
+        expected_texts=["Thank you for watching", "Thank you for watching"],
+        forbidden_flags=("rolling_growth", "sliding_overlap", "repetition_collapsed"),
+    ),
+    Case(
+        name="english_over_merge_guard_non_overlapping_coincidental_boundary",
+        category="over_merge_guard",
+        language="en",
+        observations=[
+            _obs("o1", "It was a bright cold day", 0.0, 2.0),
+            _obs("o2", "day after day it rained", 2.5, 4.0),
+        ],
+        expected_texts=["It was a bright cold day", "day after day it rained"],
+        forbidden_flags=("rolling_growth", "sliding_overlap", "repetition_collapsed"),
+    ),
+    # -- Out-of-order source: diagnose, don't silently discard -----------------
+    Case(
+        name="english_out_of_order_source",
+        category="out_of_order_safe",
         language="en",
         observations=[
             _obs("o2", "Second complete sentence.", 2.1, 4.0),
@@ -166,7 +246,7 @@ _CASES: list[Case] = [
 ]
 
 
-def run() -> dict:
+def _evaluate_reconstruction_cases() -> tuple[dict, dict, list[dict]]:
     per_category: dict[str, dict[str, int]] = {}
     per_language: dict[str, dict[str, int]] = {}
     failures: list[dict] = []
@@ -180,8 +260,9 @@ def run() -> dict:
             flag_name for entry in diagnostics for flag_name, value in vars(entry).items() if value is True
         }
         flags_ok = all(flag in all_flags_true for flag in case.required_flags)
+        forbidden_ok = not any(flag in all_flags_true for flag in case.forbidden_flags)
 
-        passed = text_ok and flags_ok
+        passed = text_ok and flags_ok and forbidden_ok
 
         per_category.setdefault(case.category, {"pass": 0, "fail": 0})
         per_category[case.category]["pass" if passed else "fail"] += 1
@@ -197,11 +278,68 @@ def run() -> dict:
                     "expected_texts": case.expected_texts,
                     "actual_texts": actual_texts,
                     "required_flags": list(case.required_flags),
+                    "forbidden_flags": list(case.forbidden_flags),
                     "observed_flags": sorted(all_flags_true),
                 }
             )
 
-    total = len(_CASES)
+    return per_category, per_language, failures
+
+
+_MALFORMED_IMPORT_SRT = """1
+00:00:00,000 --> 00:00:02,000
+First valid line.
+
+2
+00:00:03,000 --> 00:00:02,500
+Invalid inverted timing line.
+
+3
+00:00:04,000 --> 00:00:06,000
+Second valid line.
+"""
+
+
+def _evaluate_malformed_recoverable_import() -> dict:
+    """A distinct category from `out_of_order_safe`: a real, per-EVENT
+    parser defensive seam at `Pysubs2SubtitleFormatAdapter`, exercised
+    through real file I/O -- a domain-invalid event (here: inverted
+    timing) must not take down the whole file, and the skipped event
+    must produce an explicit, visible warning, not a silent drop."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        path = Path(tmpdir) / "malformed.srt"
+        path.write_text(_MALFORMED_IMPORT_SRT, encoding="utf-8")
+        observations, warnings = Pysubs2SubtitleFormatAdapter().parse_with_warnings(path)
+
+    texts = [observation.text for observation in observations]
+    expected_texts = ["First valid line.", "Second valid line."]
+    text_ok = texts == expected_texts
+    warning_ok = len(warnings) == 1 and warnings[0].source_index == 1
+    passed = text_ok and warning_ok
+
+    return {
+        "category": "malformed_recoverable_import",
+        "pass": 1 if passed else 0,
+        "fail": 0 if passed else 1,
+        "expected_texts": expected_texts,
+        "actual_texts": texts,
+        "warning_count": len(warnings),
+        "warning_source_indices": [warning.source_index for warning in warnings],
+    }
+
+
+def run() -> dict:
+    per_category, per_language, failures = _evaluate_reconstruction_cases()
+    malformed_import_result = _evaluate_malformed_recoverable_import()
+
+    per_category["malformed_recoverable_import"] = {
+        "pass": malformed_import_result["pass"],
+        "fail": malformed_import_result["fail"],
+    }
+    if malformed_import_result["fail"]:
+        failures.append(malformed_import_result)
+
+    total = len(_CASES) + 1
     total_pass = sum(bucket["pass"] for bucket in per_category.values())
 
     return {
@@ -210,7 +348,19 @@ def run() -> dict:
         "total_fail": total - total_pass,
         "per_category": per_category,
         "per_language": per_language,
+        "malformed_recoverable_import_detail": malformed_import_result,
         "failures": failures,
+        "scope_note": (
+            "This corpus is the same hand-authored, ground-truth fixture "
+            "matrix the implementation was built against via TDD (a "
+            "superset of tests/application/test_path_b_diagnostics.py), "
+            "not a held-out validation set. A 100% pass rate demonstrates "
+            "these specific, deliberately adversarial edge cases (over-merge "
+            "risk, irregular timing spans, CJK single-character growth vs. "
+            "coincidence, malformed per-event import recovery) are each "
+            "individually verified, not a claim of generalization beyond "
+            "this fixture corpus."
+        ),
     }
 
 
