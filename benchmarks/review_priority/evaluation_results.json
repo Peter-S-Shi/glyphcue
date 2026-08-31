@@ -1,0 +1,23 @@
+{
+  "cue_count": 200,
+  "actual_error_count": 49,
+  "actual_error_rate": 0.245,
+  "top_fraction_recall": {
+    "top_10pct": {
+      "review_priority_recall": 0.32653061224489793,
+      "random_baseline_recall": 0.061224489795918366,
+      "beats_random": true
+    },
+    "top_20pct": {
+      "review_priority_recall": 0.5918367346938775,
+      "random_baseline_recall": 0.16326530612244897,
+      "beats_random": true
+    },
+    "top_30pct": {
+      "review_priority_recall": 0.8367346938775511,
+      "random_baseline_recall": 0.22448979591836735,
+      "beats_random": true
+    }
+  },
+  "negative_result": false
+}

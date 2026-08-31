@@ -43,17 +43,18 @@ def test_selecting_a_queue_row_sets_the_active_cue(qapp_guard, tmp_path):
     workspace.queue.setCurrentRow(1)
 
     assert workspace.active_cue.id == "c2"
-    assert workspace.text_edit.toPlainText() == "second"
+    assert workspace.qa.language_layers_panel.cards[0].current_text() == "second"
 
 
-def test_selecting_a_queue_row_shows_source_observations_as_evidence(qapp_guard, tmp_path):
+def test_selecting_a_queue_row_shows_a_consolidation_explanation(qapp_guard, tmp_path):
     observations = {"o1": _observation("o1", "raw ocr text one")}
     cues = [_cue("c1", "reconstructed", observation_ids=("o1",))]
     workspace = PathBWorkspace(cues, observations, tmp_path / "input.srt", tmp_path / "out.srt")
 
     workspace.queue.setCurrentRow(0)
 
-    assert "raw ocr text one" in workspace.evidence_view.toPlainText()
+    assert "o1" in workspace.consolidation_view.toPlainText()
+    assert "c1" in workspace.consolidation_view.toPlainText()
 
 
 def test_approve_updates_review_state_and_commits_edited_text(qapp_guard, tmp_path):
@@ -61,8 +62,8 @@ def test_approve_updates_review_state_and_commits_edited_text(qapp_guard, tmp_pa
     workspace = PathBWorkspace(cues, {}, tmp_path / "input.srt", tmp_path / "out.srt")
     workspace.queue.setCurrentRow(0)
 
-    workspace.text_edit.setPlainText("corrected")
-    workspace.approve_button.click()
+    workspace.qa.language_layers_panel.cards[0].text_edit.setPlainText("corrected")
+    workspace.qa.approve_button.click()
 
     approved = workspace.cues[0]
     assert approved.review_state is ReviewState.APPROVED
@@ -108,3 +109,15 @@ def test_export_button_click_refuses_to_overwrite_source_without_crashing(qapp_g
 
     assert source.read_text(encoding="utf-8") == "original source content"
     assert "refus" in workspace.status_label.text().lower()
+
+
+def test_path_b_cues_show_no_review_flags_not_a_fabricated_priority(qapp_guard, tmp_path):
+    # Path B's reconstruction has no OCR-confidence/disagreement
+    # diagnostics to score with -- this must show up honestly as "no
+    # signal", never a made-up score.
+    cues = [_cue("c1", "clean import")]
+    workspace = PathBWorkspace(cues, {}, tmp_path / "input.srt", tmp_path / "out.srt")
+
+    workspace.queue.setCurrentRow(0)
+
+    assert "None" in workspace.qa.priority_label.text()

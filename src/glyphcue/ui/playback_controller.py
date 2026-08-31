@@ -43,6 +43,15 @@ class PlaybackController(QObject):
     def pause(self) -> None:
         self._player.pause()
 
+    def toggle_play_pause(self) -> None:
+        """Space's real behavior (DESIGN.md section 10.2: `Space = Play
+        / Pause`) -- one stable toggle, not two separate bindings a
+        caller has to track playback state to choose between."""
+        if self._player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
+            self.pause()
+        else:
+            self.play()
+
     def seek(self, seconds: float) -> None:
         self._player.setPosition(round(seconds * 1000))
 
