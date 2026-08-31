@@ -10,6 +10,8 @@ from glyphcue.domain.language_layer import LanguageLayer
 from glyphcue.domain.observation import Observation
 from glyphcue.domain.provenance import Provenance, ProvenanceKind
 from glyphcue.domain.review_state import ReviewState
+from glyphcue.domain.roi import ROI
+from glyphcue.domain.track_group import TrackGroup
 
 __all__ = [
     "Cue",
@@ -17,5 +19,7 @@ __all__ = [
     "Observation",
     "Provenance",
     "ProvenanceKind",
+    "ROI",
     "ReviewState",
+    "TrackGroup",
 ]

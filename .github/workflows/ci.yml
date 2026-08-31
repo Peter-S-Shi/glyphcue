@@ -17,10 +17,10 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install system Qt runtime dependencies
+      - name: Install system Qt/media runtime dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libegl1 libgl1 libxkbcommon0 libdbus-1-3
+          sudo apt-get install -y libegl1 libgl1 libxkbcommon0 libdbus-1-3 ffmpeg libpulse0
 
       - name: Install glyphcue
         run: python -m pip install -e ".[dev]"
