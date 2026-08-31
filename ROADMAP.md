@@ -3,7 +3,7 @@
 **Document type:** Authoritative V1 milestone roadmap  
 **Project:** GlyphCue  
 **Repository:** `Peter-S-Shi/glyphcue`  
-**Lifecycle phase:** Production Development in progress → Milestone 1 complete, Milestone 2 next  
+**Lifecycle phase:** Production Development in progress → Milestone 2 complete, Milestone 3 next  
 **Status:** Current V1 execution roadmap  
 **Last updated:** 2026-08-30
 
@@ -1811,6 +1811,7 @@ Production Roadmap                     ✓  ← this document
 
 Milestone 0 — Production Foundation    ✓ complete
 Milestone 1 — Thin Path B Vertical Slice ✓ complete
+Milestone 2 — Path A Media & Job Orchestration ✓ complete
 
 Production Development                 IN PROGRESS
 ```
@@ -1821,19 +1822,19 @@ Production Development                 IN PROGRESS
 
 The next engineering action is:
 
-> **Milestone 2 — Path A Media & Job Orchestration**
+> **Milestone 3 — OCR Adapter & Runtime Selection**
 
 Do not ask AG2.0 to implement the whole roadmap.
 
 Advance one milestone at a time.
 
-After M2 is pushed:
+After M3 is pushed:
 
 1. inspect the remote repository;
 2. verify the milestone against its acceptance gate;
 3. correct deficiencies;
 4. merge only when the milestone is genuinely accepted;
-5. then issue the M3 prompt.
+5. then issue the M4 prompt.
 
 ---
 
