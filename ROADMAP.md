@@ -3,7 +3,7 @@
 **Document type:** Authoritative V1 milestone roadmap  
 **Project:** GlyphCue  
 **Repository:** `Peter-S-Shi/glyphcue`  
-**Lifecycle phase:** Production Development in progress → Milestone 2 complete, Milestone 3 next  
+**Lifecycle phase:** Production Development in progress → Milestone 3 complete, Milestone 4 next  
 **Status:** Current V1 execution roadmap  
 **Last updated:** 2026-08-30
 
@@ -112,12 +112,12 @@ QSS is a rendering mechanism, not the product architecture.
 
 **GlyphCue-owned `OcrEngine` adapter**
 
-Exact runtime/model remains benchmark-dependent.
+V1 default runtime: **PaddleOCR**, chosen via benchmark evidence (Milestone 3). See `docs/adr/0001-ocr-runtime-selection.md` and `docs/benchmarks/ocr_runtime_selection.md`.
 
-Initial candidates:
+Evaluated candidates:
 
-- RapidOCR / ONNX Runtime
-- PaddleOCR
+- RapidOCR / ONNX Runtime — rejected as V1 default (failed Japanese recognition outright), remains a legitimate future option for a lighter-weight configuration.
+- PaddleOCR — chosen (perfect CER across the benchmark corpus, including Japanese).
 
 ## CPU / GPU
 
@@ -1812,6 +1812,7 @@ Production Roadmap                     ✓  ← this document
 Milestone 0 — Production Foundation    ✓ complete
 Milestone 1 — Thin Path B Vertical Slice ✓ complete
 Milestone 2 — Path A Media & Job Orchestration ✓ complete
+Milestone 3 — OCR Adapter & Runtime Selection ✓ complete
 
 Production Development                 IN PROGRESS
 ```
@@ -1822,19 +1823,19 @@ Production Development                 IN PROGRESS
 
 The next engineering action is:
 
-> **Milestone 3 — OCR Adapter & Runtime Selection**
+> **Milestone 4 — Selective OCR Evidence Pipeline**
 
 Do not ask AG2.0 to implement the whole roadmap.
 
 Advance one milestone at a time.
 
-After M3 is pushed:
+After M4 is pushed:
 
 1. inspect the remote repository;
 2. verify the milestone against its acceptance gate;
 3. correct deficiencies;
 4. merge only when the milestone is genuinely accepted;
-5. then issue the M4 prompt.
+5. then issue the M5 prompt.
 
 ---
 
