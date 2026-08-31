@@ -4,14 +4,17 @@ import uuid
 from pathlib import Path
 from typing import Callable
 
+from PySide6.QtCore import Qt
 from PySide6.QtMultimediaWidgets import QVideoWidget
 from PySide6.QtWidgets import (
+    QCheckBox,
     QDoubleSpinBox,
     QFileDialog,
     QFormLayout,
     QHBoxLayout,
     QLabel,
     QPushButton,
+    QSlider,
     QVBoxLayout,
     QWidget,
 )
@@ -39,11 +42,14 @@ from glyphcue.jobs.job import Job, JobState
 from glyphcue.persistence.database import connect
 from glyphcue.persistence.observation_repository import ObservationRepository
 from glyphcue.persistence.track_group_repository import TrackGroupRepository
+from glyphcue.ui.compact_timeline import CompactTimeline
 from glyphcue.ui.design_tokens import Spacing
+from glyphcue.ui.export_controls import ExportControls
 from glyphcue.ui.language_selection_panel import LanguageSelectionPanel
 from glyphcue.ui.ocr_evidence_pane import OcrEvidencePane
 from glyphcue.ui.playback_controller import PlaybackController
 from glyphcue.ui.reconstruction_qa_workspace import ReconstructionQaWorkspace
+from glyphcue.ui.roi_visualization import RoiVisualization
 
 _DEFAULT_TRACK_GROUP_ID = "default"
 
@@ -103,12 +109,14 @@ class PathAMediaPane:
         ocr_engine_factory: Callable[[str], OcrEngine] | None = None,
         db_path: Path | None = None,
         available_languages: tuple[str, ...] = CANONICAL_LANGUAGES,
+        on_open_caption_file: Callable[[Path], None] | None = None,
     ) -> None:
         self._repository = track_group_repository
         self._track_group_id = track_group_id
         self._ocr_engine = ocr_engine
         self._ocr_engine_factory = ocr_engine_factory
         self._db_path = db_path
+        self._on_open_caption_file = on_open_caption_file
         self._current_track_group: TrackGroup | None = None
         self._processing_range = ProcessingRange()
         # A connection of its own on the UI thread, separate from
@@ -119,6 +127,7 @@ class PathAMediaPane:
             ObservationRepository(connect(db_path)) if db_path is not None else None
         )
         self._video_path: Path | None = None
+        self._video_duration_seconds: float = 0.0
         self.current_ocr_job: Job | None = None
         self.current_evidence_run_id: str | None = None
         self.ocr_metrics = PipelineMetrics()
@@ -132,12 +141,49 @@ class PathAMediaPane:
         self.play_button = QPushButton("Play")
         self.pause_button = QPushButton("Pause")
 
+        # DESIGN.md section 10 / 10.1: active ROI must be visually
+        # distinguishable, not only four spin-box numbers.
+        self.roi_visualization = RoiVisualization()
+
+        # DESIGN.md section 10: PTS-aware time context + frame/time
+        # navigation + current-Cue relationship. A standard QSlider is
+        # the navigation control (drag or programmatic setValue both
+        # seek); `current_time_label` / `current_cue_relationship_label`
+        # supply the read-only context.
+        self.position_slider = QSlider(Qt.Orientation.Horizontal)
+        self.current_time_label = QLabel("0.00s")
+        self.current_cue_relationship_label = QLabel("")
+        self.controller.player.positionChanged.connect(self._on_playback_position_changed)
+        self.position_slider.valueChanged.connect(
+            lambda position_ms: self.controller.seek(position_ms / 1000.0)
+        )
+
+        # DESIGN.md section 49: a compact, read-only temporal strip --
+        # Cue spans + playhead, not an NLE timeline.
+        self.timeline = CompactTimeline()
+
         self.roi_x_spin = _roi_spin_box()
         self.roi_y_spin = _roi_spin_box()
         self.roi_width_spin = _roi_spin_box()
         self.roi_height_spin = _roi_spin_box()
         self.language_selection_panel = LanguageSelectionPanel(available_languages)
         self.save_roi_button = QPushButton("Save Track Group")
+
+        # DESIGN.md section 84: partial-video processing is a first-
+        # class Path A concept and the selected range must be visible,
+        # not just implemented internally. Unchecked (the default)
+        # means whole-media, matching ProcessingRange()'s own default.
+        self.limit_processing_range_checkbox = QCheckBox("Limit processing range")
+        self.processing_range_start_spin = _roi_spin_box(maximum=1_000_000.0)
+        self.processing_range_end_spin = _roi_spin_box(maximum=1_000_000.0)
+        self.processing_range_start_spin.setEnabled(False)
+        self.processing_range_end_spin.setEnabled(False)
+        self.limit_processing_range_checkbox.toggled.connect(
+            self.processing_range_start_spin.setEnabled
+        )
+        self.limit_processing_range_checkbox.toggled.connect(
+            self.processing_range_end_spin.setEnabled
+        )
 
         self.run_ocr_button = QPushButton("Run OCR Evidence")
         self.cancel_ocr_button = QPushButton("Cancel")
@@ -169,12 +215,25 @@ class PathAMediaPane:
         playback_controls.addWidget(self.pause_button)
         layout.addLayout(playback_controls)
 
+        layout.addWidget(self.position_slider)
+        layout.addWidget(self.current_time_label)
+        layout.addWidget(self.current_cue_relationship_label)
+        layout.addWidget(self.timeline)
+
+        layout.addWidget(self.roi_visualization)
         roi_form = QFormLayout()
         roi_form.addRow("ROI x", self.roi_x_spin)
         roi_form.addRow("ROI y", self.roi_y_spin)
         roi_form.addRow("ROI width", self.roi_width_spin)
         roi_form.addRow("ROI height", self.roi_height_spin)
         layout.addLayout(roi_form)
+
+        processing_range_form = QFormLayout()
+        processing_range_form.addRow(self.limit_processing_range_checkbox)
+        processing_range_form.addRow("Range start (s)", self.processing_range_start_spin)
+        processing_range_form.addRow("Range end (s)", self.processing_range_end_spin)
+        layout.addLayout(processing_range_form)
+
         layout.addWidget(self.language_selection_panel)
         layout.addWidget(self.save_roi_button)
 
@@ -200,11 +259,72 @@ class PathAMediaPane:
             center_pane,
             play_pause_callback=self.controller.toggle_play_pause,
             replay_callback=self._on_replay,
+            on_active_cue_changed=self._on_qa_active_cue_changed,
         )
         self.window = self.qa.window
 
+        for spin in (
+            self.roi_x_spin, self.roi_y_spin, self.roi_width_spin, self.roi_height_spin,
+        ):
+            spin.valueChanged.connect(lambda _value: self.roi_visualization.set_roi(self.current_roi()))
+        self.roi_visualization.set_roi(self.current_roi())
+        self._refresh_current_cue_relationship(0.0)
+
+        # DESIGN.md section 7.1 / section 66: Path A's left context is
+        # "ROI / Track Group" -- the queue alone is not enough. Kept
+        # read-only and minimal (no project manager); live-refreshed
+        # from the same live ROI/language/range controls the actual
+        # OCR run itself reads ("what you see is what runs").
+        self.context_label = QLabel()
+        self.context_label.setWordWrap(True)
+        self.qa.add_left_pane_widget(self.context_label)
+        self._refresh_context_label()
+        for spin in (
+            self.roi_x_spin, self.roi_y_spin, self.roi_width_spin, self.roi_height_spin,
+            self.processing_range_start_spin, self.processing_range_end_spin,
+        ):
+            spin.valueChanged.connect(lambda _value: self._refresh_context_label())
+        self.limit_processing_range_checkbox.toggled.connect(
+            lambda _checked: self._refresh_context_label()
+        )
+        self.language_selection_panel.languagesChanged.connect(self._refresh_context_label)
+
+        # ROADMAP M9: Path A previously had no export mechanism at all.
+        # Reuses the same required export surface Path B offers
+        # (DESIGN.md section 67's shared product grammar) rather than a
+        # second bespoke implementation. Disabled until a video is
+        # loaded and `set_source_path` gives it something real to
+        # export from -- see `open_video`.
+        self.export_controls = ExportControls(
+            get_cues=lambda: self.qa.cues,
+            commit_pending_edits=self.qa.commit_pending_edits,
+        )
+        self.qa.add_right_pane_widget(self.export_controls.widget)
+
+        self.open_caption_file_button = QPushButton("Open Caption File (Path B)…")
+        self.open_caption_file_button.setEnabled(on_open_caption_file is not None)
+        self.open_caption_file_button.clicked.connect(self._on_open_caption_file_clicked)
+        self.qa.add_right_pane_widget(self.open_caption_file_button)
+
     def _on_replay(self, cue) -> None:
         self.controller.play_span(cue.start_time, cue.end_time)
+
+    def switch_to_caption_file(self, path: Path) -> None:
+        """Reaches Path B directly from an already-open Path A
+        workbench (DESIGN.md section 9): switching paths is changing
+        evidence-source mode inside one product, not restarting the
+        app. Delegates to the shared entry (`GlyphCueEntry`) via the
+        injected callback so the same window-transition logic used at
+        first launch is reused, not duplicated."""
+        if self._on_open_caption_file is not None:
+            self._on_open_caption_file(path)
+
+    def _on_open_caption_file_clicked(self) -> None:
+        path_str, _selected_filter = QFileDialog.getOpenFileName(
+            None, "Open Caption File", "", "Subtitle files (*.srt *.vtt)"
+        )
+        if path_str:
+            self.switch_to_caption_file(Path(path_str))
 
     @property
     def last_reconstructed_cues(self) -> list | None:
@@ -216,12 +336,31 @@ class PathAMediaPane:
 
     def open_video(self, path: Path) -> None:
         self._video_path = path
+        self._video_duration_seconds = 0.0
         self.controller.load(path)
         metadata = probe_media(path)
         self.metadata_label.setText(
             f"{metadata.width}x{metadata.height} · "
             f"{metadata.duration_seconds:.2f}s · {metadata.codec_name}"
         )
+        self.export_controls.set_source_path(path)
+        # DESIGN.md section 84: the range controls must offer a
+        # reasonable bound from the real, just-opened media -- not an
+        # arbitrary large ceiling the user could set past the video's
+        # own end.
+        self.processing_range_start_spin.setRange(0.0, metadata.duration_seconds)
+        self.processing_range_end_spin.setRange(0.0, metadata.duration_seconds)
+        self.processing_range_end_spin.setValue(metadata.duration_seconds)
+        self._refresh_context_label()
+
+        # DESIGN.md section 10: PTS-aware time context/navigation and
+        # the compact timeline both need a real duration to scale
+        # against -- the probed value, not whatever QMediaPlayer has
+        # loaded so far (which can lag behind `load()` returning).
+        self._video_duration_seconds = metadata.duration_seconds
+        self.position_slider.setRange(0, round(metadata.duration_seconds * 1000))
+        self._refresh_timeline()
+        self._refresh_current_cue_relationship(0.0)
 
     def current_roi(self) -> ROI:
         return ROI(
@@ -229,6 +368,90 @@ class PathAMediaPane:
             y=self.roi_y_spin.value(),
             width=self.roi_width_spin.value(),
             height=self.roi_height_spin.value(),
+        )
+
+    def _on_playback_position_changed(self, position_ms: int) -> None:
+        position_seconds = position_ms / 1000.0
+        self.current_time_label.setText(f"{position_seconds:.2f}s")
+        # Programmatic (playback-driven) updates must not re-trigger a
+        # seek through the slider's own valueChanged -> controller.seek
+        # wiring -- that wiring exists for user-driven navigation.
+        self.position_slider.blockSignals(True)
+        self.position_slider.setValue(position_ms)
+        self.position_slider.blockSignals(False)
+        self.timeline.playhead_seconds = position_seconds
+        self.timeline.update()
+        self._refresh_current_cue_relationship(position_seconds)
+
+    def _on_qa_active_cue_changed(self, _cue) -> None:
+        # The shared QA workspace's active-Cue-changed callback also
+        # fires while `ReconstructionQaWorkspace.__init__` itself is
+        # still running (its own initial `_rebuild_queue` call) --
+        # before `self.qa` has been assigned here. Nothing to refresh
+        # yet in that case (cues start empty regardless).
+        if not hasattr(self, "qa"):
+            return
+        # Also fires right after a fresh reconstruction result is
+        # loaded (`set_cues_and_priorities` selects a first row) --
+        # reused here as the trigger to refresh the WHOLE timeline
+        # (every Cue's span), not just the active one.
+        self._refresh_timeline()
+
+    def _refresh_timeline(self) -> None:
+        spans = []
+        for cue in self.qa.cues:
+            priority = self.qa.priority_for_cue_id(cue.id)
+            role = "flagged" if priority.level != "None" else "clean"
+            spans.append((cue.start_time, cue.end_time, role))
+        self.timeline.set_data(
+            self._video_duration_seconds, spans, playhead_seconds=self.controller.position_seconds
+        )
+
+    def _refresh_current_cue_relationship(self, position_seconds: float | None = None) -> None:
+        if position_seconds is None:
+            position_seconds = self.controller.position_seconds
+        matching = next(
+            (cue for cue in self.qa.cues if cue.start_time <= position_seconds <= cue.end_time),
+            None,
+        )
+        if matching is None:
+            self.current_cue_relationship_label.setText(
+                f"{position_seconds:.2f}s — No Cue at current time"
+            )
+        else:
+            priority = self.qa.priority_for_cue_id(matching.id)
+            self.current_cue_relationship_label.setText(
+                f"{position_seconds:.2f}s — Cue {matching.id} (Review Priority: {priority.level})"
+            )
+
+    def _refresh_context_label(self) -> None:
+        video = self._video_path.name if self._video_path is not None else "No video loaded"
+        roi = self.current_roi()
+        languages = self.language_selection_panel.selected_languages()
+        if self.limit_processing_range_checkbox.isChecked():
+            range_text = (
+                f"{self.processing_range_start_spin.value():.2f}s"
+                f" – {self.processing_range_end_spin.value():.2f}s"
+            )
+        else:
+            range_text = "Whole media"
+        self.context_label.setText(
+            f"{video}\n"
+            f"ROI: x={roi.x:.2f} y={roi.y:.2f} w={roi.width:.2f} h={roi.height:.2f}\n"
+            f"Languages: {', '.join(languages) if languages else '—'}\n"
+            f"Processing range: {range_text}"
+        )
+
+    def current_processing_range(self) -> ProcessingRange:
+        """The live processing-range selection -- "what you see is what
+        runs", the same contract `current_roi()` already has. Unchecked
+        means whole-media, never a stale value left over from a
+        previous video."""
+        if not self.limit_processing_range_checkbox.isChecked():
+            return ProcessingRange()
+        return ProcessingRange(
+            start_time=self.processing_range_start_spin.value(),
+            end_time=self.processing_range_end_spin.value(),
         )
 
     def _restore_roi(self) -> None:
@@ -251,6 +474,7 @@ class PathAMediaPane:
             languages=self.language_selection_panel.selected_languages(),
         )
         self._repository.save(track_group)
+        self._refresh_context_label()
 
     def _on_open_clicked(self) -> None:
         path_str, _selected_filter = QFileDialog.getOpenFileName(
@@ -279,18 +503,29 @@ class PathAMediaPane:
         track_group = TrackGroup(id=self._track_group_id, roi=self.current_roi(), languages=languages)
         self._current_track_group = track_group
 
-        self.ocr_metrics = PipelineMetrics()
-        self.current_evidence_run_id = str(uuid.uuid4())
+        self._processing_range = self.current_processing_range()
 
         # Real, resolved processing-end evidence -- the SAME
         # ProcessingRange the job itself is about to run with -- so the
         # final reconstructed Cue can use it instead of an ~1ms
         # OCR-instant-marker fallback (ROADMAP M5's frozen final-
         # boundary contract; see reconstruct_multilingual_cues_for_track_group).
+        #
+        # Resolved and validated BEFORE any job/run-state is touched
+        # (ROADMAP M9): a reversed/zero/out-of-media range must never
+        # start a job or overwrite the previous run's status with a
+        # fake "running" state -- it is refused up front, with the
+        # current OCR status left exactly as it was.
         media_duration = probe_media(self._video_path).duration_seconds
-        _range_start, self._current_processing_end_time = self._processing_range.resolve(
-            media_duration
-        )
+        try:
+            _range_start, processing_end_time = self._processing_range.resolve(media_duration)
+        except ValueError as exc:
+            self.ocr_status_label.setText(f"Invalid processing range: {exc}")
+            return
+        self._current_processing_end_time = processing_end_time
+
+        self.ocr_metrics = PipelineMetrics()
+        self.current_evidence_run_id = str(uuid.uuid4())
 
         if len(languages) == 1:
             # The live language selection must choose the real runtime

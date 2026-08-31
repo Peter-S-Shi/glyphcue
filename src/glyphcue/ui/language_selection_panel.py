@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QComboBox, QHBoxLayout, QListWidget, QPushButton, QVBoxLayout, QWidget
 
 from glyphcue.ui.design_tokens import Spacing
@@ -23,6 +24,12 @@ class LanguageSelectionPanel(QWidget):
     like "und" that no real engine could be constructed with -- until
     `set_languages` restores a previously-saved configuration.
     """
+
+    languagesChanged = Signal()
+    """Emitted whenever the live selection changes via Add/Remove --
+    the seam a caller (e.g. Path A's context_label) uses to stay
+    truthful about the selection the user currently sees, without
+    requiring a Save first (ROADMAP M9 truth cleanup)."""
 
     def __init__(self, available_languages: tuple[str, ...]) -> None:
         super().__init__()
@@ -76,6 +83,7 @@ class LanguageSelectionPanel(QWidget):
         language = self.add_combo.currentText()
         if language and language not in self.selected_languages():
             self.language_list.addItem(language)
+            self.languagesChanged.emit()
 
     def _on_remove_clicked(self) -> None:
         if self.language_list.count() <= 1:
@@ -83,3 +91,4 @@ class LanguageSelectionPanel(QWidget):
         row = self.language_list.currentRow()
         if row >= 0:
             self.language_list.takeItem(row)
+            self.languagesChanged.emit()

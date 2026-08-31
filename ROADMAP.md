@@ -3,7 +3,7 @@
 **Document type:** Authoritative V1 milestone roadmap  
 **Project:** GlyphCue  
 **Repository:** `Peter-S-Shi/glyphcue`  
-**Lifecycle phase:** Production Development in progress → Milestone 8 complete, Milestone 9 next  
+**Lifecycle phase:** Production Development in progress → Milestone 9 complete, Feature Freeze ACTIVE, Milestone 10 next  
 **Status:** Current V1 execution roadmap  
 **Last updated:** 2026-08-31
 
@@ -1191,6 +1191,96 @@ M9 closes only when:
 - architectural restraint;
 - feature-freeze governance.
 
+## Feature Freeze closure record
+
+**First-round audit findings (done / internal-seam-only / missing / out-of-scope), closed:**
+
+- Production entrypoint launched only Path A (`create_path_a_app`) — Path B (`PathBWorkspace`) existed only as a seam other code/tests could construct, never reachable from `main()`. Closed: `glyphcue.ui.app.GlyphCueEntry` is now the single production entrypoint, offering `Open Video` (Path A) / `Open Caption File` (Path B) from one launch screen (DESIGN.md section 85), transitioning into the existing unmodified `PathAMediaPane` / `PathBWorkspace` shells.
+- Path A had **no export mechanism at all** in production. Closed: `glyphcue.ui.export_controls.ExportControls` (SRT/VTT/Readable/AI-ready, one non-destructive-destination contract) is now wired into `PathAMediaPane`, reusing the same required export surface Path B already had.
+- `ProcessingRange` was constructed with defaults only — no UI ever set a real range, so partial-video processing was a unit seam, not a reachable workflow. Closed: `PathAMediaPane` gained a `Limit processing range` checkbox + start/end fields; `current_processing_range()` drives the real OCR job run, same "what you see is what runs" contract as ROI/languages.
+- M8's per-event import warnings (`parse_and_reconstruct`'s 4th return value) were computed but never surfaced anywhere a user could see them. Closed: `PathBWorkspace.import_warnings_label` shows a minimal count + per-event reason line (no log console, no diagnostic-JSON UI, per DESIGN.md section 29).
+- Readable Transcript / AI-ready Transcript export presets did not exist. Closed: `glyphcue.adapters.transcript_export` (`write_readable_transcript`, `write_ai_ready_transcript`) — plain export-preset functions over the existing `Cue` model, no new document/AI subsystem.
+- Soft-subtitle muxing / burn-in rendering: **optional V1 integration not selected; deferred beyond V1 and may only re-enter scope through the Stop-Building Rule.** No existing media-transform seam makes either near-free (`glyphcue.adapters.pyav_media_source` only probes/reads; there is no encode/mux path anywhere in the codebase), and this section's own conditional gate ("only if the already accepted architecture and implementation cost justify it") was not met. M11/M12 do not schedule it; it is not RC/hardening-lane work-in-waiting, it is out of V1 entirely unless a future Stop-Building Rule review re-admits it.
+- Scope audit: none of ASR, YouTube acquisition, subtitle removal/inpainting, a long-term learning system, a full subtitle/video editor, built-in AI summary, evidence-free batch approve, unrequested Path B linked video, or a user-facing diagnostic-JSON export were added during this milestone. All V1-excluded items above remain excluded.
+
+**Second-round corrective audit, closed:**
+
+- **DESIGN.md section 9 (Path Switching)**: the entry state's `Open Video`/`Open Caption File` only worked from the empty first-launch screen. Closed: `PathAMediaPane.switch_to_caption_file` / `PathBWorkspace.switch_to_video`, both routed through `GlyphCueEntry`'s window-transition logic via injected callbacks — switching now works directly from a live workbench, no restart.
+- **DESIGN.md sections 14–17 (Path B's frozen Timed Text Evidence Workspace)**: only 14.2 existed. Closed with 14.1 (`raw_stream_view`), 14.3 (`timing_view`), section 15 (`ingestion_profile_label`), and section 17 (Preserved 1:1 state).
+- **Path B's required export surface was not actually 4 user-reachable formats** — the generic Export button only ever reused the input suffix. Closed: `PathBWorkspace` now uses the same `ExportControls` widget Path A uses.
+- **Processing-range validation was missing.** Closed: `ProcessingRange.resolve()` rejects a reversed/zero-duration/negative-start/out-of-media range; the UI catches it before touching any run state.
+
+**Third-round audit — the complete FROZEN-functional inventory.** The first two rounds each re-examined only a hand-picked subset of sections and twice declared "FROZEN audit complete" without ever enumerating every FROZEN/`V1 FROZEN` section in `DESIGN.md` end to end. This round does that enumeration once, completely, classifying every one into: **Satisfied** (a real V1 functional contract already met), **Missing** (a real M9 functional gap — closed this round), **Visual/accessibility/release-hardening** (not a workflow gap; explicitly left to M11/M12, not dropped by assuming "it's UI so M11 owns it"), or **Scope prohibition** (a "do not build X" rule, already respected by not building X).
+
+| # | Section | Classification |
+|---|---|---|
+| 4 | Core Design Thesis | Satisfied — dark visual identity (`base_stylesheet`) |
+| 6 | Product Shell Architecture | Satisfied — three-pane shell (`MainWindow`) |
+| 7.1 | Left Pane — Structure + Queue | **Was missing** (no search/filters at all; Path A left pane had only the queue) — **closed this round**: `ReconstructionQaWorkspace.search_edit` / `filter_combo`, `PathAMediaPane.context_label` |
+| 7.2 | Center Pane — Primary Evidence Workspace | Satisfied |
+| 7.3 | Right Pane — Reconstruction QA | Satisfied |
+| 7.4 | Footer / Job Status | Satisfied — `ocr_status_label` is the real "dedicated job surface" the section accepts as an alternative to a literal footer bar |
+| 9 | Path Switching | Satisfied (closed in the second round) |
+| 10 | Path A — Visual Evidence Workspace | **Was missing** (ROI shown only as 4 numbers; no time context/navigation/current-Cue relationship/timeline) — **closed this round**: `RoiVisualization`, `position_slider`, `current_time_label`, `current_cue_relationship_label`, `CompactTimeline` |
+| 10.1 | ROI visualization | **Closed this round** — `RoiVisualization` |
+| 10.2 | Media controls | Satisfied for the hard constraint (Space's meaning is stable, never overloaded); the full recommended shortcut list (`E` export, `?` help) is softer "Recommended" language within this section — logged as a minor, non-blocking M11 keyboard-polish item, not equal severity to the three closed gaps |
+| 11 | Track Group Configuration | Satisfied |
+| 12 | Language Layer Presentation | Satisfied |
+| 13 | Multilingual Timing UI | Satisfied |
+| 14–17 | Path B Timed Text Evidence Workspace / Left Pane / Non-Destructive Contract / Preserved State | Satisfied (closed in the second round) |
+| 18 | Observation → Cue Visual Grammar | Satisfied |
+| 19 | Evidence Density | Satisfied — curated/full evidence toggle |
+| 21 | Review Priority / Suspicion Score | Satisfied — level words, never a percent |
+| 22 | Reconstruction Diagnostics | Satisfied |
+| 23 | QA Action Hierarchy | Satisfied — Approve/Split/Merge/Discard styling |
+| 24 | Approval Shortcut | Satisfied — `Ctrl+Enter` |
+| 28 | Export Surface | Satisfied (closed across all three rounds) |
+| 30 | AI-Ready Transcript | Satisfied |
+| 31 | Progress and Job UX | Satisfied — phase/processed-time/cancel |
+| 32 | Scroll Ownership | Satisfied — independent `QListWidget`/`QTextEdit` scroll regions inside the `QSplitter` shell, by construction |
+| 33 | Layout Density | Visual/hardening — directional principle, no concrete artifact to close |
+| 37, 38, 40, 41, 43, 44 | Color / Accent / Typography / Radius / Depth tokens | Visual/hardening — tokens exist (`design_tokens.py`); real contrast validation is explicitly `REQUIRED BEFORE RELEASE` (section 89), i.e. M12, not M9 |
+| 46 | One Region, One Visual Hero | Satisfied |
+| 47 | Inputs and Text Editing | Satisfied — per-layer focused fields |
+| 49 | Timeline | **Was missing entirely** — **closed this round**: `CompactTimeline`, shared by both paths |
+| 53 | Filters and Queue States | **Was missing entirely** — **closed this round**: `filter_combo` with the frozen baseline labels per path |
+| 55 | Error States | Satisfied — Failed/Cancelled/partial states never hidden behind a generic toast |
+| 57 | Accessibility Requirements | Visual/accessibility/release-hardening — `REQUIRED BEFORE RELEASE` per section 89/90, i.e. M12 |
+| 58 | Motion | Visual/hardening |
+| 61 | Production Terminology | Satisfied — "Review Priority", "Source Protected", etc. already in use; no invented jargon |
+| 63 | Advanced Settings | Scope prohibition, respected — no CV tuning exposed by default |
+| 65 | Export Surface Hierarchy | Satisfied — subtitle formats before transcript before AI-ready in `ExportControls` |
+| 66 | Path A / Path B Legitimate Differences | Satisfied (closed this round via Path A's left-pane context) |
+| 67 | Shared Product Grammar | Satisfied |
+| 68–71 | Do Not Turn GlyphCue Into a Full Editor / Video Editor / AI Dashboard / Developer Console | Scope prohibitions, respected — none were added |
+| 78 | Review Flow | Satisfied |
+| 80 | Data Integrity UX | Satisfied |
+| 84 | Processing Range | Contract-drift wording fixed (third round) — V1 frozen truth stated (absolute source timeline; rebasing is not a V1 output mode) |
+| 88 | Theme | Satisfied — Dark Precision is the only V1 visual identity; `design_tokens.py`'s dark tokens + `base_stylesheet` are its production implementation. No light theme, no OS-integration theming was added. This is a table-completeness correction only (the section was previously omitted from this inventory, not previously in doubt) — it triggers no new UI work and does not reopen accessibility/contrast hardening (still M12, section 89) |
+
+**Remaining-gap count after this round: 0** across every FROZEN/`V1 FROZEN` section. The only non-blocking item logged (10.2's full recommended shortcut list) is explicitly named above, not silently deferred.
+
+**Truth fix (third round):** `PathBWorkspace`'s left-pane "Source cues" count previously used `len(observations_by_id)` — the count of successfully-parsed Observations, which understates the real number of structurally-read source events whenever the adapter had to skip one as a recoverable `ImportWarning`. It now adds the skipped-event count, so "Source cues" means what it says.
+
+**Fourth-round correctness fix — queue filter state semantics were not real human-review state.** `ReconstructionQaWorkspace._matches_filter()` previously defined "Review Needed" as `priority.level != "None"` and the third bucket as `priority.level == "None" or review_state == APPROVED` — both purely inferred from the heuristic Review Priority score, never from the Cue's actual `review_state`. Closed:
+
+- **Review Needed** is now `review_state == NEEDS_REVIEW`, OR a real Review Priority flag exists AND `review_state` is not yet `APPROVED`/`REJECTED`. An Approved or Rejected Cue never lingers in Review Needed regardless of its (possibly stale) priority score; a Split/Merge-produced `NEEDS_REVIEW` Cue appears even with `priority.level == "None"`, since a machine split/merge is never itself a correct reconstruction independent of any heuristic.
+- **Path A's "Clean / Approved"** is now a clean Cue (no priority flag, not `REJECTED`/`NEEDS_REVIEW`) or an `APPROVED` Cue — a `REJECTED` Cue with no priority flag no longer passes as clean; Discard is itself a review decision, not silence.
+- **Path B's "Preserved"** no longer infers anything from Review Priority at all. `ReconstructionQaWorkspace` gained a caller-supplied `third_filter_predicate` seam (the third filter bucket's meaning is fully overridable per path, without a second QA workspace); `PathBWorkspace` wires it to a real `PathBDiagnostics` check (`_is_preserved_cue`): a Cue is Preserved only when a real diagnostics record exists for it AND every one of its six normalization/problem fields is False. A confidently-resolved `rolling_growth`/`sliding_overlap`/`repetition_collapsed` Cue (which has no priority flag by M8 design) is correctly excluded; a Cue with no diagnostics record at all (e.g. fresh out of Split/Merge) is correctly excluded too, rather than passing for lack of a flag.
+- **Truth fix**: `PathAMediaPane.context_label`'s Languages line previously only reflected the last Saved Track Group, not the live Add/Remove selection — a user could add/remove a language and see the OLD list until pressing Save. `LanguageSelectionPanel` gained a minimal `languagesChanged` signal, emitted on Add/Remove, wired to the same live-refresh `context_label` already uses for ROI/range.
+
+No ROI/timeline/path-switching/export/processing-range/M4–M8 algorithm code was touched. No new FROZEN audit, UI surface, or feature was added this round.
+
+**Gate closure:**
+
+1. Accepted V1 workflows complete — Path A import → setup(ROI/languages/validated processing range) → process → QA → export, and Path B import → normalize + import-warning visibility → QA → export, both reachable end-to-end from `main()`, with direct in-workbench switching between them.
+2. No known feature blocker remains for the required V1 output surface — Path B, like Path A, now genuinely reaches all 4 formats (SRT, VTT, Readable Transcript, AI-ready Transcript) from the same source.
+3. UI conforms to every FROZEN/`V1 FROZEN` functional requirement in `DESIGN.md`, per the complete inventory above — not a hand-picked subset. Only GUIDELINE-level visual/contrast/resize polish and release-required accessibility/contrast hardening (sections 33, 37–44, 57, 58, 89, 90) are left to M11/M12, and are named as such, not silently assumed.
+4. Automated regression suite is green on GitHub Actions CI (Ubuntu).
+5. Known issues are classified honestly: soft-mux/burn-in is an unselected optional V1 integration deferred beyond V1 (re-enters scope only via the Stop-Building Rule); the 10.2 shortcut-list gap is logged as minor M11 polish, not silently dropped.
+6. **Feature Freeze is formally declared** as of this milestone's merge.
+7. Any new feature from this point forward requires Stop-Building Rule justification (GLYPHCUE_PRODUCT_ARCHITECTURE.md section 30) before acceptance.
+
 ---
 
 # 17. Milestone 10 — Evaluation & Career Evidence Closure
@@ -1818,8 +1908,10 @@ Milestone 5 — Multi-Frame Consensus & Cue Reconstruction ✓ complete
 Milestone 6 — Multilingual Track Group Reconstruction ✓ complete
 Milestone 7 — Reconstruction QA & Review Priority ✓ complete
 Milestone 8 — Path B Deepening: CJK / Rolling Normalization ✓ complete
+Milestone 9 — V1 Product Completion & Feature Freeze ✓ complete
 
 Production Development                 IN PROGRESS
+Feature Freeze                          ACTIVE
 ```
 
 ---
@@ -1828,19 +1920,21 @@ Production Development                 IN PROGRESS
 
 The next engineering action is:
 
-> **Milestone 9 — V1 Product Completion & Feature Freeze**
+> **Milestone 10 — Evaluation & Career Evidence Closure**
 
 Do not ask AG2.0 to implement the whole roadmap.
 
 Advance one milestone at a time.
 
-After M9 is pushed:
+Feature Freeze is now ACTIVE (Milestone 9's gate 7): any new feature proposed from here forward must be justified against the Stop-Building Rule before it is accepted, not built by default.
+
+After M10 is pushed:
 
 1. inspect the remote repository;
 2. verify the milestone against its acceptance gate;
 3. correct deficiencies;
 4. merge only when the milestone is genuinely accepted;
-5. then issue the M10 prompt.
+5. then issue the M11 prompt.
 
 ---
 
@@ -1898,7 +1992,9 @@ M1 de-risks the canonical spine.
 
 M8 completes the second ingestion path.
 
-M9–M13 convert engineering work into a finished, evaluated, hardened, shipped, and professionally legible product.
+M9 closes the accepted V1 product surface and formally declares Feature Freeze.
+
+M10–M13 convert engineering work into a finished, evaluated, hardened, shipped, and professionally legible product.
 
 ---
 

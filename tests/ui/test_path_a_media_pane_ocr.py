@@ -8,6 +8,7 @@ from PySide6.QtCore import QEventLoop, QTimer
 
 from glyphcue.adapters.ocr_types import OcrTextRegion
 from glyphcue.adapters.pyav_media_source import probe_media
+from glyphcue.application.processing_range import ProcessingRange
 from glyphcue.domain.roi import ROI
 from glyphcue.domain.track_group import TrackGroup
 from glyphcue.jobs.job import JobState
@@ -354,3 +355,265 @@ def test_failed_ocr_job_shows_failed_status_never_done(
     status = pane.ocr_status_label.text()
     assert "Failed" in status
     assert "Done" not in status
+
+
+def test_processing_range_defaults_to_whole_media(
+    qapp_guard, track_group_repository, db_path, test_video
+):
+    pane = PathAMediaPane(track_group_repository, db_path=db_path)
+    pane.open_video(test_video)
+
+    assert pane.current_processing_range() == ProcessingRange()
+
+
+def test_limiting_the_processing_range_via_ui_produces_a_real_restricted_range(
+    qapp_guard, track_group_repository, db_path, test_video
+):
+    pane = PathAMediaPane(track_group_repository, db_path=db_path)
+    pane.open_video(test_video)
+
+    pane.limit_processing_range_checkbox.setChecked(True)
+    pane.processing_range_start_spin.setValue(0.1)
+    pane.processing_range_end_spin.setValue(0.3)
+
+    assert pane.current_processing_range() == ProcessingRange(start_time=0.1, end_time=0.3)
+
+
+def test_run_ocr_uses_the_live_processing_range_selection(
+    qapp_guard, track_group_repository, db_path, test_video
+):
+    engine = FakeOcrEngine(regions=[OcrTextRegion(text="Hello there", language="en", confidence=0.9)])
+    pane = PathAMediaPane(track_group_repository, ocr_engine=engine, db_path=db_path)
+    pane.open_video(test_video)
+
+    pane.limit_processing_range_checkbox.setChecked(True)
+    pane.processing_range_start_spin.setValue(0.1)
+    pane.processing_range_end_spin.setValue(0.3)
+
+    pane.run_ocr_button.click()
+    _wait_for(pane.current_ocr_job)
+
+    assert pane.current_ocr_job.state is JobState.SUCCEEDED
+    assert pane._current_processing_end_time == pytest.approx(0.3)
+
+
+def test_reversed_processing_range_shows_invalid_status_and_never_starts_a_job(
+    qapp_guard, track_group_repository, db_path, test_video
+):
+    engine = FakeOcrEngine(regions=[OcrTextRegion(text="Hello there", language="en", confidence=0.9)])
+    pane = PathAMediaPane(track_group_repository, ocr_engine=engine, db_path=db_path)
+    pane.open_video(test_video)
+
+    pane.limit_processing_range_checkbox.setChecked(True)
+    pane.processing_range_start_spin.setValue(0.3)
+    pane.processing_range_end_spin.setValue(0.1)
+
+    pane.run_ocr_button.click()
+
+    assert pane.current_ocr_job is None
+    assert "invalid" in pane.ocr_status_label.text().lower()
+
+
+def test_zero_duration_processing_range_shows_invalid_status_and_never_starts_a_job(
+    qapp_guard, track_group_repository, db_path, test_video
+):
+    engine = FakeOcrEngine(regions=[OcrTextRegion(text="Hello there", language="en", confidence=0.9)])
+    pane = PathAMediaPane(track_group_repository, ocr_engine=engine, db_path=db_path)
+    pane.open_video(test_video)
+
+    pane.limit_processing_range_checkbox.setChecked(True)
+    pane.processing_range_start_spin.setValue(0.0)
+    pane.processing_range_end_spin.setValue(0.0)
+
+    pane.run_ocr_button.click()
+
+    assert pane.current_ocr_job is None
+    assert "invalid" in pane.ocr_status_label.text().lower()
+
+
+def test_out_of_media_processing_range_shows_invalid_status_and_never_starts_a_job(
+    qapp_guard, track_group_repository, db_path, test_video
+):
+    engine = FakeOcrEngine(regions=[OcrTextRegion(text="Hello there", language="en", confidence=0.9)])
+    pane = PathAMediaPane(track_group_repository, ocr_engine=engine, db_path=db_path)
+    pane.open_video(test_video)
+    real_duration = probe_media(test_video).duration_seconds
+
+    pane.limit_processing_range_checkbox.setChecked(True)
+    pane.processing_range_start_spin.setValue(0.0)
+    # setRange() during open_video already caps the spin box at the
+    # real duration -- force a value past it to prove the boundary
+    # application layer (not just the widget) refuses it too.
+    pane.processing_range_end_spin.setRange(0.0, real_duration * 10)
+    pane.processing_range_end_spin.setValue(real_duration + 5.0)
+
+    pane.run_ocr_button.click()
+
+    assert pane.current_ocr_job is None
+    assert "invalid" in pane.ocr_status_label.text().lower()
+
+
+def test_valid_limited_processing_range_still_starts_a_real_job(
+    qapp_guard, track_group_repository, db_path, test_video
+):
+    engine = FakeOcrEngine(regions=[OcrTextRegion(text="Hello there", language="en", confidence=0.9)])
+    pane = PathAMediaPane(track_group_repository, ocr_engine=engine, db_path=db_path)
+    pane.open_video(test_video)
+
+    pane.limit_processing_range_checkbox.setChecked(True)
+    pane.processing_range_start_spin.setValue(0.0)
+    pane.processing_range_end_spin.setValue(0.3)
+
+    pane.run_ocr_button.click()
+    _wait_for(pane.current_ocr_job)
+
+    assert pane.current_ocr_job.state is JobState.SUCCEEDED
+    assert "invalid" not in pane.ocr_status_label.text().lower()
+
+
+def test_left_pane_shows_no_video_context_before_a_video_is_loaded(
+    qapp_guard, track_group_repository, db_path
+):
+    pane = PathAMediaPane(track_group_repository, db_path=db_path)
+
+    context_text = pane.context_label.text().lower()
+    assert "no video" in context_text
+
+
+def test_left_pane_shows_video_roi_languages_and_range_context_after_loading(
+    qapp_guard, track_group_repository, db_path, test_video
+):
+    pane = PathAMediaPane(track_group_repository, db_path=db_path)
+    pane.open_video(test_video)
+    pane.roi_x_spin.setValue(0.1)
+    pane.roi_width_spin.setValue(0.5)
+    pane.language_selection_panel.set_languages(("en", "zh"))
+    pane.save_roi_button.click()
+
+    context_text = pane.context_label.text()
+    assert test_video.name in context_text
+    assert "0.1" in context_text
+    assert "en" in context_text and "zh" in context_text
+    assert "whole media" in context_text.lower()
+
+
+def test_left_pane_context_reflects_a_limited_processing_range(
+    qapp_guard, track_group_repository, db_path, test_video
+):
+    pane = PathAMediaPane(track_group_repository, db_path=db_path)
+    pane.open_video(test_video)
+
+    pane.limit_processing_range_checkbox.setChecked(True)
+    pane.processing_range_start_spin.setValue(0.1)
+    pane.processing_range_end_spin.setValue(0.3)
+
+    context_text = pane.context_label.text()
+    assert "0.1" in context_text
+    assert "0.3" in context_text
+
+
+def test_left_pane_context_live_refreshes_languages_on_add_and_remove_without_save(
+    qapp_guard, track_group_repository, db_path, test_video
+):
+    pane = PathAMediaPane(track_group_repository, db_path=db_path)
+    pane.open_video(test_video)
+
+    pane.language_selection_panel.add_combo.setCurrentText("zh")
+    pane.language_selection_panel.add_button.click()
+
+    context_text = pane.context_label.text()
+    assert "zh" in context_text
+
+    pane.language_selection_panel.language_list.setCurrentRow(
+        pane.language_selection_panel.selected_languages().index("zh")
+    )
+    pane.language_selection_panel.remove_button.click()
+
+    context_text = pane.context_label.text()
+    assert "zh" not in context_text
+
+
+def test_opening_a_video_shows_the_roi_visualization_matching_current_roi(
+    qapp_guard, track_group_repository, db_path, test_video
+):
+    pane = PathAMediaPane(track_group_repository, db_path=db_path)
+    pane.open_video(test_video)
+
+    pane.roi_x_spin.setValue(0.2)
+    pane.roi_width_spin.setValue(0.4)
+
+    assert pane.roi_visualization.roi == pane.current_roi()
+
+
+def test_opening_a_video_populates_the_time_navigation_slider_range(
+    qapp_guard, track_group_repository, db_path, test_video
+):
+    pane = PathAMediaPane(track_group_repository, db_path=db_path)
+    real_duration = probe_media(test_video).duration_seconds
+
+    pane.open_video(test_video)
+
+    assert pane.position_slider.maximum() == pytest.approx(round(real_duration * 1000), abs=1)
+
+
+def test_seeking_via_the_slider_calls_controller_seek_with_the_real_position(
+    qapp_guard, track_group_repository, db_path, test_video
+):
+    # QMediaPlayer's own eventual playback position is async and not
+    # something GlyphCue controls or should assert on directly in a
+    # headless test -- what GlyphCue owns is the wiring from the
+    # slider to a real seek call, which is what this verifies.
+    pane = PathAMediaPane(track_group_repository, db_path=db_path)
+    pane.open_video(test_video)
+    seeked_to: list[float] = []
+    pane.controller.seek = seeked_to.append
+
+    pane.position_slider.setValue(100)
+
+    assert seeked_to == [0.1]
+
+
+def test_current_cue_relationship_label_shows_no_cue_before_any_reconstruction(
+    qapp_guard, track_group_repository, db_path, test_video
+):
+    pane = PathAMediaPane(track_group_repository, db_path=db_path)
+    pane.open_video(test_video)
+
+    assert "no cue" in pane.current_cue_relationship_label.text().lower()
+
+
+def test_current_cue_relationship_label_names_the_cue_containing_the_playhead(
+    qapp_guard, track_group_repository, db_path
+):
+    from glyphcue.domain.cue import Cue
+    from glyphcue.domain.language_layer import LanguageLayer
+
+    pane = PathAMediaPane(track_group_repository, db_path=db_path)
+    cue = Cue(
+        id="c1", start_time=0.0, end_time=5.0,
+        language_layers=(LanguageLayer(language="en", text="hello"),),
+    )
+    pane.qa.set_cues_and_priorities([cue], {}, {})
+
+    pane._on_playback_position_changed(2000)
+
+    assert "c1" in pane.current_cue_relationship_label.text()
+
+
+def test_timeline_reflects_reconstructed_cue_spans(
+    qapp_guard, track_group_repository, db_path, test_video
+):
+    from glyphcue.domain.cue import Cue
+    from glyphcue.domain.language_layer import LanguageLayer
+
+    pane = PathAMediaPane(track_group_repository, db_path=db_path)
+    pane.open_video(test_video)
+    cue = Cue(
+        id="c1", start_time=0.0, end_time=0.1,
+        language_layers=(LanguageLayer(language="en", text="hello"),),
+    )
+
+    pane.qa.set_cues_and_priorities([cue], {}, {})
+
+    assert len(pane.timeline.spans) == 1
+    assert pane.timeline.spans[0][:2] == (0.0, 0.1)

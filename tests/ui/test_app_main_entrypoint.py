@@ -1,15 +1,15 @@
-from PySide6.QtMultimediaWidgets import QVideoWidget
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QPushButton
 
 import glyphcue.ui.app as app_module
 
 
-def test_main_launches_the_path_a_workflow_not_the_placeholder_shell(
+def test_main_launches_the_shared_entry_state_not_a_path_specific_workflow(
     qapp_guard, tmp_path, monkeypatch
 ):
-    # main() is production startup composition, not just an alternate
-    # factory: it must actually show the M2 Path A workflow window, not
-    # the plain M0 placeholder shell.
+    # main() is the single ROADMAP M9 production entrypoint: it must
+    # show the shared Open-Video/Open-Caption-File entry state (DESIGN.md
+    # section 85), not launch straight into either path's own workbench
+    # window -- that only happens once the user picks a source.
     #
     # QApplication.exec() is the one genuinely blocking boundary (the OS
     # event loop) and is patched out so the test doesn't hang. Widgets
@@ -39,4 +39,6 @@ def test_main_launches_the_path_a_workflow_not_the_placeholder_shell(
     new_windows = {widget for widget in set(captured_widgets) - before if widget.isVisible()}
     assert len(new_windows) == 1
     (window,) = new_windows
-    assert window.findChild(QVideoWidget) is not None
+    button_labels = [button.text() for button in window.findChildren(QPushButton)]
+    assert any("Open Video" in label for label in button_labels)
+    assert any("Open Caption File" in label for label in button_labels)

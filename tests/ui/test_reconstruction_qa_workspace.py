@@ -50,6 +50,151 @@ def test_queue_is_ordered_by_review_priority_descending(qapp_guard):
     assert ordered_ids == ["c2", "c3", "c1"]
 
 
+def test_search_filters_the_queue_by_active_language_layer_text(qapp_guard):
+    cues = [
+        _cue("c1", 0.0, 1.0, texts={"en": "the quick fox"}),
+        _cue("c2", 1.0, 2.0, texts={"en": "a lazy dog"}),
+    ]
+    priorities = {"c1": _none_priority("c1"), "c2": _none_priority("c2")}
+    workspace = ReconstructionQaWorkspace(cues, {}, priorities, QWidget())
+
+    workspace.search_edit.setText("lazy")
+
+    assert workspace.queue.count() == 1
+    assert workspace.cue_id_for_row(0) == "c2"
+
+
+def test_clearing_the_search_restores_the_full_queue(qapp_guard):
+    cues = [_cue("c1", 0.0, 1.0, texts={"en": "fox"}), _cue("c2", 1.0, 2.0, texts={"en": "dog"})]
+    priorities = {"c1": _none_priority("c1"), "c2": _none_priority("c2")}
+    workspace = ReconstructionQaWorkspace(cues, {}, priorities, QWidget())
+    workspace.search_edit.setText("fox")
+
+    workspace.search_edit.setText("")
+
+    assert workspace.queue.count() == 2
+
+
+def test_default_filter_labels_are_the_path_a_frozen_baseline(qapp_guard):
+    cues = [_cue("c1", 0.0, 1.0)]
+    priorities = {"c1": _none_priority("c1")}
+    workspace = ReconstructionQaWorkspace(cues, {}, priorities, QWidget())
+
+    labels = [workspace.filter_combo.itemText(i) for i in range(workspace.filter_combo.count())]
+
+    assert labels == ["All", "Review Needed", "Clean / Approved"]
+
+
+def test_filter_labels_are_customizable_for_path_b(qapp_guard):
+    cues = [_cue("c1", 0.0, 1.0)]
+    priorities = {"c1": _none_priority("c1")}
+    workspace = ReconstructionQaWorkspace(
+        cues, {}, priorities, QWidget(),
+        filter_labels=("All Reconstructed", "Review Needed", "Preserved"),
+    )
+
+    labels = [workspace.filter_combo.itemText(i) for i in range(workspace.filter_combo.count())]
+
+    assert labels == ["All Reconstructed", "Review Needed", "Preserved"]
+
+
+def test_review_needed_filter_shows_only_cues_with_a_real_review_flag(qapp_guard):
+    cues = [_cue("c1", 0.0, 1.0), _cue("c2", 1.0, 2.0)]
+    priorities = {"c1": _none_priority("c1"), "c2": _priority("c2", 0.9, "High")}
+    workspace = ReconstructionQaWorkspace(cues, {}, priorities, QWidget())
+
+    workspace.filter_combo.setCurrentText("Review Needed")
+
+    assert workspace.queue.count() == 1
+    assert workspace.cue_id_for_row(0) == "c2"
+
+
+def test_clean_or_approved_filter_shows_cues_with_no_flag_or_that_are_approved(qapp_guard):
+    cues = [_cue("c1", 0.0, 1.0), _cue("c2", 1.0, 2.0), _cue("c3", 2.0, 3.0)]
+    priorities = {
+        "c1": _none_priority("c1"),  # clean, no flag
+        "c2": _priority("c2", 0.9, "High"),  # flagged, not approved
+        "c3": _priority("c3", 0.9, "High"),  # flagged BUT approved
+    }
+    workspace = ReconstructionQaWorkspace(cues, {}, priorities, QWidget())
+    workspace.queue.setCurrentRow(next(
+        row for row in range(workspace.queue.count()) if workspace.cue_id_for_row(row) == "c3"
+    ))
+    workspace.approve_and_advance()
+
+    workspace.filter_combo.setCurrentText("Clean / Approved")
+
+    shown_ids = {workspace.cue_id_for_row(row) for row in range(workspace.queue.count())}
+    assert shown_ids == {"c1", "c3"}
+
+
+def test_approved_flagged_cue_leaves_review_needed(qapp_guard):
+    cues = [_cue("c1", 0.0, 1.0), _cue("c2", 1.0, 2.0)]
+    priorities = {"c1": _none_priority("c1"), "c2": _priority("c2", 0.9, "High")}
+    workspace = ReconstructionQaWorkspace(cues, {}, priorities, QWidget())
+    workspace.queue.setCurrentRow(next(
+        row for row in range(workspace.queue.count()) if workspace.cue_id_for_row(row) == "c2"
+    ))
+    workspace.approve_and_advance()
+
+    workspace.filter_combo.setCurrentText("Review Needed")
+
+    assert workspace.queue.count() == 0
+
+
+def test_needs_review_state_from_split_appears_in_review_needed_even_with_no_priority_signal(
+    qapp_guard,
+):
+    # A clean parent Cue with NO Review Priority flag is Split. Both
+    # halves inherit the parent's priority ("None" here) but
+    # cue_review_actions.split_cue always marks them NEEDS_REVIEW -- a
+    # machine split is never itself a correct reconstruction, so the
+    # human review-state signal (not the heuristic priority score) must
+    # be what puts them in Review Needed.
+    cues = [_cue("c1", 0.0, 2.0)]
+    priorities = {"c1": _none_priority("c1")}
+    workspace = ReconstructionQaWorkspace(cues, {}, priorities, QWidget())
+    workspace.split_time_spin.setValue(1.0)
+    workspace.split_active_cue()
+
+    workspace.filter_combo.setCurrentText("Review Needed")
+
+    assert workspace.queue.count() == 2
+
+
+def test_rejected_cue_with_no_priority_signal_is_not_clean_or_approved(qapp_guard):
+    cues = [_cue("c1", 0.0, 1.0), _cue("c2", 1.0, 2.0)]
+    priorities = {"c1": _none_priority("c1"), "c2": _none_priority("c2")}
+    workspace = ReconstructionQaWorkspace(cues, {}, priorities, QWidget())
+    workspace.queue.setCurrentRow(next(
+        row for row in range(workspace.queue.count()) if workspace.cue_id_for_row(row) == "c2"
+    ))
+    workspace.discard_active_cue()
+
+    workspace.filter_combo.setCurrentText("Clean / Approved")
+
+    shown_ids = {workspace.cue_id_for_row(row) for row in range(workspace.queue.count())}
+    assert shown_ids == {"c1"}
+
+
+def test_third_filter_predicate_overrides_the_default_clean_or_approved_semantics(qapp_guard):
+    # A path-specific caller (Path B) can override the third filter
+    # bucket's meaning entirely -- e.g. "Preserved" must be judged from
+    # real PathBDiagnostics, never inferred from Review Priority.
+    cues = [_cue("c1", 0.0, 1.0), _cue("c2", 1.0, 2.0)]
+    priorities = {"c1": _none_priority("c1"), "c2": _none_priority("c2")}
+    workspace = ReconstructionQaWorkspace(
+        cues, {}, priorities, QWidget(),
+        filter_labels=("All Reconstructed", "Review Needed", "Preserved"),
+        third_filter_predicate=lambda cue: cue.id == "c2",
+    )
+
+    workspace.filter_combo.setCurrentText("Preserved")
+
+    shown_ids = {workspace.cue_id_for_row(row) for row in range(workspace.queue.count())}
+    assert shown_ids == {"c2"}
+
+
 def test_active_cue_starts_as_the_top_of_the_queue(qapp_guard):
     cues = [_cue("c1", 0.0, 1.0), _cue("c2", 1.0, 2.0)]
     priorities = {"c1": _none_priority("c1"), "c2": _priority("c2", 0.9, "High")}
