@@ -126,6 +126,12 @@ class PathBWorkspace:
             raise ValueError(
                 "Export refused: destination must not overwrite the source file"
             )
+        # A live, un-Approved hand-edit sitting in the active language-
+        # layer text edit must not be silently lost just because the
+        # user exports immediately without Approving or navigating away
+        # first -- commit it before reading `self.qa.cues`. This never
+        # changes review_state; it is not an implicit Approve.
+        self.qa.commit_pending_edits()
         self._adapter.write(self.qa.cues, self._export_destination)
         self.status_label.setText(f"Exported to {self._export_destination}")
         return self._export_destination

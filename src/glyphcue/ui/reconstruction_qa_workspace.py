@@ -308,6 +308,17 @@ class ReconstructionQaWorkspace:
     def cues(self) -> list[Cue]:
         return list(self._cues)
 
+    def commit_pending_edits(self) -> None:
+        """Commits whatever is currently typed into the displayed
+        Cue's language-layer text edits into the in-memory Cue list --
+        the minimal public persistence seam a caller (e.g. Path B's
+        Export) uses to make sure a live, un-Approved hand-edit is not
+        silently lost. Never changes `review_state` and never Approves
+        -- committing an edit for export is not itself a review
+        decision. Safe to call at any time, including when nothing is
+        displayed (a no-op)."""
+        self._commit_displayed_edits()
+
     def set_cues_and_priorities(
         self,
         cues: list[Cue],

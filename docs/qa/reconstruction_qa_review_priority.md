@@ -2,7 +2,7 @@
 
 This document answers ROADMAP.md section 14's explainability requirement: what the shared QA seam and Review Priority ranking are, why they're built this way, where they knowingly fall short, and what the evaluation shows.
 
-This revision is a corrective pass over the original M7 merge: it fixes a non-monotonic scoring bug, a label-leaking evaluation methodology, several real QA-session correctness bugs (lost edits, wrong "next" Cue on Merge, a curated-evidence cross-language false positive), a Discard/export contract gap, and closes two small UI-affordance gaps (a fake Replay button, missing DESIGN.md section 23 action-hierarchy styling). None of it touches the shared shell, Path A/B integration, or M5/M6 reconstruction algorithms.
+This revision is a corrective pass over the initial M7 implementation: it fixes a non-monotonic scoring bug, a label-leaking evaluation methodology, several real QA-session correctness bugs (lost edits, wrong "next" Cue on Merge, a curated-evidence cross-language false positive, an edit lost on immediate export), a Discard/export contract gap, and closes two small UI-affordance gaps (a fake Replay button, missing DESIGN.md section 23 action-hierarchy styling). None of it touches the shared shell, Path A/B integration, or M5/M6 reconstruction algorithms.
 
 ## What M7 actually is
 
@@ -26,6 +26,8 @@ This is a documented scope boundary, not a silent gap: a real product would like
 ### Pending-edit commit seam (corrective)
 
 Every action that can switch the active Cue, rebuild the panel, or change a Cue — Approve, Discard, timing nudge, Split, Merge, Previous/Next, and a direct click on a different queue row — now commits whatever is currently typed into the language-layer text edits into `self._cues` FIRST, via `_commit_displayed_edits()`. Originally only Approve did this (`_apply_pending_text_edits`, only called from `approve_and_advance`); every other action silently discarded an in-progress hand edit. `_commit_displayed_edits` is keyed off `self._displayed_cue_id` (the Cue that was actually on screen just before the call), not `self.active_cue` — by the time a queue-row-change signal fires, `self.active_cue` already reflects the NEW row, so committing against it would silently no-op instead of saving the edit that was actually on screen. Regression coverage: `tests/ui/test_reconstruction_qa_workspace.py`'s `test_editing_text_then_{nudging,navigating_away_and_back,clicking_a_different_queue_row,splitting,merging_with_next,discarding}_retains_the_edit`.
+
+**Immediate export also commits pending edits.** `ReconstructionQaWorkspace.commit_pending_edits()` is a minimal public persistence seam: it commits the displayed Cue's live editor content into the in-memory Cue list, and nothing else -- it never touches `review_state`, so calling it is not an implicit Approve. `PathBWorkspace.export()` calls it before reading `self.qa.cues`, so a hand-edit still sitting in the active text edit is not silently lost when the user exports immediately, without Approving or navigating away first. Regression: `test_editing_text_then_exporting_immediately_without_approving_exports_the_edit`.
 
 ### Keyboard focus correctness (corrective)
 

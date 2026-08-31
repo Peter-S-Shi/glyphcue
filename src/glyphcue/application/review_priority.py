@@ -18,7 +18,7 @@ explainable cutoff, not silent noise-chasing, mirroring M5's own
 `similarity_threshold` pattern."""
 """Review Priority is a triage heuristic, never a calibrated
 probability (ROADMAP M7 / DESIGN.md section 21). `score` is a plain
-0..1 average of independently-explainable component contributions --
+0..1 capped sum of independently-explainable component contributions --
 not a statistically meaningful percentage of anything. These
 thresholds bucket that heuristic into the accepted UI vocabulary
 ("Review Priority: High/Medium/Low", "No Review Flags") rather than
@@ -76,7 +76,7 @@ class ReviewPriority:
     """A transparent triage ranking for one Cue -- NOT a probability
     (ROADMAP M7 / DESIGN.md section 21: never display as "92%
     confidence" or any other calibrated-sounding percentage). `score`
-    is the plain average of `components`' contributions, always
+    is the plain capped sum of `components`' contributions, always
     reproducible from them; `level` is the DESIGN.md-accepted coarse
     vocabulary ("High"/"Medium"/"Low"/"None") for UI surfaces that
     don't want to show a raw number."""

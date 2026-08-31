@@ -111,6 +111,29 @@ def test_export_button_click_refuses_to_overwrite_source_without_crashing(qapp_g
     assert "refus" in workspace.status_label.text().lower()
 
 
+def test_editing_text_then_exporting_immediately_without_approving_exports_the_edit(
+    qapp_guard, tmp_path
+):
+    # A hand-edit sitting in the live QTextEdit must not be lost just
+    # because the user exports immediately, without Approving or
+    # navigating away first -- export must see the CURRENT editor
+    # content, not whatever was last committed.
+    cues = [_cue("c1", "Helo")]
+    destination = tmp_path / "out.srt"
+    workspace = PathBWorkspace(cues, {}, tmp_path / "input.srt", destination)
+    workspace.queue.setCurrentRow(0)
+
+    workspace.qa.language_layers_panel.cards[0].text_edit.setPlainText("Hello")
+    workspace.export_button.click()
+
+    exported = destination.read_text(encoding="utf-8")
+    assert "Hello" in exported
+    assert "Helo" not in exported
+    # Export must not implicitly approve -- committing an edit for
+    # export is not a review decision.
+    assert workspace.cues[0].review_state == ReviewState.PENDING
+
+
 def test_discarding_a_cue_then_exporting_excludes_it_from_the_output_file(qapp_guard, tmp_path):
     cues = [_cue("c1", "keep this line"), _cue("c2", "discard this garbage reading")]
     destination = tmp_path / "out.srt"
