@@ -101,17 +101,21 @@ class LanguageLayersPanel(QWidget):
         if cue is not None:
             self.set_cue(cue)
 
-    def set_cue(self, cue: Cue) -> None:
+    def set_cue(self, cue: Cue | None) -> None:
         """Replaces the panel's contents with `cue`'s language layers,
         always in `cue.language_layers`' own order -- the same stable,
         Track Group-configured ordering `reconstruct_multilingual_cues_for_track_group`
-        produces, never re-sorted or re-derived here."""
+        produces, never re-sorted or re-derived here. `None` clears the
+        panel back to no cards (e.g. a fresh/single-language OCR run
+        with no multilingual Cue to show)."""
         while self._layout.count():
             item = self._layout.takeAt(0)
             widget = item.widget()
             if widget is not None:
                 widget.deleteLater()
         self.cards = []
+        if cue is None:
+            return
         for layer in cue.language_layers:
             card = _LanguageLayerCard(layer.language, layer.text)
             self._layout.addWidget(card)

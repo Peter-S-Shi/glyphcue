@@ -35,6 +35,13 @@ class MultilingualDiagnostics:
     languages_expected: tuple[str, ...]
     languages_present: tuple[str, ...]
     missing_languages: tuple[str, ...]
+    ambiguous_languages: tuple[str, ...]
+    """Languages whose text came from `assign_observations_to_languages`'s
+    geometry fallback rather than a decisive script/elimination/strict-
+    hint classification -- real, surfaced uncertainty (ROADMAP M6
+    scope: "if still no evidence, an explicit ambiguity/degraded
+    diagnostic, not a guess") rather than a confident-looking result
+    that was actually a coin flip."""
 
 
 def _canonicalize_frame_order(
@@ -71,11 +78,12 @@ def _canonicalize_frame_order(
         if len(group) == 1:
             canonical.append(group[0])
             continue
-        buckets = assign_observations_to_languages(group, expected_languages)
+        buckets, _ambiguous = assign_observations_to_languages(group, expected_languages)
         classified_ids: set[str] = set()
         for language in expected_languages:
-            canonical.extend(buckets[language])
-            classified_ids.update(observation.id for observation in buckets[language])
+            for cluster in buckets[language]:
+                canonical.extend(cluster)
+                classified_ids.update(observation.id for observation in cluster)
         # Anything assign_observations_to_languages didn't place (should
         # not normally happen -- it folds leftovers into the nearest
         # bucket) is still appended, so no original evidence is dropped.
@@ -176,24 +184,38 @@ def _reconstruct_one_multilingual_cue(
             if member is not None and member.text:
                 voting_raw.append(member)
 
-    buckets = assign_observations_to_languages(voting_raw, expected_languages)
+    buckets, ambiguous_languages = assign_observations_to_languages(voting_raw, expected_languages)
 
     layers: list[LanguageLayer] = []
     languages_present: list[str] = []
     missing_languages: list[str] = []
     for language in expected_languages:
-        bucket = buckets[language]
-        if not bucket:
+        clusters = buckets[language]
+        if not clusters:
             layers.append(LanguageLayer(language=language, text="", observation_ids=()))
             missing_languages.append(language)
             continue
-        texts = [observation.text for observation in bucket]
-        winning_text, _distinct_count, _top_count = consensus_value(texts, bucket)
+        # Each visual-line cluster is its own physical line, not a
+        # competing OCR sample of every other cluster in this bucket --
+        # a genuine two-line same-language caption must not have its
+        # two lines thrown into one flat vote (that would pick ONE
+        # line's text and silently drop the other). Each cluster gets
+        # its own consensus vote (multiple engines/frames reading the
+        # SAME real line), and the resulting per-line texts are joined
+        # top-to-bottom (clusters already geometry-sorted, see
+        # `assign_observations_to_languages`) with a real newline.
+        line_texts: list[str] = []
+        observation_ids: list[str] = []
+        for cluster in clusters:
+            texts = [observation.text for observation in cluster]
+            winning_text, _distinct_count, _top_count = consensus_value(texts, cluster)
+            line_texts.append(winning_text)
+            observation_ids.extend(observation.id for observation in cluster)
         layers.append(
             LanguageLayer(
                 language=language,
-                text=winning_text,
-                observation_ids=tuple(observation.id for observation in bucket),
+                text="\n".join(line_texts),
+                observation_ids=tuple(observation_ids),
             )
         )
         languages_present.append(language)
@@ -210,5 +232,8 @@ def _reconstruct_one_multilingual_cue(
         languages_expected=expected_languages,
         languages_present=tuple(languages_present),
         missing_languages=tuple(missing_languages),
+        ambiguous_languages=tuple(
+            language for language in expected_languages if language in ambiguous_languages
+        ),
     )
     return cue, diagnostics

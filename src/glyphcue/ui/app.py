@@ -39,11 +39,21 @@ def create_path_a_app(db_path: Path = DEFAULT_DB_PATH) -> tuple[QApplication, Pa
     ObservationRepository) so it can open its own connection for
     UI-thread reads, kept separate from the connection the OCR job
     opens on its own worker thread when it runs.
+
+    `ocr_engine_factory=PaddleOcrEngine` is also wired (Milestone 6):
+    `PathAMediaPane` uses it, one call per language, whenever the
+    current Track Group has more than one configured language -- the
+    plain `ocr_engine` above stays the single-language default.
     """
     app = QApplication.instance() or QApplication(sys.argv)
     conn = connect(db_path)
     track_group_repository = TrackGroupRepository(conn)
-    pane = PathAMediaPane(track_group_repository, ocr_engine=PaddleOcrEngine(), db_path=db_path)
+    pane = PathAMediaPane(
+        track_group_repository,
+        ocr_engine=PaddleOcrEngine(),
+        ocr_engine_factory=PaddleOcrEngine,
+        db_path=db_path,
+    )
     return app, pane
 
 

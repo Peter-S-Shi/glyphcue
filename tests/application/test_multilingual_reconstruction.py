@@ -61,12 +61,32 @@ def test_single_language_track_group_reconstructs_exactly_like_m5():
     assert cues[0].language_layers[0].text == "Hello world"
 
 
+_TOP_LINE_GEOMETRY = ((0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (0.0, 10.0))
+_BOTTOM_LINE_GEOMETRY = ((0.0, 20.0), (10.0, 20.0), (10.0, 30.0), (0.0, 30.0))
+
+
 def test_bilingual_frame_stably_splits_into_two_language_layers():
+    # Same geometry across the two frames -- both readings are the SAME
+    # physical line repeated over time (a stable confirmation), not two
+    # different lines, so they consensus-vote together rather than
+    # getting line-joined with a newline.
     observations = [
-        _obs("o1-en", "Hello there", start=1.0, language="en", frame_reference="v@1.0"),
-        _obs("o1-zh", "你好朋友", start=1.0, language="zh", frame_reference="v@1.0"),
-        _obs("o2-en", "Hello there", start=3.0, language="en", frame_reference="v@3.0"),
-        _obs("o2-zh", "你好朋友", start=3.0, language="zh", frame_reference="v@3.0"),
+        _obs(
+            "o1-en", "Hello there", start=1.0, language="en", frame_reference="v@1.0",
+            geometry=_TOP_LINE_GEOMETRY,
+        ),
+        _obs(
+            "o1-zh", "你好朋友", start=1.0, language="zh", frame_reference="v@1.0",
+            geometry=_BOTTOM_LINE_GEOMETRY,
+        ),
+        _obs(
+            "o2-en", "Hello there", start=3.0, language="en", frame_reference="v@3.0",
+            geometry=_TOP_LINE_GEOMETRY,
+        ),
+        _obs(
+            "o2-zh", "你好朋友", start=3.0, language="zh", frame_reference="v@3.0",
+            geometry=_BOTTOM_LINE_GEOMETRY,
+        ),
     ]
 
     cues, diagnostics = reconstruct_multilingual_cues_for_track_group(
@@ -147,6 +167,68 @@ def test_missing_layer_in_one_run_produces_explicit_diagnostic_not_fabricated_te
     assert layers[1].text == ""
     assert diagnostics[0].missing_languages == ("zh",)
     assert diagnostics[0].languages_present == ("en",)
+
+
+def test_two_english_lines_and_one_chinese_line_all_preserved_across_engines_and_frames():
+    # A real two-line English caption plus a one-line Chinese caption,
+    # sharing one visual block. Both the "en" and "zh" configured
+    # engines detect and transcribe ALL THREE physical lines on every
+    # frame (real multi-engine behavior -- see
+    # docs/multilingual/track_group_reconstruction.md), across two
+    # stable-state frames whose region DETECTION ORDER differs. The
+    # English layer must come back with BOTH lines intact
+    # ("line1\nline2"), never just one of them picked by a flat vote
+    # that treated the two different physical lines as competing
+    # samples of a single line.
+    line1_geometry = ((0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (0.0, 10.0))
+    line2_geometry = ((0.0, 20.0), (10.0, 20.0), (10.0, 30.0), (0.0, 30.0))
+    zh_line_geometry = ((0.0, 40.0), (10.0, 40.0), (10.0, 50.0), (0.0, 50.0))
+
+    def _region(id_, text, language, geometry, start, frame_reference):
+        return _obs(
+            id_, text, start=start, language=language, frame_reference=frame_reference,
+            geometry=geometry,
+        )
+
+    # Frame 1: detection order line1, line2, zh-line, for each engine.
+    frame1 = [
+        _region("f1-en-line1", "Hello", "en", line1_geometry, 1.0, "v@1.0"),
+        _region("f1-en-line2", "World", "en", line2_geometry, 1.0, "v@1.0"),
+        _region("f1-en-zhline", "你好", "en", zh_line_geometry, 1.0, "v@1.0"),  # mistagged
+        _region("f1-zh-line1", "Hello", "zh", line1_geometry, 1.0, "v@1.0"),  # mistagged
+        _region("f1-zh-line2", "World", "zh", line2_geometry, 1.0, "v@1.0"),  # mistagged
+        _region("f1-zh-zhline", "你好", "zh", zh_line_geometry, 1.0, "v@1.0"),
+    ]
+    # Frame 2: detection order reversed (zh-line, line2, line1) -- must
+    # not change the outcome.
+    frame2 = [
+        _region("f2-zh-zhline", "你好", "zh", zh_line_geometry, 3.0, "v@3.0"),
+        _region("f2-zh-line2", "World", "zh", line2_geometry, 3.0, "v@3.0"),  # mistagged
+        _region("f2-zh-line1", "Hello", "zh", line1_geometry, 3.0, "v@3.0"),  # mistagged
+        _region("f2-en-zhline", "你好", "en", zh_line_geometry, 3.0, "v@3.0"),  # mistagged
+        _region("f2-en-line2", "World", "en", line2_geometry, 3.0, "v@3.0"),
+        _region("f2-en-line1", "Hello", "en", line1_geometry, 3.0, "v@3.0"),
+    ]
+    observations = frame1 + frame2
+
+    cues, diagnostics = reconstruct_multilingual_cues_for_track_group(
+        observations, _track_group(("en", "zh"))
+    )
+
+    assert len(cues) == 1
+    layers = {layer.language: layer for layer in cues[0].language_layers}
+    assert layers["en"].text == "Hello\nWorld"
+    assert layers["zh"].text == "你好"
+    # Full provenance: every raw region that contributed -- both
+    # engines, both frames -- is kept, not just the winning cluster.
+    assert set(layers["en"].observation_ids) == {
+        "f1-en-line1", "f1-zh-line1", "f2-en-line1", "f2-zh-line1",
+        "f1-en-line2", "f1-zh-line2", "f2-en-line2", "f2-zh-line2",
+    }
+    assert set(layers["zh"].observation_ids) == {
+        "f1-en-zhline", "f1-zh-zhline", "f2-en-zhline", "f2-zh-zhline",
+    }
+    assert diagnostics[0].missing_languages == ()
 
 
 def test_four_language_track_group_has_no_bilingual_only_assumption():

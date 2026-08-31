@@ -38,10 +38,23 @@ def build_multilingual_ocr_evidence_job(
     architecture (`ocr_evidence_job.build_ocr_evidence_job`) extended
     from one `OcrEngine` to one engine PER Track Group-expected
     language, so genuinely multilingual evidence can exist in the first
-    place -- a single OCR engine instance only ever recognizes the one
-    language it was configured for (see `PaddleOcrEngine`), so a
-    multi-language Track Group needs one engine call per language, not
-    one call whose result is reinterpreted after the fact.
+    place.
+
+    This is NOT because a configured-language engine instance only
+    reads its own language -- real multi-engine verification
+    (`benchmarks/multilingual_reconstruction/`, see
+    docs/multilingual/track_group_reconstruction.md's "Evidence
+    hygiene") found the opposite: every `PaddleOcrEngine` instance
+    detects and transcribes EVERY text region in the frame regardless
+    of which language it was constructed for, tagging all of its own
+    output with its own configured language either way. One engine call
+    per expected language still matters -- it's what gives each
+    physical line a genuine reading from a model actually tuned for
+    that script, real per-region geometry from that engine's own
+    detector, and a real (if not fully trustworthy on its own -- see
+    `assign_observations_to_languages`) language hint to work with,
+    rather than only ever seeing whatever a single engine's own script
+    bias happens to favor.
 
     `ocr_engines` must have exactly one entry per language in
     `track_group.languages` (raises `ValueError` otherwise) -- callers

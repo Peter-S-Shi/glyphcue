@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from pathlib import Path
+from typing import Callable
 
 from PySide6.QtMultimediaWidgets import QVideoWidget
 from PySide6.QtWidgets import (
@@ -17,6 +18,10 @@ from PySide6.QtWidgets import (
 
 from glyphcue.adapters.ocr_engine import OcrEngine
 from glyphcue.adapters.pyav_media_source import probe_media
+from glyphcue.application.multilingual_ocr_evidence_job import build_multilingual_ocr_evidence_job
+from glyphcue.application.multilingual_reconstruction import (
+    reconstruct_multilingual_cues_for_track_group,
+)
 from glyphcue.application.ocr_evidence_job import build_ocr_evidence_job
 from glyphcue.application.pipeline_metrics import PipelineMetrics
 from glyphcue.application.processing_range import ProcessingRange
@@ -27,6 +32,7 @@ from glyphcue.persistence.database import connect
 from glyphcue.persistence.observation_repository import ObservationRepository
 from glyphcue.persistence.track_group_repository import TrackGroupRepository
 from glyphcue.ui.design_tokens import Spacing
+from glyphcue.ui.language_layer_presentation import LanguageLayersPanel
 from glyphcue.ui.main_window import MainWindow
 from glyphcue.ui.ocr_evidence_pane import OcrEvidencePane
 from glyphcue.ui.playback_controller import PlaybackController
@@ -58,7 +64,19 @@ class PathAMediaPane:
     ready-made repository) lets the pane open its own connection for
     UI-thread reads, kept separate from the connection
     `build_ocr_evidence_job` opens on its own worker thread when a run
-    starts. Final QA/review workspace is a later milestone (M5+).
+    starts. Final QA/review workspace is a later milestone (M7+).
+
+    `ocr_engine_factory` (Milestone 6) is an optional
+    `language -> OcrEngine` constructor: when the current Track Group
+    has more than one configured language, this pane actually builds
+    one engine per language and runs the real
+    `build_multilingual_ocr_evidence_job`, then reconstructs and
+    displays every language layer via `language_layers_panel` -- it
+    does not silently fall back to a single engine. A single-language
+    Track Group keeps using the plain `ocr_engine` (if given) or
+    `ocr_engine_factory(language)`, and `build_ocr_evidence_job`
+    exactly as before M6 -- unchanged M4/M5 behavior, not a
+    reimplementation of it.
     """
 
     def __init__(
@@ -66,12 +84,15 @@ class PathAMediaPane:
         track_group_repository: TrackGroupRepository,
         track_group_id: str = _DEFAULT_TRACK_GROUP_ID,
         ocr_engine: OcrEngine | None = None,
+        ocr_engine_factory: Callable[[str], OcrEngine] | None = None,
         db_path: Path | None = None,
     ) -> None:
         self._repository = track_group_repository
         self._track_group_id = track_group_id
         self._ocr_engine = ocr_engine
+        self._ocr_engine_factory = ocr_engine_factory
         self._db_path = db_path
+        self._current_track_group: TrackGroup | None = None
         # A connection of its own on the UI thread, separate from
         # whatever connection the OCR job opens on its own worker
         # thread (build_ocr_evidence_job owns that one) -- never shared
@@ -103,6 +124,7 @@ class PathAMediaPane:
         self.cancel_ocr_button = QPushButton("Cancel")
         self.ocr_status_label = QLabel("OCR evidence not run yet")
         self.evidence_pane = OcrEvidencePane([])
+        self.language_layers_panel = LanguageLayersPanel()
         self._update_ocr_button_enabled()
 
         self.open_button.clicked.connect(self._on_open_clicked)
@@ -142,6 +164,7 @@ class PathAMediaPane:
         layout.addLayout(ocr_controls)
         layout.addWidget(self.ocr_status_label)
         layout.addWidget(self.evidence_pane)
+        layout.addWidget(self.language_layers_panel)
 
         self.window = MainWindow(center_pane=center_pane)
 
@@ -186,24 +209,63 @@ class PathAMediaPane:
             self.open_video(Path(path_str))
 
     def _update_ocr_button_enabled(self) -> None:
-        wired = self._ocr_engine is not None and self._db_path is not None
+        wired = (
+            self._ocr_engine is not None or self._ocr_engine_factory is not None
+        ) and self._db_path is not None
         self.run_ocr_button.setEnabled(wired)
         self.cancel_ocr_button.setEnabled(False)
 
     def _on_run_ocr_clicked(self) -> None:
-        if self._video_path is None or self._ocr_engine is None or self._db_path is None:
+        if self._video_path is None or self._db_path is None:
             return
+        if self._ocr_engine is None and self._ocr_engine_factory is None:
+            return
+
+        existing = self._repository.get(self._track_group_id)
+        languages = existing.languages if existing is not None else (_DEFAULT_LANGUAGE,)
+        track_group = TrackGroup(id=self._track_group_id, roi=self.current_roi(), languages=languages)
+        self._current_track_group = track_group
+
         self.ocr_metrics = PipelineMetrics()
         self.current_evidence_run_id = str(uuid.uuid4())
-        self.current_ocr_job = build_ocr_evidence_job(
-            self._video_path,
-            ProcessingRange(),
-            self.current_roi(),
-            self._ocr_engine,
-            self._db_path,
-            self.ocr_metrics,
-            self.current_evidence_run_id,
-        )
+
+        if len(languages) == 1:
+            # Unchanged M4/M5 single-engine path: a plain `ocr_engine`
+            # takes precedence when given (existing callers/tests), the
+            # factory is only used when that's all that's wired.
+            engine = self._ocr_engine if self._ocr_engine is not None else self._ocr_engine_factory(
+                languages[0]
+            )
+            self.current_ocr_job = build_ocr_evidence_job(
+                self._video_path,
+                ProcessingRange(),
+                track_group.roi,
+                engine,
+                self._db_path,
+                self.ocr_metrics,
+                self.current_evidence_run_id,
+            )
+        else:
+            # Milestone 6: the Track Group's own configured languages
+            # decide the real engine set -- one per language, never a
+            # single engine reinterpreted after the fact.
+            if self._ocr_engine_factory is None:
+                self.ocr_status_label.setText(
+                    "Multilingual Track Group needs an OCR engine per language "
+                    "(no ocr_engine_factory wired)"
+                )
+                return
+            engines = {language: self._ocr_engine_factory(language) for language in languages}
+            self.current_ocr_job = build_multilingual_ocr_evidence_job(
+                self._video_path,
+                ProcessingRange(),
+                track_group,
+                engines,
+                self._db_path,
+                self.ocr_metrics,
+                self.current_evidence_run_id,
+            )
+
         self.current_ocr_job.progress.connect(self._on_ocr_progress)
         self.current_ocr_job.finished.connect(self._on_ocr_finished)
         self.run_ocr_button.setEnabled(False)
@@ -225,14 +287,33 @@ class PathAMediaPane:
         self.run_ocr_button.setEnabled(True)
         self.cancel_ocr_button.setEnabled(False)
 
+        state = self.current_ocr_job.state if self.current_ocr_job is not None else None
+        observations_for_run: list = []
         if self._observation_repository is not None and self.current_evidence_run_id is not None:
             # Only this run's own evidence -- never database history
             # from a different video or an earlier re-run.
-            self.evidence_pane.set_observations(
-                self._observation_repository.list_for_run(self.current_evidence_run_id)
+            observations_for_run = self._observation_repository.list_for_run(
+                self.current_evidence_run_id
             )
+            self.evidence_pane.set_observations(observations_for_run)
 
-        state = self.current_ocr_job.state if self.current_ocr_job is not None else None
+        # Milestone 6: for a multilingual Track Group, reconstruct and
+        # show every language layer on this Path A surface -- the
+        # thinnest wiring that makes "configure N languages, see N
+        # layers" actually reachable, not a full QA workspace (M7).
+        self.language_layers_panel.set_cue(None)
+        if (
+            state is JobState.SUCCEEDED
+            and self._current_track_group is not None
+            and len(self._current_track_group.languages) > 1
+            and observations_for_run
+        ):
+            cues, _diagnostics = reconstruct_multilingual_cues_for_track_group(
+                observations_for_run, self._current_track_group
+            )
+            if cues:
+                self.language_layers_panel.set_cue(cues[0])
+
         frames = self.ocr_metrics.frames_analyzed
         calls = self.ocr_metrics.ocr_calls
         observations = self.ocr_metrics.observations_created
