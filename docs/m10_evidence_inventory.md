@@ -89,11 +89,11 @@ input to it.
 | ROADMAP §17 topic | Current state | Verdict |
 |---|---|---|
 | OCR runtime | `docs/adr/0001-ocr-runtime-selection.md` — full ADR (context, chosen runtime, rejected alternatives, accepted costs, evidence). | **Done. No action.** |
-| Selective OCR strategy | `docs/benchmarks/selective_ocr_pipeline.md` — has a "What this confirms (and doesn't)" section, but is filed as a benchmark write-up, not a decision record; no explicit "alternatives rejected" framing. | **Gap — needs a real ADR**, though the evidence to write it from already exists. |
-| Consensus/reconstruction approach | `docs/consensus/multi_frame_consensus.md` — already has "Why this baseline, and not something else" and "Failure modes" sections, i.e. ADR-shaped content, just not filed as an ADR. | **Gap in filing, not in substance.** Needs to be captured as an ADR (can largely reference/summarize the existing doc rather than re-deriving it). |
-| Multilingual timing simplification | ROADMAP.md §4 states the frozen domain decision (shared Cue-level timing, no per-language timing) but gives no ADR-style alternatives-considered/trade-off record. `docs/multilingual/track_group_reconstruction.md` covers the *layer-separation algorithm's* baseline choice, not this domain-simplification decision. | **Real gap.** No document anywhere explains why per-language independent timing was rejected for V1, beyond "representative material didn't need it." |
-| Media architecture | ROADMAP.md §3 states the frozen choice (Qt Multimedia/QMediaPlayer for playback, PyAV for frame/timestamp access, bundled FFmpeg CLI via `QProcess` for heavy transforms) as a baseline list, with no rationale, alternatives, or trade-off discussion anywhere in the repo. | **Real gap.** No ADR and no supporting narrative doc exists for this decision at all. |
-| Packaging path | Primary (`pyside6-deploy`/Nuitka) and fallback (PyInstaller) stated in ROADMAP.md §3; packaging itself is explicitly M12 scope, not yet implemented. | **Deferred, not a gap.** ROADMAP correctly scopes packaging acceptance to M12; M10 should record this as "deferred to M12," not attempt to write an ADR for a decision not yet exercised in practice. |
+| Selective OCR strategy | `docs/adr/0002-selective-ocr-strategy.md` (M10) — promoted from `docs/benchmarks/selective_ocr_pipeline.md`'s existing evidence. | **Done (this session).** |
+| Consensus/reconstruction approach | `docs/adr/0003-consensus-reconstruction-approach.md` (M10) — promoted from `docs/consensus/multi_frame_consensus.md`'s existing "why this baseline"/"failure modes" content. | **Done (this session).** |
+| Multilingual timing simplification | `docs/adr/0005-multilingual-timing-simplification.md` (M10) — new. Records the honest limitation that ROADMAP.md §4's "representative target samples" claim has no dedicated benchmark artifact, unlike ADR 0001-0003. | **Done (this session).** |
+| Media architecture | `docs/adr/0004-media-architecture.md` (M10) — new. Records the honest limitation that this was a design-time decision (ROADMAP.md §3), not a benchmarked comparison, and that `MediaTransformService` (FFmpeg) has no concrete implementation yet, only a Protocol boundary. | **Done (this session).** |
+| Packaging path | Primary (`pyside6-deploy`/Nuitka) and fallback (PyInstaller) stated in ROADMAP.md §3; packaging itself is explicitly M12 scope, not yet implemented. | **Deferred, not a gap.** ROADMAP correctly scopes packaging acceptance to M12; M10 records this as "deferred to M12," not an ADR for a decision not yet exercised in practice. |
 
 ---
 
@@ -104,8 +104,8 @@ Real gaps (net-new work), in the order the M10 prompt itself implies:
 1. **Evaluation corpus manifest + ground-truth schema** — nothing like this exists; every prior benchmark invented its own ad hoc fixture format. *(User-confirmed next step.)*
 2. **Representative-video corpus** (3–5 videos × 2–5 min) — does not exist; largest scope item, may need private-sample handling per ROADMAP's privacy allowance.
 3. **Shared metrics module** (WER; Cue precision/recall; timing start/end error; multilingual missing/wrong-assignment rate; Review Priority failure-class breakdown) — some of this promotes/extends existing per-benchmark code (CER, span-exact-match, missing_languages), some is entirely new (WER, precision/recall, wrong-assignment rate).
-4. **Two missing ADRs**: media architecture, multilingual timing simplification — write from scratch.
-5. **Two ADRs promoted from existing narrative docs**: selective OCR strategy, consensus/reconstruction approach — largely a filing/summarizing exercise, not new analysis.
+4. ~~Two missing ADRs: media architecture, multilingual timing simplification~~ — **done**, `docs/adr/0004-media-architecture.md` / `docs/adr/0005-multilingual-timing-simplification.md`.
+5. ~~Two ADRs promoted from existing narrative docs: selective OCR strategy, consensus/reconstruction approach~~ — **done**, `docs/adr/0002-selective-ocr-strategy.md` / `docs/adr/0003-consensus-reconstruction-approach.md`.
 6. **`EVALUATION_REPORT.md`, `FAILURE_MODE_REPORT.md`, Build-vs-Integrate table** — new documents, but should assemble already-real evidence from this inventory rather than regenerate it.
 
 ## 11. Status update (this session)
