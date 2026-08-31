@@ -7,6 +7,7 @@ import pysubs2
 from glyphcue.domain.cue import Cue
 from glyphcue.domain.observation import Observation
 from glyphcue.domain.provenance import Provenance, ProvenanceKind
+from glyphcue.domain.review_state import ReviewState
 
 
 class Pysubs2SubtitleFormatAdapter:
@@ -41,9 +42,17 @@ class Pysubs2SubtitleFormatAdapter:
         Writes to a sibling temporary file first, then renames it into
         place, so a crash mid-write never leaves a partially written
         subtitle file at `path`.
+
+        Discarded Cues (`ReviewState.REJECTED`) are excluded from the
+        exported file -- Discard's whole point is "do not ship this
+        line" (DESIGN.md section 23); `REJECTED` is still kept
+        internally as real review history (who rejected what), it is
+        only the export boundary that enforces the exclusion.
         """
         subtitles = pysubs2.SSAFile()
         for cue in cues:
+            if cue.review_state == ReviewState.REJECTED:
+                continue
             text = "\n".join(layer.text for layer in cue.language_layers)
             subtitles.append(
                 pysubs2.SSAEvent(

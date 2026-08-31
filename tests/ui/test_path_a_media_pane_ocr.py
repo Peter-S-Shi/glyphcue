@@ -172,8 +172,8 @@ def test_multilingual_track_group_uses_the_multi_engine_job_and_shows_layers(
     # Both configured languages' engines were actually constructed and
     # used -- proof this did not silently run a single-engine job.
     assert set(engine_calls) == {"en", "zh"}
-    assert len(pane.language_layers_panel.cards) == 2
-    texts_by_language = {card.language: card.text_label.text() for card in pane.language_layers_panel.cards}
+    assert len(pane.qa.language_layers_panel.cards) == 2
+    texts_by_language = {card.language: card.current_text() for card in pane.qa.language_layers_panel.cards}
     assert texts_by_language == {"en": "Hello there", "zh": "你好朋友"}
 
 
@@ -183,8 +183,8 @@ def test_single_language_track_group_still_uses_the_single_engine_job(
     # A single-language Track Group (M4/M5's existing behavior) must
     # not be routed through the multi-engine path just because a
     # factory is available -- only one engine gets constructed, and the
-    # layer presentation panel stays empty (no multilingual Cue was
-    # ever reconstructed for it here).
+    # single-language M5 reconstruction (not M6's multilingual path)
+    # produces exactly one language layer -- never a multilingual Cue.
     track_group_repository.save(
         TrackGroup(id="default", roi=ROI(0.0, 0.0, 1.0, 1.0), languages=("en",))
     )
@@ -202,7 +202,7 @@ def test_single_language_track_group_still_uses_the_single_engine_job(
 
     assert pane.current_ocr_job.state is JobState.SUCCEEDED
     assert engine_calls == ["en"]
-    assert pane.language_layers_panel.cards == []
+    assert len(pane.qa.language_layers_panel.cards) == 1
 
 
 def test_single_language_factory_follows_the_live_selection_when_plain_engine_is_also_wired(
@@ -300,9 +300,9 @@ def test_user_configured_language_selection_persists_and_drives_the_real_multi_e
     _wait_for(second_pane.current_ocr_job)
 
     assert second_pane.current_ocr_job.state is JobState.SUCCEEDED
-    assert len(second_pane.language_layers_panel.cards) == 2
+    assert len(second_pane.qa.language_layers_panel.cards) == 2
     texts_by_language = {
-        card.language: card.text_label.text() for card in second_pane.language_layers_panel.cards
+        card.language: card.current_text() for card in second_pane.qa.language_layers_panel.cards
     }
     assert texts_by_language == {"en": "Hello there", "zh": "你好朋友"}
 

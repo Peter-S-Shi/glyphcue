@@ -27,11 +27,13 @@ def test_full_vertical_slice_import_review_approve_export(qapp_guard, tmp_path):
     # Queue selection + active Cue + source observations
     workspace.queue.setCurrentRow(0)
     assert workspace.active_cue is not None
-    assert "Hello" in workspace.evidence_view.toPlainText()
+    assert "Hello" in workspace.qa.language_layers_panel.cards[0].current_text()
 
     # Editable text + Approve
-    workspace.text_edit.setPlainText("Hello world, how are you doing")
-    workspace.approve_button.click()
+    workspace.qa.language_layers_panel.cards[0].text_edit.setPlainText(
+        "Hello world, how are you doing"
+    )
+    workspace.qa.approve_button.click()
     assert workspace.cues[0].review_state is ReviewState.APPROVED
     assert workspace.cues[0].language_layers[0].text == "Hello world, how are you doing"
 

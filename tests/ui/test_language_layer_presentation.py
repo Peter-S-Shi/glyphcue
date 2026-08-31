@@ -70,6 +70,30 @@ def test_panel_marks_a_missing_layer_without_fabricating_text(qapp_guard):
     assert panel.cards[1].text_label.text() != ""  # a placeholder, not blank/fabricated
 
 
+def test_editable_panel_renders_text_edits_not_labels(qapp_guard):
+    cue = _cue([LanguageLayer(language="en", text="Hello there")])
+
+    panel = LanguageLayersPanel(cue, editable=True)
+
+    assert panel.cards[0].text_label is None
+    assert panel.cards[0].text_edit is not None
+    assert panel.cards[0].current_text() == "Hello there"
+
+
+def test_editable_panel_current_texts_reflects_a_live_hand_edit(qapp_guard):
+    cue = _cue(
+        [
+            LanguageLayer(language="en", text="Hello there"),
+            LanguageLayer(language="zh", text="你好朋友"),
+        ]
+    )
+    panel = LanguageLayersPanel(cue, editable=True)
+
+    panel.cards[0].text_edit.setPlainText("Hello there!")
+
+    assert panel.current_texts() == {"en": "Hello there!", "zh": "你好朋友"}
+
+
 def test_panel_set_cue_replaces_previous_cards(qapp_guard):
     first_cue = _cue([LanguageLayer(language="en", text="First")])
     second_cue = _cue(

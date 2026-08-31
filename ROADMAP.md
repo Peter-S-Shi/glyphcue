@@ -3,7 +3,7 @@
 **Document type:** Authoritative V1 milestone roadmap  
 **Project:** GlyphCue  
 **Repository:** `Peter-S-Shi/glyphcue`  
-**Lifecycle phase:** Production Development in progress → Milestone 6 complete, Milestone 7 next  
+**Lifecycle phase:** Production Development in progress → Milestone 7 complete, Milestone 8 next  
 **Status:** Current V1 execution roadmap  
 **Last updated:** 2026-08-31
 
@@ -1816,6 +1816,7 @@ Milestone 3 — OCR Adapter & Runtime Selection ✓ complete
 Milestone 4 — Selective OCR Evidence Pipeline ✓ complete
 Milestone 5 — Multi-Frame Consensus & Cue Reconstruction ✓ complete
 Milestone 6 — Multilingual Track Group Reconstruction ✓ complete
+Milestone 7 — Reconstruction QA & Review Priority ✓ complete
 
 Production Development                 IN PROGRESS
 ```
@@ -1826,19 +1827,19 @@ Production Development                 IN PROGRESS
 
 The next engineering action is:
 
-> **Milestone 7 — Reconstruction QA & Review Priority**
+> **Milestone 8 — Path B Deepening: CJK / Rolling Normalization**
 
 Do not ask AG2.0 to implement the whole roadmap.
 
 Advance one milestone at a time.
 
-After M7 is pushed:
+After M8 is pushed:
 
 1. inspect the remote repository;
 2. verify the milestone against its acceptance gate;
 3. correct deficiencies;
 4. merge only when the milestone is genuinely accepted;
-5. then issue the M7 prompt.
+5. then issue the M9 prompt.
 
 ---
 

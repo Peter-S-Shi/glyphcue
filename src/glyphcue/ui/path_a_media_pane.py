@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
 from glyphcue.adapters.ocr_engine import OcrEngine
 from glyphcue.adapters.paddleocr_engine import CANONICAL_LANGUAGES
 from glyphcue.adapters.pyav_media_source import probe_media
+from glyphcue.application.consensus_reconstruction import reconstruct_cues_with_consensus
 from glyphcue.application.multilingual_ocr_evidence_job import build_multilingual_ocr_evidence_job
 from glyphcue.application.multilingual_reconstruction import (
     reconstruct_multilingual_cues_for_track_group,
@@ -26,7 +27,12 @@ from glyphcue.application.multilingual_reconstruction import (
 from glyphcue.application.ocr_evidence_job import build_ocr_evidence_job
 from glyphcue.application.pipeline_metrics import PipelineMetrics
 from glyphcue.application.processing_range import ProcessingRange
-from glyphcue.domain.cue import Cue
+from glyphcue.application.review_priority import (
+    ReviewPriority,
+    review_signals_from_consensus_diagnostics,
+    review_signals_from_multilingual_diagnostics,
+    compute_review_priority,
+)
 from glyphcue.domain.roi import ROI
 from glyphcue.domain.track_group import TrackGroup
 from glyphcue.jobs.job import Job, JobState
@@ -34,11 +40,10 @@ from glyphcue.persistence.database import connect
 from glyphcue.persistence.observation_repository import ObservationRepository
 from glyphcue.persistence.track_group_repository import TrackGroupRepository
 from glyphcue.ui.design_tokens import Spacing
-from glyphcue.ui.language_layer_presentation import LanguageLayersPanel
 from glyphcue.ui.language_selection_panel import LanguageSelectionPanel
-from glyphcue.ui.main_window import MainWindow
 from glyphcue.ui.ocr_evidence_pane import OcrEvidencePane
 from glyphcue.ui.playback_controller import PlaybackController
+from glyphcue.ui.reconstruction_qa_workspace import ReconstructionQaWorkspace
 
 _DEFAULT_TRACK_GROUP_ID = "default"
 
@@ -106,7 +111,6 @@ class PathAMediaPane:
         self._db_path = db_path
         self._current_track_group: TrackGroup | None = None
         self._processing_range = ProcessingRange()
-        self.last_reconstructed_cues: list[Cue] | None = None
         # A connection of its own on the UI thread, separate from
         # whatever connection the OCR job opens on its own worker
         # thread (build_ocr_evidence_job owns that one) -- never shared
@@ -139,7 +143,6 @@ class PathAMediaPane:
         self.cancel_ocr_button = QPushButton("Cancel")
         self.ocr_status_label = QLabel("OCR evidence not run yet")
         self.evidence_pane = OcrEvidencePane([])
-        self.language_layers_panel = LanguageLayersPanel()
         self._update_ocr_button_enabled()
 
         self.open_button.clicked.connect(self._on_open_clicked)
@@ -181,9 +184,35 @@ class PathAMediaPane:
         layout.addLayout(ocr_controls)
         layout.addWidget(self.ocr_status_label)
         layout.addWidget(self.evidence_pane)
-        layout.addWidget(self.language_layers_panel)
 
-        self.window = MainWindow(center_pane=center_pane)
+        # Milestone 7: Path A follows the same shared Reconstruction QA
+        # seam Path B does (DESIGN.md section 6's frozen three-pane
+        # shell) -- video/ROI/config stays this pane's own CENTER
+        # content, the only thing that legitimately differs per path
+        # (DESIGN.md section 7.2); the queue and QA right pane are
+        # identical to Path B's. Starts empty (no OCR run has completed
+        # yet) and is populated by `set_cues_and_priorities` once one
+        # does -- see `_on_ocr_finished`.
+        self.qa = ReconstructionQaWorkspace(
+            [],
+            {},
+            {},
+            center_pane,
+            play_pause_callback=self.controller.toggle_play_pause,
+            replay_callback=self._on_replay,
+        )
+        self.window = self.qa.window
+
+    def _on_replay(self, cue) -> None:
+        self.controller.play_span(cue.start_time, cue.end_time)
+
+    @property
+    def last_reconstructed_cues(self) -> list | None:
+        """The most recently reconstructed Cues, or `None` if no
+        successful OCR/reconstruction run has completed yet -- kept as
+        a thin compatibility view onto the shared QA workspace's own
+        `cues` (`self.qa.cues`), which is the real source of truth."""
+        return self.qa.cues or None
 
     def open_video(self, path: Path) -> None:
         self._video_path = path
@@ -333,26 +362,41 @@ class PathAMediaPane:
             )
             self.evidence_pane.set_observations(observations_for_run)
 
-        # Milestone 6: for a multilingual Track Group, reconstruct and
-        # show every language layer on this Path A surface -- the
-        # thinnest wiring that makes "configure N languages, see N
-        # layers" actually reachable, not a full QA workspace (M7).
-        self.language_layers_panel.set_cue(None)
-        self.last_reconstructed_cues = None
-        if (
-            state is JobState.SUCCEEDED
-            and self._current_track_group is not None
-            and len(self._current_track_group.languages) > 1
-            and observations_for_run
-        ):
-            cues, _diagnostics = reconstruct_multilingual_cues_for_track_group(
-                observations_for_run,
-                self._current_track_group,
-                processing_end_time=self._current_processing_end_time,
-            )
-            self.last_reconstructed_cues = cues
-            if cues:
-                self.language_layers_panel.set_cue(cues[0])
+        # Milestone 7: reconstruct real Cues from this run's evidence
+        # (single- or multi-language, using M5's/M6's own reconstruction
+        # seams unchanged) and hand them to the shared QA workspace with
+        # a real, explainable Review Priority per Cue -- not just a
+        # language-layer preview (that was M6's thinner wiring).
+        observations_by_id = {observation.id: observation for observation in observations_for_run}
+        cues: list = []
+        priorities: dict[str, ReviewPriority] = {}
+        if state is JobState.SUCCEEDED and self._current_track_group is not None and observations_for_run:
+            if len(self._current_track_group.languages) > 1:
+                cues, diagnostics_list = reconstruct_multilingual_cues_for_track_group(
+                    observations_for_run,
+                    self._current_track_group,
+                    processing_end_time=self._current_processing_end_time,
+                )
+                signal_builder = review_signals_from_multilingual_diagnostics
+            else:
+                cues, diagnostics_list = reconstruct_cues_with_consensus(
+                    observations_for_run,
+                    processing_end_time=self._current_processing_end_time,
+                )
+                signal_builder = review_signals_from_consensus_diagnostics
+
+            for cue, diagnostics in zip(cues, diagnostics_list):
+                cue_observations = [
+                    observations_by_id[observation_id]
+                    for layer in cue.language_layers
+                    for observation_id in layer.observation_ids
+                    if observation_id in observations_by_id
+                ]
+                priorities[cue.id] = compute_review_priority(
+                    signal_builder(diagnostics, cue_observations)
+                )
+
+        self.qa.set_cues_and_priorities(cues, observations_by_id, priorities)
 
         frames = self.ocr_metrics.frames_analyzed
         calls = self.ocr_metrics.ocr_calls

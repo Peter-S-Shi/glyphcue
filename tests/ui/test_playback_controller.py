@@ -80,6 +80,18 @@ def test_play_and_pause_update_playback_state(qapp_guard, test_video):
     assert controller.player.playbackState() == QMediaPlayer.PlaybackState.PausedState
 
 
+def test_toggle_play_pause_plays_when_paused_and_pauses_when_playing(qapp_guard, test_video):
+    controller = PlaybackController()
+    controller.load(test_video)
+    _wait_for_media_status(controller.player)
+
+    controller.toggle_play_pause()
+    assert controller.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState
+
+    controller.toggle_play_pause()
+    assert controller.player.playbackState() == QMediaPlayer.PlaybackState.PausedState
+
+
 def test_seek_sets_position_from_seconds(qapp_guard, test_video):
     controller = PlaybackController()
     controller.load(test_video)

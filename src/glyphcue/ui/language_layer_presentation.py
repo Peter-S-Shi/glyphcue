@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PySide6.QtWidgets import QFrame, QLabel, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QFrame, QLabel, QTextEdit, QVBoxLayout, QWidget
 
 from glyphcue.domain.cue import Cue
 from glyphcue.ui.design_tokens import Color, Radius, Spacing
@@ -39,7 +39,7 @@ class _LanguageLayerCard(QFrame):
     missing-layer diagnostic; this card never fabricates a
     replacement, it surfaces the gap)."""
 
-    def __init__(self, language: str, text: str) -> None:
+    def __init__(self, language: str, text: str, *, editable: bool = False) -> None:
         super().__init__()
         self.setObjectName("languageLayerCard")
         self.setStyleSheet(
@@ -67,18 +67,40 @@ class _LanguageLayerCard(QFrame):
         )
         layout.addWidget(header)
 
-        body = QLabel(text if text else "(no evidence for this language in this Cue)")
-        body.setWordWrap(True)
-        body.setStyleSheet(
-            f"color: {Color.TEXT_MUTED if is_missing else Color.TEXT_PRIMARY};"
-            + (" font-style: italic;" if is_missing else "")
-        )
-        layout.addWidget(body)
-
         self.is_missing = is_missing
         self.language = language
-        self.text_label = body
         self.header_label = header
+        self.text_label: QLabel | None = None
+        self.text_edit: QTextEdit | None = None
+        self._original_text = text
+
+        if editable:
+            # Editable QA correction surface (ROADMAP M7: "editable
+            # reconstructed text / language layers"). Missing layers
+            # start empty, not a fabricated placeholder -- a reviewer
+            # who wants to fill one in types real text themselves.
+            body_edit = QTextEdit(text)
+            body_edit.setStyleSheet(f"color: {Color.TEXT_PRIMARY};")
+            layout.addWidget(body_edit)
+            self.text_edit = body_edit
+        else:
+            body_label = QLabel(text if text else "(no evidence for this language in this Cue)")
+            body_label.setWordWrap(True)
+            body_label.setStyleSheet(
+                f"color: {Color.TEXT_MUTED if is_missing else Color.TEXT_PRIMARY};"
+                + (" font-style: italic;" if is_missing else "")
+            )
+            layout.addWidget(body_label)
+            self.text_label = body_label
+
+    def current_text(self) -> str:
+        """The card's live text -- the (possibly hand-edited) contents
+        of the editable field, or the original layer text when this
+        card isn't editable (never the placeholder shown for a missing
+        layer)."""
+        if self.text_edit is not None:
+            return self.text_edit.toPlainText()
+        return self._original_text
 
 
 class LanguageLayersPanel(QWidget):
@@ -92,8 +114,9 @@ class LanguageLayersPanel(QWidget):
     Cue's own start_time/end_time, never its own.
     """
 
-    def __init__(self, cue: Cue | None = None) -> None:
+    def __init__(self, cue: Cue | None = None, *, editable: bool = False) -> None:
         super().__init__()
+        self._editable = editable
         self._layout = QVBoxLayout(self)
         self._layout.setContentsMargins(0, 0, 0, 0)
         self._layout.setSpacing(Spacing.STANDARD)
@@ -117,6 +140,12 @@ class LanguageLayersPanel(QWidget):
         if cue is None:
             return
         for layer in cue.language_layers:
-            card = _LanguageLayerCard(layer.language, layer.text)
+            card = _LanguageLayerCard(layer.language, layer.text, editable=self._editable)
             self._layout.addWidget(card)
             self.cards.append(card)
+
+    def current_texts(self) -> dict[str, str]:
+        """`{language: current_text}` for every rendered layer -- the
+        QA correction the reviewer has (possibly) typed, when this
+        panel is `editable`."""
+        return {card.language: card.current_text() for card in self.cards}
