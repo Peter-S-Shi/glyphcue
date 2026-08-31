@@ -5,29 +5,31 @@ from pathlib import Path
 from PySide6.QtWidgets import QLabel, QPushButton, QTextEdit, QVBoxLayout, QWidget
 
 from glyphcue.adapters.pysubs2_subtitle_io import Pysubs2SubtitleFormatAdapter
-from glyphcue.application.review_priority import ReviewPriority
+from glyphcue.application.reconstruction import PathBDiagnostics
+from glyphcue.application.review_priority import (
+    ReviewPriority,
+    compute_review_priority,
+    review_signals_from_path_b_diagnostics,
+)
 from glyphcue.domain.cue import Cue
 from glyphcue.domain.observation import Observation
 from glyphcue.ui.design_tokens import Spacing
 from glyphcue.ui.reconstruction_qa_workspace import ReconstructionQaWorkspace
 
-_NO_PRIORITY_SIGNAL_EXPLANATION = (
-    "Path B (subtitle-file import) reconstruction does not currently produce "
-    "OCR-confidence/disagreement diagnostics the way Path A's OCR pipeline "
-    "does -- Review Priority has no signal to rank this Cue by yet, so it "
-    "shows 'No Review Flags' rather than a fabricated score."
-)
-
 
 def _no_priority_signal(cue_id: str) -> ReviewPriority:
-    """Path B's `reconstruct_cues` (application/reconstruction.py) does
-    not emit per-Cue reconstruction diagnostics the way M5/M6's Path A
-    pipeline does -- there is no real cross-frame disagreement or OCR
-    confidence signal to build a `ReviewSignals` from. Every Path B Cue
-    therefore gets an honest "no signal" priority (`level="None"`)
-    rather than a fabricated score; this is a documented scope
-    boundary, not a silent gap (see docs/qa/reconstruction_qa_review_priority.md)."""
+    """Pre-M8 fallback: without real `PathBDiagnostics` for a Cue (e.g.
+    a caller that hasn't been updated to pass them), there is no signal
+    to rank it by. Every such Cue gets an honest "no signal" priority
+    (`level="None"`) rather than a fabricated score."""
     return ReviewPriority(cue_id=cue_id, score=0.0, level="None", components=())
+
+
+def _priority_for_cue(cue_id: str, diagnostics_by_cue_id: dict[str, PathBDiagnostics]) -> ReviewPriority:
+    diagnostics = diagnostics_by_cue_id.get(cue_id)
+    if diagnostics is None:
+        return _no_priority_signal(cue_id)
+    return compute_review_priority(review_signals_from_path_b_diagnostics(diagnostics))
 
 
 def _consolidation_explanation(cue: Cue | None, observations_by_id: dict[str, Observation]) -> str:
@@ -64,11 +66,13 @@ class PathBWorkspace:
         observations_by_id: dict[str, Observation],
         source_path: Path,
         export_destination: Path,
+        diagnostics_by_cue_id: dict[str, PathBDiagnostics] | None = None,
     ) -> None:
         self._source_path = source_path
         self._export_destination = export_destination
         self._observations_by_id = observations_by_id
         self._adapter = Pysubs2SubtitleFormatAdapter()
+        diagnostics_by_cue_id = diagnostics_by_cue_id or {}
 
         self.consolidation_view = QTextEdit()
         self.consolidation_view.setReadOnly(True)
@@ -80,7 +84,7 @@ class PathBWorkspace:
         center_layout.addWidget(QLabel("Timed Text Evidence Workspace"))
         center_layout.addWidget(self.consolidation_view)
 
-        priorities = {cue.id: _no_priority_signal(cue.id) for cue in cues}
+        priorities = {cue.id: _priority_for_cue(cue.id, diagnostics_by_cue_id) for cue in cues}
 
         self.qa = ReconstructionQaWorkspace(
             cues,

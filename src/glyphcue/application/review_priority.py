@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from glyphcue.application.consensus_reconstruction import ConsensusDiagnostics
     from glyphcue.application.multilingual_reconstruction import MultilingualDiagnostics
+    from glyphcue.application.reconstruction import PathBDiagnostics
     from glyphcue.domain.observation import Observation
 
 _HIGH_THRESHOLD = 0.66
@@ -58,6 +59,16 @@ class ReviewSignals:
     only place via its geometry-only fallback, not a decisive
     classification (`MultilingualDiagnostics.ambiguous_languages`).
     Always 0 for a single-language Cue."""
+    disagreement_detail: tuple[str, str] | None = None
+    """Optional `(component_name, explanation)` override for the
+    `had_disagreement` component, used verbatim instead of the default
+    OCR-majority-vote wording. `had_disagreement` means something
+    genuinely different per path -- M5's real cross-frame majority vote
+    for Path A, vs M8's "reconstruction could not confidently resolve
+    this Cue" for Path B -- and reusing Path A's hardcoded explanation
+    text for a Path B Cue would be a FALSE explanation, not just a
+    generic one. None (the default) keeps the original Path A wording,
+    so M5/M6 callers are unaffected."""
 
 
 @dataclass(frozen=True)
@@ -126,15 +137,20 @@ def compute_review_priority(signals: ReviewSignals) -> ReviewPriority:
         )
 
     if signals.had_disagreement:
+        if signals.disagreement_detail is not None:
+            component_name, explanation = signals.disagreement_detail
+        else:
+            component_name = "cross_frame_disagreement"
+            explanation = (
+                "Supporting observations disagreed with each other during "
+                "reconstruction -- the winning text was chosen by majority vote, "
+                "not unanimous agreement."
+            )
         components.append(
             ReviewPriorityComponent(
-                name="cross_frame_disagreement",
+                name=component_name,
                 contribution=1.0,
-                explanation=(
-                    "Supporting observations disagreed with each other during "
-                    "reconstruction -- the winning text was chosen by majority vote, "
-                    "not unanimous agreement."
-                ),
+                explanation=explanation,
             )
         )
 
@@ -200,6 +216,58 @@ def review_signals_from_consensus_diagnostics(
         had_disagreement=diagnostics.had_disagreement,
         missing_language_count=0,
         ambiguous_language_count=0,
+    )
+
+
+def review_signals_from_path_b_diagnostics(diagnostics: "PathBDiagnostics") -> ReviewSignals:
+    """Builds `ReviewSignals` from M8's real Path B reconstruction
+    diagnostics.
+
+    Only the three "reconstruction was NOT confident" phenomena --
+    `source_order_issue`, `timing_collision`, `segmentation_ambiguous`
+    -- ever raise Review Priority (mapped onto `had_disagreement`, the
+    same "the reconstruction has real, checkable evidence of
+    inconsistency" semantics M5's cross-frame disagreement uses).
+    `rolling_growth` / `sliding_overlap` / `repetition_collapsed` are
+    the CONFIDENTLY-resolved cases -- ROADMAP M8's whole point is that
+    content GlyphCue could reliably restore does not need a human to
+    re-check it, so they never contribute a component on their own.
+    Path B has no OCR-confidence or per-language concept, so
+    `mean_ocr_confidence`/`missing_language_count`/
+    `ambiguous_language_count` are always the honest "no such signal"
+    values -- never a fabricated stand-in."""
+    reasons: list[str] = []
+    if diagnostics.source_order_issue:
+        reasons.append(
+            "this Cue's source captions were not in their original file order "
+            "(sorted by timing for reconstruction; the original-order mismatch "
+            "is preserved as evidence, not silently discarded)"
+        )
+    if diagnostics.timing_collision:
+        reasons.append(
+            "a neighboring caption overlaps this one in time with no textual "
+            "relationship -- kept separate rather than guessed at"
+        )
+    if diagnostics.segmentation_ambiguous:
+        reasons.append(
+            "segmentation ambiguity -- a neighboring caption shares only a "
+            "single coincidental character with this one, not enough evidence "
+            "to confidently merge or confidently keep separate"
+        )
+
+    uncertain = bool(reasons)
+    disagreement_detail = (
+        ("path_b_reconstruction_uncertain", "Reconstruction could not confidently resolve this Cue: " + "; ".join(reasons) + ".")
+        if reasons
+        else None
+    )
+    return ReviewSignals(
+        cue_id=diagnostics.cue_id,
+        mean_ocr_confidence=None,
+        had_disagreement=uncertain,
+        missing_language_count=0,
+        ambiguous_language_count=0,
+        disagreement_detail=disagreement_detail,
     )
 
 

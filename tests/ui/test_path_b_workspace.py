@@ -152,10 +152,43 @@ def test_discarding_a_cue_then_exporting_excludes_it_from_the_output_file(qapp_g
 def test_path_b_cues_show_no_review_flags_not_a_fabricated_priority(qapp_guard, tmp_path):
     # Path B's reconstruction has no OCR-confidence/disagreement
     # diagnostics to score with -- this must show up honestly as "no
-    # signal", never a made-up score.
+    # signal", never a made-up score. (No diagnostics_by_cue_id passed
+    # at all -- the pre-M8 backward-compatible default.)
     cues = [_cue("c1", "clean import")]
     workspace = PathBWorkspace(cues, {}, tmp_path / "input.srt", tmp_path / "out.srt")
 
     workspace.queue.setCurrentRow(0)
 
     assert "None" in workspace.qa.priority_label.text()
+
+
+def test_path_b_real_m8_diagnostics_drive_a_real_review_priority(qapp_guard, tmp_path):
+    from glyphcue.application.reconstruction import PathBDiagnostics
+
+    confidently_resolved = _cue("c1", "rolling caption, confidently merged")
+    ambiguous = _cue("c2", "kept separate, uncertain")
+    diagnostics_by_cue_id = {
+        "c1": PathBDiagnostics(
+            cue_id="c1", source_order_issue=False, rolling_growth=True,
+            sliding_overlap=False, repetition_collapsed=False,
+            timing_collision=False, segmentation_ambiguous=False,
+        ),
+        "c2": PathBDiagnostics(
+            cue_id="c2", source_order_issue=False, rolling_growth=False,
+            sliding_overlap=False, repetition_collapsed=False,
+            timing_collision=False, segmentation_ambiguous=True,
+        ),
+    }
+    workspace = PathBWorkspace(
+        [confidently_resolved, ambiguous], {}, tmp_path / "input.srt", tmp_path / "out.srt",
+        diagnostics_by_cue_id=diagnostics_by_cue_id,
+    )
+
+    row_of_c1 = next(row for row in range(workspace.queue.count()) if workspace.qa.cue_id_for_row(row) == "c1")
+    workspace.queue.setCurrentRow(row_of_c1)
+    assert "None" in workspace.qa.priority_label.text()
+
+    row_of_c2 = next(row for row in range(workspace.queue.count()) if workspace.qa.cue_id_for_row(row) == "c2")
+    workspace.queue.setCurrentRow(row_of_c2)
+    assert "None" not in workspace.qa.priority_label.text()
+    assert "segmentation" in workspace.qa.diagnostics_view.toPlainText().lower()

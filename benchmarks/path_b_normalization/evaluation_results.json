@@ -1,0 +1,34 @@
+{
+  "total_cases": 10,
+  "total_pass": 10,
+  "total_fail": 0,
+  "per_category": {
+    "clean_preservation": {
+      "pass": 2,
+      "fail": 0
+    },
+    "rolling_reconstruction": {
+      "pass": 5,
+      "fail": 0
+    },
+    "over_merge_guard": {
+      "pass": 2,
+      "fail": 0
+    },
+    "malformed_safe": {
+      "pass": 1,
+      "fail": 0
+    }
+  },
+  "per_language": {
+    "en": {
+      "pass": 7,
+      "fail": 0
+    },
+    "cjk": {
+      "pass": 3,
+      "fail": 0
+    }
+  },
+  "failures": []
+}
