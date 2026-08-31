@@ -80,10 +80,10 @@ def _light_noise_variant(clean: Image.Image, rng: random.Random) -> np.ndarray:
 
 def _heavy_noise_variant(clean: Image.Image, rng: random.Random) -> np.ndarray:
     """One severely-degraded read: strong blur, reduced contrast, additive
-    pixel noise, AND a random localized occlusion patch (simulating a
-    compression block artifact or a moment of motion blur covering part
-    of a character). This is the "one bad frame" a real burned-in
-    subtitle track occasionally has."""
+    pixel noise, AND a random localized occlusion patch (modeling the
+    kind of compression block artifact or motion-blur-over-a-character
+    degradation a burned-in subtitle frame can have -- how often this
+    actually happens in real footage is not measured here)."""
     blur_radius = rng.uniform(1.0, 2.2)
     degraded = clean.filter(ImageFilter.GaussianBlur(radius=blur_radius))
 
@@ -105,12 +105,15 @@ def _heavy_noise_variant(clean: Image.Image, rng: random.Random) -> np.ndarray:
 
 
 def generate_mixed_variants(item: EvalItem, seed: int) -> list[np.ndarray]:
-    """The realistic scenario a single-frame pipeline handles badly: the
-    FIRST OCR confirmation (e.g. right as ChangeTriggeredOcrPolicy first
-    detects the change, mid-transition) is severely degraded, followed
-    by 4 ordinary, clean confirmation reads once the subtitle has fully
-    settled. A single-frame baseline that trusts the first reading gets
-    this wrong; consensus across all frames should not."""
+    """A mixed synthetic scenario a single-frame pipeline handles badly:
+    the FIRST OCR confirmation (e.g. right as ChangeTriggeredOcrPolicy
+    first detects the change, mid-transition) is severely degraded,
+    followed by 4 ordinary, clean confirmation reads once the subtitle
+    has fully settled. A single-frame baseline that trusts the first
+    reading gets this wrong; consensus across all frames should not.
+    This is a constructed scenario, not a claim about how often a
+    first-frame-degraded pattern actually occurs in real footage -- no
+    real-world frequency evidence has been gathered for that."""
     rng = random.Random(seed)
     clean = _render_clean(item)
     variants = [_heavy_noise_variant(clean, rng)]

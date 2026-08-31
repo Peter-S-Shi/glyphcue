@@ -36,10 +36,20 @@ def _levenshtein_distance(a: str, b: str) -> int:
 def character_similarity(a: str, b: str) -> float:
     """1.0 = identical, 0.0 = maximally different, character-level.
 
-    `1 - (Levenshtein distance / max(len(a), len(b)))`, the same
-    formula as M3's CER but expressed as similarity instead of error
-    rate. Deliberately not based on whitespace tokenization, so it
-    behaves identically for English, Chinese, and Japanese text.
+    `1 - (Levenshtein distance / max(len(a), len(b)))`: a *symmetric*
+    similarity (a and b are interchangeable), normalized by the longer
+    of the two strings. This is deliberately a different formula from
+    M3's CER (`benchmarks/ocr_runtime_selection/cer.py`), which is
+    *asymmetric* -- it normalizes by the reference string's length only
+    (`distance / len(reference)`), because CER specifically measures
+    error relative to a known-correct ground truth, not similarity
+    between two peer readings. Do not conflate the two: this function
+    has no "reference" argument because it doesn't need one -- it is
+    used for grouping/voting among peer OCR readings, not for scoring
+    against ground truth (see `benchmarks/multi_frame_consensus/` for
+    the CER-based evaluation, which uses the real CER formula).
+    Deliberately not based on whitespace tokenization, so it behaves
+    identically for English, Chinese, and Japanese text.
     """
     if a == b:
         return 1.0

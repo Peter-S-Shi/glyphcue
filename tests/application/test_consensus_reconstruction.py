@@ -1,20 +1,32 @@
 from glyphcue.application.consensus_reconstruction import reconstruct_cues_with_consensus
+from glyphcue.application.ocr_evidence_job import STATE_TRIGGER_DETAIL_KEY
 from glyphcue.domain.provenance import Provenance, ProvenanceKind
 
 _PROVENANCE = Provenance(kind=ProvenanceKind.OCR_ENGINE, source="PaddleOCR")
 
 
-def _obs(id_, text, start, end=None, confidence=None, language=None):
+def _obs(
+    id_,
+    text,
+    start,
+    end=None,
+    confidence=None,
+    language=None,
+    frame_reference=None,
+    state_trigger=None,
+):
     from glyphcue.domain.observation import Observation
 
+    detail = {STATE_TRIGGER_DETAIL_KEY: state_trigger} if state_trigger else {}
     return Observation(
         id=id_,
         text=text,
         start_time=start,
         end_time=end if end is not None else start + 0.001,
-        provenance=_PROVENANCE,
+        provenance=Provenance(kind=ProvenanceKind.OCR_ENGINE, source="PaddleOCR", detail=detail),
         language=language,
         confidence=confidence,
+        frame_reference=frame_reference,
     )
 
 
@@ -189,3 +201,104 @@ def test_input_order_does_not_affect_the_result():
     cues_from_shuffled, _ = reconstruct_cues_with_consensus(shuffled)
 
     assert cues_from_ordered == cues_from_shuffled
+
+
+def test_same_frame_regions_are_aggregated_before_cross_frame_consensus():
+    # Two regions of ONE frame (e.g. a two-line subtitle detected as two
+    # boxes) must become one reading/one Cue, not two sequential states,
+    # even though "Line one" and "Line two" are not textually similar.
+    observations = [
+        _obs("o1", "Line one", start=1.0, frame_reference="v.mp4@1.000000s"),
+        _obs("o2", "Line two", start=1.0, frame_reference="v.mp4@1.000000s"),
+    ]
+
+    cues, _diagnostics = reconstruct_cues_with_consensus(observations)
+
+    assert len(cues) == 1
+    assert cues[0].language_layers[0].text == "Line oneLine two"
+    # Full provenance to both original region observations is kept.
+    assert cues[0].language_layers[0].observation_ids == ("o1", "o2")
+
+
+def test_detected_change_forces_a_new_cue_even_when_text_is_very_similar():
+    # "Hello world today" -> "Hello world today!" is well above the
+    # 0.5 similarity threshold, so pairwise text similarity alone would
+    # wrongly merge these -- but the second observation carries real
+    # M4 evidence that a visual change was actually detected, which
+    # must win.
+    observations = [
+        _obs("o1", "Hello world today", start=1.0, end=1.001, state_trigger="first_frame"),
+        _obs(
+            "o2", "Hello world today!", start=4.0, end=4.001, state_trigger="change_detected"
+        ),
+    ]
+
+    cues, _diagnostics = reconstruct_cues_with_consensus(observations)
+
+    assert len(cues) == 2
+    assert cues[0].language_layers[0].text == "Hello world today"
+    assert cues[1].language_layers[0].text == "Hello world today!"
+
+
+def test_periodic_confirmation_of_the_same_state_still_uses_similarity_voting():
+    # A noisy outlier from a periodic-confirmation OCR call (state
+    # hasn't visually changed) must still be absorbed by consensus, not
+    # treated as a new state just because it's a distinct reading.
+    observations = [
+        _obs("o1", "Hello world", start=1.0, state_trigger="first_frame"),
+        _obs("o2", "Hallo world", start=3.0, state_trigger="periodic_confirmation"),
+        _obs("o3", "Hello world", start=5.0, state_trigger="periodic_confirmation"),
+    ]
+
+    cues, diagnostics = reconstruct_cues_with_consensus(observations)
+
+    assert len(cues) == 1
+    assert cues[0].language_layers[0].text == "Hello world"
+    assert diagnostics[0].had_disagreement is True
+
+
+def test_blank_marker_ends_the_preceding_cue_without_becoming_a_cue_itself():
+    observations = [
+        _obs("o1", "Subtitle A", start=1.0, end=1.001),
+        _obs("o2", "", start=3.0, end=3.001),  # confirmed blank
+        _obs("o3", "Subtitle B", start=5.0, end=5.001),
+    ]
+
+    cues, _diagnostics = reconstruct_cues_with_consensus(observations)
+
+    assert len(cues) == 2
+    assert [cue.language_layers[0].text for cue in cues] == ["Subtitle A", "Subtitle B"]
+    # The first Cue ends at the blank marker's start_time (honest
+    # transition-to-blank evidence), not at the second subtitle's
+    # start_time -- which would wrongly stretch it across the blank gap.
+    assert cues[0].end_time == 3.0
+    assert cues[1].start_time == 5.0
+
+
+def test_a_blank_marker_with_nothing_before_it_produces_no_cue():
+    observations = [_obs("o1", "", start=1.0, end=1.001)]
+
+    cues, diagnostics = reconstruct_cues_with_consensus(observations)
+
+    assert cues == []
+    assert diagnostics == []
+
+
+def test_final_cue_uses_the_supplied_processing_end_time_not_a_1ms_instant():
+    observations = [_obs("o1", "Only subtitle", start=1.0, end=1.001)]
+
+    cues, _diagnostics = reconstruct_cues_with_consensus(observations, processing_end_time=9.5)
+
+    assert len(cues) == 1
+    assert cues[0].start_time == 1.0
+    assert cues[0].end_time == 9.5
+
+
+def test_final_cue_without_processing_end_time_falls_back_to_its_last_observation():
+    # Documented, honest fallback when the caller has no better
+    # evidence available -- not a silent lie, just the least-bad option.
+    observations = [_obs("o1", "Only subtitle", start=1.0, end=1.001)]
+
+    cues, _diagnostics = reconstruct_cues_with_consensus(observations)
+
+    assert cues[0].end_time == 1.001

@@ -3,6 +3,11 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import dataclass
 
+from glyphcue.application.frame_reading_aggregation import (
+    aggregate_same_frame_observations,
+    member_observation_ids,
+)
+from glyphcue.application.ocr_evidence_job import STATE_TRIGGER_DETAIL_KEY
 from glyphcue.application.text_similarity import character_similarity
 from glyphcue.domain.cue import Cue
 from glyphcue.domain.language_layer import LanguageLayer
@@ -15,7 +20,20 @@ same real subtitle state when their text is at least this similar.
 A simple, explainable, tunable knob (like M4's change_threshold) -- not
 an opaque model. 0.5 tolerates a handful of OCR-noise character errors
 on typical subtitle-length text without merging two genuinely different
-captions that happen to share a few characters."""
+captions that happen to share a few characters. Only consulted when the
+observation carries no real state-transition evidence from M4 (see
+_group_into_state_runs) -- a detected change always wins over
+similarity, and text is never used to override it."""
+
+_STATE_CHANGE_TRIGGERS = {"first_frame", "change_detected"}
+"""M4 trigger reasons (ChangeTriggeredOcrPolicy.last_trigger_reason,
+threaded through Observation.provenance.detail[STATE_TRIGGER_DETAIL_KEY])
+that are themselves real evidence of a new state -- these always start
+a new run regardless of text similarity to the previous one.
+"periodic_confirmation" (or no trigger info at all, e.g. non-M4
+provenance) does not: that case falls back to similarity voting, since
+it means "state believed unchanged" or "unknown," never "state
+changed"."""
 
 
 @dataclass(frozen=True)
@@ -36,32 +54,62 @@ class ConsensusDiagnostics:
     had_disagreement: bool
 
 
+def _state_trigger(observation: Observation) -> str | None:
+    return observation.provenance.detail.get(STATE_TRIGGER_DETAIL_KEY)
+
+
 def _group_into_state_runs(
     ordered: list[Observation], similarity_threshold: float
-) -> list[list[Observation]]:
-    """Segments source-PTS-ordered observations into runs that each
-    represent one real, stable subtitle state.
+) -> list[tuple[list[Observation], float | None]]:
+    """Segments source-PTS-ordered, same-frame-aggregated observations
+    into (run, boundary_time) pairs. `boundary_time` is the start_time
+    of whatever real evidence closed this run -- either a blank marker
+    (a confirmed "no subtitle" reading) or the next kept state's first
+    observation -- or None if nothing in this evidence run says what
+    happened after it (the caller must supply real processing-end
+    evidence, or accept the documented instant-marker fallback -- see
+    `reconstruct_cues_with_consensus`).
 
-    Consecutive observations join the same run when their text is
-    similar enough (character-level, CJK-safe -- see
-    `character_similarity`) to plausibly be noisy readings of the same
-    state; a genuinely new state starts a new run. This is the
-    "state-stabilization" baseline: no timing-overlap heuristic is used
-    here (unlike M1's Path B algorithm) because M4's OCR calls are
-    already sparse/selective, not a dense frame stream -- adjacency in
-    the observation list already reflects real temporal adjacency.
+    A blank-text observation (`text == ""`, M4's confirmed-no-text
+    marker) never starts or extends a run -- it only closes whatever
+    run precedes it, so blank states never become subtitle Cues.
+
+    Non-blank observations join the current run when EITHER (a) M4's
+    own change-detection evidence says this was just a periodic
+    confirmation of an unchanged state (or no trigger evidence exists
+    at all -- e.g. non-OCR provenance), AND the text is similar enough
+    to plausibly be a noisy reading of the same state; or they start a
+    new run when M4's evidence says a real change was detected --
+    regardless of how textually similar the new reading happens to be
+    to the old one (see _STATE_CHANGE_TRIGGERS). Real M4 evidence always
+    wins over a text-similarity guess.
     """
-    if not ordered:
-        return []
+    entries: list[tuple[list[Observation], float | None]] = []
+    current_run: list[Observation] = []
 
-    runs: list[list[Observation]] = [[ordered[0]]]
-    for observation in ordered[1:]:
-        current_run = runs[-1]
-        if character_similarity(current_run[-1].text, observation.text) >= similarity_threshold:
+    for observation in ordered:
+        if not observation.text:
+            if current_run:
+                entries.append((current_run, observation.start_time))
+                current_run = []
+            continue
+
+        if not current_run:
+            current_run = [observation]
+            continue
+
+        if _state_trigger(observation) in _STATE_CHANGE_TRIGGERS:
+            entries.append((current_run, observation.start_time))
+            current_run = [observation]
+        elif character_similarity(current_run[-1].text, observation.text) >= similarity_threshold:
             current_run.append(observation)
         else:
-            runs.append([observation])
-    return runs
+            entries.append((current_run, observation.start_time))
+            current_run = [observation]
+
+    if current_run:
+        entries.append((current_run, None))
+    return entries
 
 
 def _consensus_value(values: list[str], run: list[Observation]) -> tuple[str, int, int]:
@@ -94,7 +142,7 @@ def _consensus_value(values: list[str], run: list[Observation]) -> tuple[str, in
 
 
 def _reconstruct_one_cue(
-    run: list[Observation], next_run_start_time: float | None
+    run: list[Observation], boundary_time: float | None, processing_end_time: float | None
 ) -> tuple[Cue, ConsensusDiagnostics]:
     texts = [observation.text for observation in run]
     winning_text, distinct_text_count, top_count = _consensus_value(texts, run)
@@ -105,12 +153,22 @@ def _reconstruct_one_cue(
     else:
         winning_language = _UNDETERMINED_LANGUAGE
 
+    observation_ids = tuple(
+        member_id for observation in run for member_id in member_observation_ids(observation)
+    )
     layer = LanguageLayer(
         language=winning_language,
         text=winning_text,
-        observation_ids=tuple(observation.id for observation in run),
+        observation_ids=observation_ids,
     )
-    end_time = next_run_start_time if next_run_start_time is not None else run[-1].end_time
+    if boundary_time is not None:
+        end_time = boundary_time
+    elif processing_end_time is not None:
+        end_time = processing_end_time
+    else:
+        # No better evidence available: an honest, documented fallback,
+        # not a claim about real duration -- see the module docstring.
+        end_time = run[-1].end_time
     cue = Cue(
         id=f"cue-{run[0].id}",
         start_time=run[0].start_time,
@@ -131,6 +189,7 @@ def reconstruct_cues_with_consensus(
     observations: list[Observation],
     *,
     similarity_threshold: float = _DEFAULT_SIMILARITY_THRESHOLD,
+    processing_end_time: float | None = None,
 ) -> tuple[list[Cue], list[ConsensusDiagnostics]]:
     """Path A multi-frame consensus reconstruction: noisy OCR Observations
     -> stable, single-language Cues (ROADMAP.md Milestone 5).
@@ -140,42 +199,60 @@ def reconstruct_cues_with_consensus(
     by rolling character-overlap continuation (built for subtitle-file
     import, where every line is already clean and complete); this one
     groups temporally-adjacent OCR Observations by textual *similarity*
-    and resolves each group to one consensus reading by majority vote,
-    because repeated OCR samples of the same real subtitle can each be
-    slightly wrong in different ways.
+    (backstopped by M4's own state-change evidence) and resolves each
+    group to one consensus reading by majority vote, because repeated
+    OCR samples of the same real subtitle can each be slightly wrong in
+    different ways.
 
     Algorithm (see docs/consensus/multi_frame_consensus.md for the full
     write-up: why this baseline, alternatives considered, failure modes,
     evidence):
-    1. Sort observations by source-correct start_time (caller must have
-       already scoped them to one evidence_run_id -- see
+    0. Aggregate same-frame regions (see `aggregate_same_frame_observations`):
+       one OCR call can return multiple text regions (e.g. a two-line
+       subtitle) sharing one frame_reference; these are combined into
+       one reading, in reading order, before anything below runs -- they
+       are never treated as sequential time states.
+    1. Sort the aggregated readings by source-correct start_time (caller
+       must have already scoped them to one evidence_run_id -- see
        `reconstruct_cues_for_evidence_run`).
-    2. Group consecutive observations into "state runs" using
-       character-level text similarity (CJK-safe, no whitespace
-       tokenization) -- see `_group_into_state_runs`.
+    2. Group consecutive readings into "state runs" (see
+       `_group_into_state_runs`): a run only splits on real M4
+       state-change evidence when available (never guessed from text
+       alone), with character-level similarity (CJK-safe) as the
+       fallback signal when no such evidence exists. Blank-text readings
+       (M4's confirmed-no-text marker) close the current run without
+       becoming a Cue themselves.
     3. Within each run, pick the majority-vote text (and language) as
-       the stable reading, keeping every supporting observation's id in
+       the stable reading, keeping every supporting observation's id
+       (expanded through same-frame aggregation, if any) in
        `LanguageLayer.observation_ids` for full provenance -- not just
        the winning one.
     4. Cue timing comes from state-transition semantics, not frame
-       index/FPS: a Cue's end_time is the moment the *next* state was
-       confirmed (the next run's first observation's start_time), since
-       that is the real evidence for when this state stopped being
-       shown. Only the last run (no known next state) falls back to its
-       own last observation's end_time.
+       index/FPS: a Cue's end_time is the moment real evidence says this
+       state stopped -- the next kept state's first reading, or an
+       intervening blank marker, whichever is real evidence that
+       actually closed this run. Only a run with no such evidence in
+       this evidence run (typically the last one) uses
+       `processing_end_time` if the caller supplied it (e.g. the
+       analyzed range's real end), or otherwise honestly falls back to
+       its own last reading's `end_time` -- documented as a
+       known-imprecise fallback, not a duration claim.
 
     `similarity_threshold` is the one explainable, tunable knob (default
     0.5) -- see `_group_into_state_runs`. Deterministic: same input
     (any order) always produces the same output.
     """
     ordered = sorted(observations, key=lambda observation: observation.start_time)
-    runs = _group_into_state_runs(ordered, similarity_threshold)
+    aggregated = aggregate_same_frame_observations(ordered)
+    # Re-sort: aggregation can reorder within a frame group but
+    # start_time ordering across frames must hold for grouping.
+    aggregated = sorted(aggregated, key=lambda observation: observation.start_time)
+    entries = _group_into_state_runs(aggregated, similarity_threshold)
 
     cues: list[Cue] = []
     diagnostics: list[ConsensusDiagnostics] = []
-    for index, run in enumerate(runs):
-        next_run_start_time = runs[index + 1][0].start_time if index + 1 < len(runs) else None
-        cue, cue_diagnostics = _reconstruct_one_cue(run, next_run_start_time)
+    for run, boundary_time in entries:
+        cue, cue_diagnostics = _reconstruct_one_cue(run, boundary_time, processing_end_time)
         cues.append(cue)
         diagnostics.append(cue_diagnostics)
     return cues, diagnostics

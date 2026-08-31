@@ -50,3 +50,38 @@ def test_naive_dense_policy_always_ocrs_every_frame():
     assert policy.should_ocr(_FRAME, timestamp=0.0) is True
     assert policy.should_ocr(_FRAME, timestamp=0.1) is True
     assert policy.should_ocr(_FRAME, timestamp=0.2) is True
+
+
+def test_change_triggered_policy_reports_first_frame_as_the_trigger_reason():
+    policy = ChangeTriggeredOcrPolicy(change_threshold=0.5)
+
+    policy.should_ocr(_FRAME, timestamp=0.0)
+
+    assert policy.last_trigger_reason == "first_frame"
+
+
+def test_change_triggered_policy_reports_change_detected_as_the_trigger_reason():
+    policy = ChangeTriggeredOcrPolicy(change_threshold=0.05, max_gap_seconds=100.0)
+    policy.should_ocr(_FRAME, timestamp=0.0)
+
+    policy.should_ocr(_CHANGED_FRAME, timestamp=0.1)
+
+    assert policy.last_trigger_reason == "change_detected"
+
+
+def test_change_triggered_policy_reports_periodic_confirmation_as_the_trigger_reason():
+    policy = ChangeTriggeredOcrPolicy(change_threshold=0.5, max_gap_seconds=1.0)
+    policy.should_ocr(_FRAME, timestamp=0.0)
+
+    policy.should_ocr(_FRAME, timestamp=2.0)
+
+    assert policy.last_trigger_reason == "periodic_confirmation"
+
+
+def test_change_triggered_policy_reason_is_unchanged_when_should_ocr_returns_false():
+    policy = ChangeTriggeredOcrPolicy(change_threshold=0.5, max_gap_seconds=1.0)
+    policy.should_ocr(_FRAME, timestamp=0.0)
+
+    policy.should_ocr(_FRAME, timestamp=0.5)  # no OCR this call
+
+    assert policy.last_trigger_reason == "first_frame"  # still the last real decision's reason

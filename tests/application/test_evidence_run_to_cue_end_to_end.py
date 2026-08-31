@@ -19,6 +19,7 @@ import pytest
 from PySide6.QtCore import QEventLoop, QTimer
 
 from glyphcue.adapters.ocr_types import OcrTextRegion
+from glyphcue.adapters.pyav_media_source import probe_media
 from glyphcue.application.evidence_run_reconstruction import reconstruct_cues_for_evidence_run
 from glyphcue.application.ocr_evidence_job import build_ocr_evidence_job
 from glyphcue.application.pipeline_metrics import PipelineMetrics
@@ -54,12 +55,19 @@ def _write_test_video(path: Path, frames: list[tuple[int, int]]) -> None:
 
 
 class _ScriptedOcrEngine:
-    """A tiny FakeOcrEngine-like double that returns a different,
-    pre-scripted region per call, to simulate noisy repeated readings of
-    one real subtitle state (matches the OcrEngine Protocol)."""
+    """A tiny FakeOcrEngine-like double that returns pre-scripted
+    regions per call (matches the OcrEngine Protocol), to simulate real
+    M4 OCR behavior: noisy repeated readings of one subtitle state,
+    multi-region single-frame results, or confirmed-blank (no regions)
+    calls."""
 
-    def __init__(self, texts_by_call: list[str]) -> None:
-        self._texts = list(texts_by_call)
+    def __init__(self, texts_by_call: list[str] | None = None, regions_by_call=None) -> None:
+        if regions_by_call is not None:
+            self._regions_by_call = regions_by_call
+        else:
+            self._regions_by_call = [
+                [OcrTextRegion(text=text, confidence=0.9, language="en")] for text in texts_by_call
+            ]
         self._call_index = 0
         self.initialized = False
 
@@ -67,9 +75,9 @@ class _ScriptedOcrEngine:
         self.initialized = True
 
     def recognize(self, image):
-        text = self._texts[min(self._call_index, len(self._texts) - 1)]
+        regions = self._regions_by_call[min(self._call_index, len(self._regions_by_call) - 1)]
         self._call_index += 1
-        return [OcrTextRegion(text=text, confidence=0.9, language="en")]
+        return regions
 
     def supported_languages(self):
         return ("en",)
@@ -149,3 +157,115 @@ def test_real_m4_evidence_reconstructs_into_a_persisted_cue_with_inspectable_pro
         observation = observation_repository.get(observation_id)
         assert observation is not None
         assert observation.text in ("Hello world", "Hallo world")
+
+
+def test_two_region_single_language_frame_becomes_one_cue_not_two(qapp_guard, tmp_path):
+    # Real M4->M5 regression: one OCR call on one frame returns TWO
+    # regions (e.g. a two-line subtitle detected as two boxes). Without
+    # same-frame aggregation, M5 would treat these as two sequential
+    # states instead of one frame's combined reading. A second,
+    # identical-content frame at 1.5s (under max_gap_seconds, so it does
+    # NOT trigger a second OCR call) gives the video a real ~1.5s
+    # duration -- a single-frame video has ~0 real duration, which would
+    # make the "not a near-zero-duration Cue" assertion meaningless
+    # regardless of what the production code does.
+    video_path = tmp_path / "two_line.mp4"
+    _write_test_video(video_path, [(0, 50), (1500, 50)])
+
+    db_path = tmp_path / "glyphcue.sqlite3"
+    engine = _ScriptedOcrEngine(
+        regions_by_call=[
+            [
+                OcrTextRegion(text="Top line", confidence=0.9, language="en"),
+                OcrTextRegion(text="Bottom line", confidence=0.85, language="en"),
+            ]
+        ]
+    )
+    metrics = PipelineMetrics()
+    evidence_run_id = "run-two-region"
+    job = build_ocr_evidence_job(
+        video_path, ProcessingRange(), _FULL_FRAME_ROI, engine, db_path, metrics, evidence_run_id
+    )
+    waiter = _FinishedWaiter(job)
+    job.start()
+    waiter.wait()
+    assert job.state is JobState.SUCCEEDED
+
+    observation_repository = ObservationRepository(connect(db_path))
+    metadata = probe_media(video_path)
+    cues, _diagnostics = reconstruct_cues_for_evidence_run(
+        observation_repository, evidence_run_id, processing_end_time=metadata.duration_seconds
+    )
+
+    assert len(cues) == 1
+    cue = cues[0]
+    assert cue.language_layers[0].text == "Top lineBottom line"
+    assert len(cue.language_layers[0].observation_ids) == 2
+    # Not a zero/near-zero-duration Cue: it runs to the real processing
+    # end, not a 1ms observation-instant marker.
+    assert cue.end_time - cue.start_time > 0.01
+
+
+def test_subtitle_blank_subtitle_produces_two_cues_not_three(qapp_guard, tmp_path):
+    video_path = tmp_path / "blank_gap.mp4"
+    _write_test_video(video_path, [(0, 50), (2000, 50), (4000, 200), (6000, 200), (8000, 50)])
+
+    db_path = tmp_path / "glyphcue.sqlite3"
+    # 5 OCR calls expected (first_frame, then a real pixel change at
+    # each subsequent gray-value transition): "Subtitle A" while gray
+    # =50, blank while gray=200, "Subtitle B" once gray=50 returns.
+    engine = _ScriptedOcrEngine(
+        regions_by_call=[
+            [OcrTextRegion(text="Subtitle A", confidence=0.9, language="en")],
+            [OcrTextRegion(text="Subtitle A", confidence=0.9, language="en")],
+            [],  # confirmed blank
+            [],  # confirmed blank (periodic confirmation)
+            [OcrTextRegion(text="Subtitle B", confidence=0.9, language="en")],
+        ]
+    )
+    metrics = PipelineMetrics()
+    evidence_run_id = "run-blank-gap"
+    job = build_ocr_evidence_job(
+        video_path, ProcessingRange(), _FULL_FRAME_ROI, engine, db_path, metrics, evidence_run_id
+    )
+    waiter = _FinishedWaiter(job)
+    job.start()
+    waiter.wait()
+    assert job.state is JobState.SUCCEEDED
+
+    observation_repository = ObservationRepository(connect(db_path))
+    cues, _diagnostics = reconstruct_cues_for_evidence_run(observation_repository, evidence_run_id)
+
+    assert [cue.language_layers[0].text for cue in cues] == ["Subtitle A", "Subtitle B"]
+    # The blank gap really shortened the first Cue -- it does not run
+    # all the way to the second subtitle's start.
+    assert cues[0].end_time < cues[1].start_time
+
+
+def test_final_single_observation_uses_real_processing_end_not_a_1ms_cue(qapp_guard, tmp_path):
+    video_path = tmp_path / "single.mp4"
+    # A second, identical-content frame at 1.5s (under max_gap_seconds,
+    # so no second OCR call) gives the video a real ~1.5s duration.
+    _write_test_video(video_path, [(0, 50), (1500, 50)])
+
+    db_path = tmp_path / "glyphcue.sqlite3"
+    engine = _ScriptedOcrEngine(texts_by_call=["Only subtitle"])
+    metrics = PipelineMetrics()
+    evidence_run_id = "run-final-single"
+    job = build_ocr_evidence_job(
+        video_path, ProcessingRange(), _FULL_FRAME_ROI, engine, db_path, metrics, evidence_run_id
+    )
+    waiter = _FinishedWaiter(job)
+    job.start()
+    waiter.wait()
+    assert job.state is JobState.SUCCEEDED
+
+    observation_repository = ObservationRepository(connect(db_path))
+    metadata = probe_media(video_path)
+    cues, _diagnostics = reconstruct_cues_for_evidence_run(
+        observation_repository, evidence_run_id, processing_end_time=metadata.duration_seconds
+    )
+
+    assert len(cues) == 1
+    assert cues[0].end_time == metadata.duration_seconds
+    assert cues[0].end_time - cues[0].start_time > 0.01  # not a ~1ms instant marker
