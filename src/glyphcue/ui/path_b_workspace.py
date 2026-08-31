@@ -14,6 +14,7 @@ from glyphcue.application.review_priority import (
 )
 from glyphcue.domain.cue import Cue
 from glyphcue.domain.observation import Observation
+from glyphcue.ui.compact_timeline import CompactTimeline
 from glyphcue.ui.design_tokens import Spacing
 from glyphcue.ui.export_controls import ExportControls
 from glyphcue.ui.reconstruction_qa_workspace import ReconstructionQaWorkspace
@@ -169,19 +170,55 @@ def _timing_collision_track_text(
     return "\n".join(lines)
 
 
+def _timeline_data(
+    cue: Cue | None,
+    observations_by_id: dict[str, Observation],
+    diagnostics_by_cue_id: dict[str, PathBDiagnostics],
+) -> tuple[float, list[tuple[float, float, str]]]:
+    """DESIGN.md section 49's Path B compact timeline: source-
+    observation spans, the reconstructed Cue's own span (or a
+    "collision" role when `PathBDiagnostics.timing_collision` fired),
+    scaled to the local evidence window for the active Cue -- not the
+    whole file, matching `timing_view`'s own per-Cue scope."""
+    if cue is None:
+        return 0.0, []
+    observations = _cue_source_observations(cue, observations_by_id)
+    window_start = min([cue.start_time, *(o.start_time for o in observations)], default=cue.start_time)
+    window_end = max([cue.end_time, *(o.end_time for o in observations)], default=cue.end_time)
+    duration = window_end - window_start
+
+    spans = [
+        (observation.start_time - window_start, observation.end_time - window_start, "source")
+        for observation in observations
+    ]
+    diagnostics = diagnostics_by_cue_id.get(cue.id)
+    reconstructed_role = "collision" if diagnostics is not None and diagnostics.timing_collision else "reconstructed"
+    spans.append((cue.start_time - window_start, cue.end_time - window_start, reconstructed_role))
+    return duration, spans
+
+
 def _ingestion_profile_text(
     source_path: Path,
     observations_by_id: dict[str, Observation],
     cues: list[Cue],
+    import_warnings: list[ImportWarning],
 ) -> str:
     """DESIGN.md section 15's Path B left-pane ingestion/normalization
     profile: source filename, format, source/output cue counts, and
     the non-destructive-source status, always visible (not only on the
-    active Cue) since it describes the whole import, not one Cue."""
+    active Cue) since it describes the whole import, not one Cue.
+
+    "Source cues" is the real count of structurally-read source
+    events -- kept Observations PLUS any recoverable-skipped events
+    (M8's `ImportWarning`s) -- never just `len(observations_by_id)`,
+    which would understate the real source-event count and silently
+    pass off "events we kept" as "source cues" whenever the adapter
+    had to skip one."""
     format_name = source_path.suffix.lstrip(".").upper() or "?"
+    source_event_count = len(observations_by_id) + len(import_warnings)
     return (
         f"{source_path.name}  ({format_name})\n"
-        f"Source cues: {len(observations_by_id)}  →  Output cues: {len(cues)}\n"
+        f"Source cues: {source_event_count}  →  Output cues: {len(cues)}\n"
         "Source protected — original file is never modified"
     )
 
@@ -222,6 +259,7 @@ class PathBWorkspace:
         self.consolidation_view.setReadOnly(True)
         self.timing_view = QTextEdit()
         self.timing_view.setReadOnly(True)
+        self.timeline = CompactTimeline()
         center_pane = QWidget()
         center_layout = QVBoxLayout(center_pane)
         center_layout.setContentsMargins(
@@ -234,6 +272,7 @@ class PathBWorkspace:
         center_layout.addWidget(self.consolidation_view)
         center_layout.addWidget(QLabel("Timing / Collision Track"))
         center_layout.addWidget(self.timing_view)
+        center_layout.addWidget(self.timeline)
 
         priorities = {cue.id: _priority_for_cue(cue.id, diagnostics_by_cue_id) for cue in cues}
 
@@ -243,12 +282,13 @@ class PathBWorkspace:
             priorities,
             center_pane,
             on_active_cue_changed=self._on_active_cue_changed,
+            filter_labels=("All Reconstructed", "Review Needed", "Preserved"),
         )
         self.window = self.qa.window
         self.queue = self.qa.queue
 
         self.ingestion_profile_label = QLabel(
-            _ingestion_profile_text(source_path, observations_by_id, cues)
+            _ingestion_profile_text(source_path, observations_by_id, cues, import_warnings or [])
         )
         self.ingestion_profile_label.setWordWrap(True)
         self.qa.add_left_pane_widget(self.ingestion_profile_label)
@@ -289,6 +329,8 @@ class PathBWorkspace:
         self.timing_view.setPlainText(
             _timing_collision_track_text(cue, self._observations_by_id, self._diagnostics_by_cue_id)
         )
+        duration, spans = _timeline_data(cue, self._observations_by_id, self._diagnostics_by_cue_id)
+        self.timeline.set_data(duration, spans)
 
     def export(self) -> Path:
         return self.export_controls.export()

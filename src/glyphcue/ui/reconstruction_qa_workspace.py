@@ -6,9 +6,11 @@ from PySide6.QtCore import QEvent, QObject, Qt
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QCheckBox,
+    QComboBox,
     QDoubleSpinBox,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QListWidget,
     QListWidgetItem,
     QPushButton,
@@ -29,6 +31,7 @@ from glyphcue.application.curated_evidence import select_curated_evidence
 from glyphcue.application.review_priority import ReviewPriority
 from glyphcue.domain.cue import Cue
 from glyphcue.domain.observation import Observation
+from glyphcue.domain.review_state import ReviewState
 from glyphcue.ui.design_tokens import Color, Spacing
 from glyphcue.ui.language_layer_presentation import LanguageLayersPanel, queue_label_for_cue
 from glyphcue.ui.main_window import MainWindow
@@ -167,6 +170,7 @@ class ReconstructionQaWorkspace:
         play_pause_callback: Callable[[], None] | None = None,
         replay_callback: Callable[[Cue], None] | None = None,
         on_active_cue_changed: Callable[[Cue | None], None] | None = None,
+        filter_labels: tuple[str, str, str] = ("All", "Review Needed", "Clean / Approved"),
     ) -> None:
         self._cues = list(cues)
         self._observations_by_id = observations_by_id
@@ -174,8 +178,21 @@ class ReconstructionQaWorkspace:
         self._play_pause_callback = play_pause_callback
         self._replay_callback = replay_callback
         self._on_active_cue_changed = on_active_cue_changed
+        self._filter_labels = filter_labels
         self._displayed_cue_id: str | None = None
         self._approve_filter = _CtrlEnterApproveFilter(lambda: self.approve_and_advance())
+
+        # DESIGN.md section 7.1 / section 53: the left pane must offer
+        # search + review filters alongside the queue, with a small,
+        # task-oriented frozen baseline -- not a project-manager-style
+        # filter taxonomy. Labels are caller-supplied (Path A vs Path B
+        # baseline wording) but the underlying semantics are identical:
+        # "Review Needed" = a real Review Priority signal exists;
+        # the third option = no signal OR already Approved.
+        self.search_edit = QLineEdit()
+        self.search_edit.setPlaceholderText("Search current text…")
+        self.filter_combo = QComboBox()
+        self.filter_combo.addItems(list(filter_labels))
 
         self.queue = QListWidget()
         self.cue_identity_label = QLabel("")
@@ -224,6 +241,8 @@ class ReconstructionQaWorkspace:
         left_layout.setContentsMargins(
             Spacing.PANEL_MAJOR, Spacing.PANEL_MAJOR, Spacing.PANEL_MAJOR, Spacing.PANEL_MAJOR
         )
+        left_layout.addWidget(self.search_edit)
+        left_layout.addWidget(self.filter_combo)
         left_layout.addWidget(self.queue)
         self._left_layout = left_layout
 
@@ -264,6 +283,8 @@ class ReconstructionQaWorkspace:
         self.window = MainWindow(left_pane=left_pane, center_pane=center_widget, right_pane=right_pane)
 
         self.queue.currentRowChanged.connect(self._on_row_changed)
+        self.search_edit.textChanged.connect(lambda _text: self._on_search_or_filter_changed())
+        self.filter_combo.currentTextChanged.connect(lambda _text: self._on_search_or_filter_changed())
         self.nudge_start_earlier_button.clicked.connect(
             lambda: self._nudge_active(start_delta=-_TIMING_NUDGE_STEP_SECONDS)
         )
@@ -351,10 +372,45 @@ class ReconstructionQaWorkspace:
             cue_id, ReviewPriority(cue_id=cue_id, score=0.0, level="None", components=())
         )
 
+    def priority_for_cue_id(self, cue_id: str) -> ReviewPriority:
+        """Public read of a Cue's current Review Priority -- the seam a
+        path-specific caller (e.g. a compact temporal strip needing to
+        color a Cue span as flagged/clean) uses instead of reaching
+        into the private `_priorities_by_cue_id` mapping."""
+        return self._priority_for(cue_id)
+
+    def _matches_search(self, cue: Cue) -> bool:
+        query = self.search_edit.text().strip().lower()
+        if not query:
+            return True
+        return any(query in layer.text.lower() for layer in cue.language_layers)
+
+    def _matches_filter(self, cue: Cue) -> bool:
+        selection = self.filter_combo.currentText()
+        all_label, review_needed_label, _clean_label = self._filter_labels
+        if selection == all_label:
+            return True
+        priority = self._priority_for(cue.id)
+        if selection == review_needed_label:
+            return priority.level != "None"
+        # Third option (label differs by path, e.g. "Clean / Approved"
+        # vs "Preserved"): no real Review Priority signal, or the user
+        # already Approved it despite one existing.
+        return priority.level == "None" or cue.review_state == ReviewState.APPROVED
+
+    def _on_search_or_filter_changed(self) -> None:
+        # A live text-edit search/filter change is not itself a Cue
+        # navigation action, but it can change which row is current --
+        # commit first, same discipline as every other queue-mutating
+        # action.
+        self._commit_displayed_edits()
+        self._rebuild_queue(select_cue_id=self._displayed_cue_id)
+
     def _rebuild_queue(self, *, select_cue_id: str | None) -> None:
         ordered = sorted(
             self._cues, key=lambda cue: self._priority_for(cue.id).score, reverse=True
         )
+        ordered = [cue for cue in ordered if self._matches_filter(cue) and self._matches_search(cue)]
         self.queue.blockSignals(True)
         self.queue.clear()
         select_row = 0

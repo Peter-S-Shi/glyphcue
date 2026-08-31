@@ -2287,9 +2287,9 @@ Partial-video processing is a first-class Path A concept.
 
 The UI should make the selected range visible.
 
-Source-time preservation vs rebasing remains an output/processing choice and should not be hidden.
+**V1 frozen truth (closed in Milestone 9, resolving the prior "output/processing choice" framing):** selected ranges preserve original source timestamps. Rebasing (renumbering a selected range's timestamps relative to the selection rather than the source) is **not** a V1 output mode and may only re-enter scope through the Stop-Building Rule. This matches ROADMAP.md Milestone 2's and `ProcessingRange`'s existing, consistent absolute-source-timeline behavior -- this section only corrects the doc to state that as frozen truth, no rebasing feature was added to reach this.
 
-Exact control shape will be implemented later.
+Exact control shape (`PathAMediaPane`'s range checkbox + start/end fields) is implemented as of Milestone 9.
 
 ---
 

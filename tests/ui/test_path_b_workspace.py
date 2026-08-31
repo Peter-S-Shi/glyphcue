@@ -123,6 +123,45 @@ def test_clean_pass_through_cue_shows_preserved_1_to_1_state(qapp_guard, tmp_pat
     assert "preserved 1:1" in text
 
 
+def test_selecting_a_queue_row_populates_the_timeline_with_source_and_reconstructed_spans(
+    qapp_guard, tmp_path
+):
+    # DESIGN.md section 49: Path B's compact timeline must show source
+    # overlap/timing density and the reconstructed Cue span -- not just
+    # prose (that is `timing_view`'s job).
+    observations = {"o1": _observation("o1", "raw", start=0.0, end=2.0)}
+    cues = [_cue("c1", "reconstructed", observation_ids=("o1",))]
+    workspace = PathBWorkspace(cues, observations, tmp_path / "input.srt")
+
+    workspace.queue.setCurrentRow(0)
+
+    roles = {span[2] for span in workspace.timeline.spans}
+    assert "source" in roles
+    assert "reconstructed" in roles
+
+
+def test_timeline_marks_a_timing_collision_span(qapp_guard, tmp_path):
+    from glyphcue.application.reconstruction import PathBDiagnostics
+
+    observations = {"o1": _observation("o1", "raw", start=0.0, end=2.0)}
+    cues = [_cue("c1", "reconstructed", observation_ids=("o1",))]
+    diagnostics_by_cue_id = {
+        "c1": PathBDiagnostics(
+            cue_id="c1", source_order_issue=False, rolling_growth=False,
+            sliding_overlap=False, repetition_collapsed=False,
+            timing_collision=True, segmentation_ambiguous=False,
+        ),
+    }
+    workspace = PathBWorkspace(
+        cues, observations, tmp_path / "input.srt", diagnostics_by_cue_id=diagnostics_by_cue_id
+    )
+
+    workspace.queue.setCurrentRow(0)
+
+    roles = {span[2] for span in workspace.timeline.spans}
+    assert "collision" in roles
+
+
 def test_left_pane_shows_the_ingestion_profile(qapp_guard, tmp_path):
     observations = {"o1": _observation("o1", "a"), "o2": _observation("o2", "b")}
     cues = [_cue("c1", "merged", observation_ids=("o1", "o2"))]
@@ -134,6 +173,34 @@ def test_left_pane_shows_the_ingestion_profile(qapp_guard, tmp_path):
     assert "2" in profile_text  # source cue count
     assert "1" in profile_text  # output cue count
     assert "protected" in profile_text.lower()
+
+
+def test_ingestion_profile_source_cue_count_includes_recoverable_skipped_events(
+    qapp_guard, tmp_path
+):
+    # A "Source cues" count that only reflects successfully-parsed
+    # Observations understates the real number of structurally-read
+    # source events whenever one was skipped as a recoverable import
+    # warning -- it must not silently pass off "Observations we kept"
+    # as "source cues".
+    observations = {"o1": _observation("o1", "a"), "o2": _observation("o2", "b")}
+    cues = [_cue("c1", "merged", observation_ids=("o1", "o2"))]
+    warnings = [ImportWarning(source_index=2, reason="Observation.end_time must be after start_time")]
+    workspace = PathBWorkspace(
+        cues, observations, tmp_path / "input.srt", import_warnings=warnings
+    )
+
+    profile_text = workspace.ingestion_profile_label.text()
+    assert "3" in profile_text  # 2 kept observations + 1 skipped event = 3 real source events
+
+
+def test_path_b_uses_its_own_frozen_filter_baseline(qapp_guard, tmp_path):
+    cues = [_cue("c1", "clean import")]
+    workspace = PathBWorkspace(cues, {}, tmp_path / "input.srt")
+
+    labels = [workspace.qa.filter_combo.itemText(i) for i in range(workspace.qa.filter_combo.count())]
+
+    assert labels == ["All Reconstructed", "Review Needed", "Preserved"]
 
 
 def test_approve_updates_review_state_and_commits_edited_text(qapp_guard, tmp_path):

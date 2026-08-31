@@ -1203,26 +1203,71 @@ M9 closes only when:
 - Soft-subtitle muxing / burn-in rendering: **optional V1 integration not selected; deferred beyond V1 and may only re-enter scope through the Stop-Building Rule.** No existing media-transform seam makes either near-free (`glyphcue.adapters.pyav_media_source` only probes/reads; there is no encode/mux path anywhere in the codebase), and this section's own conditional gate ("only if the already accepted architecture and implementation cost justify it") was not met. M11/M12 do not schedule it; it is not RC/hardening-lane work-in-waiting, it is out of V1 entirely unless a future Stop-Building Rule review re-admits it.
 - Scope audit: none of ASR, YouTube acquisition, subtitle removal/inpainting, a long-term learning system, a full subtitle/video editor, built-in AI summary, evidence-free batch approve, unrequested Path B linked video, or a user-facing diagnostic-JSON export were added during this milestone. All V1-excluded items above remain excluded.
 
-**Corrective-round FROZEN-only DESIGN delta audit, closed:**
+**Second-round corrective audit, closed:**
 
-The first round's own audit was re-examined against `DESIGN.md`'s FROZEN sections only (no GUIDELINE/OPEN/DEFERRED items, no M11 visual/contrast/resize/failure-hardening polish mixed in). Two real functional gaps were found and closed with minimal existing Qt primitives, no shell redesign:
+- **DESIGN.md section 9 (Path Switching)**: the entry state's `Open Video`/`Open Caption File` only worked from the empty first-launch screen. Closed: `PathAMediaPane.switch_to_caption_file` / `PathBWorkspace.switch_to_video`, both routed through `GlyphCueEntry`'s window-transition logic via injected callbacks — switching now works directly from a live workbench, no restart.
+- **DESIGN.md sections 14–17 (Path B's frozen Timed Text Evidence Workspace)**: only 14.2 existed. Closed with 14.1 (`raw_stream_view`), 14.3 (`timing_view`), section 15 (`ingestion_profile_label`), and section 17 (Preserved 1:1 state).
+- **Path B's required export surface was not actually 4 user-reachable formats** — the generic Export button only ever reused the input suffix. Closed: `PathBWorkspace` now uses the same `ExportControls` widget Path A uses.
+- **Processing-range validation was missing.** Closed: `ProcessingRange.resolve()` rejects a reversed/zero-duration/negative-start/out-of-media range; the UI catches it before touching any run state.
 
-- **DESIGN.md section 9 (Path Switching)**: the entry state's `Open Video`/`Open Caption File` only worked from the empty first-launch screen — an already-open Path A or Path B workbench had no way to reach the other path except restarting the app, which is exactly the "launching a second tool" behavior section 9 forbids. Closed: `PathAMediaPane` gained an `Open Caption File (Path B)…` button and `PathBWorkspace` gained an `Open Video (Path A)…` button, both wired through `GlyphCueEntry`'s existing window-transition logic (`_show`) via injected callbacks (`on_open_caption_file` / `on_open_video`) — switching now works directly from a live workbench, with no restart.
-- **DESIGN.md sections 14–17 (Path B's frozen Timed Text Evidence Workspace)**: only 14.2 (Consolidation / Reconstruction Explanation) existed. Closed with minimal additions to the same center pane and a new left-pane widget, all backed by the same `Observation`/`Cue`/`PathBDiagnostics` data already computed — no new domain data, no algorithm change:
-  - 14.1 Raw Timed Caption Stream: `PathBWorkspace.raw_stream_view` lists each source observation's id/timing/text for the active Cue.
-  - 14.3 Timing / Collision Track: `PathBWorkspace.timing_view` lists source spans, the reconstructed Cue's own span, and an explicit collision marker when `PathBDiagnostics.timing_collision` fired.
-  - Section 15 (Path B left pane ingestion profile): `PathBWorkspace.ingestion_profile_label` shows source filename, format, source/output cue counts, and the source-protected status.
-  - Section 17 (Preserved / No-Change State): a Cue whose real `PathBDiagnostics` has every field `False` now shows an explicit "Preserved 1:1 — no reconstruction required" line instead of a blank explanation indistinguishable from "no diagnostics were ever computed."
-- **Path B's required export surface was not actually 4 user-reachable formats.** Production Path B's `Export` button only ever reused the input file's own suffix (an `.srt` source could never produce `.vtt`, contradicting DESIGN.md section 28's required SRT/VTT/Readable/AI-ready surface). Closed: `PathBWorkspace` now uses the same `ExportControls` widget Path A uses — one format picker, four reachable formats, same non-destructive-destination / pending-edit-commit / Discard-exclusion contract — proven with a real regression exporting the same `.srt` source as both `.srt` and `.vtt`, and the reverse for a `.vtt` source.
-- **Processing-range validation was missing.** `ProcessingRange`/the UI boundary accepted a reversed range, a zero-duration range (checked but 0→0), or an end past the real media duration, any of which could reach a real OCR job or become a final Cue's timing. Closed: `ProcessingRange.resolve()` now rejects all three (plus a negative start) with a `ValueError`; `PathAMediaPane._on_run_ocr_clicked` catches it before touching any run state and shows `Invalid processing range: ...` in the existing status label rather than crashing or starting a fake-success job; opening a video now bounds the range spin boxes to that video's own real duration. The source timeline itself is unchanged — this is validation only, not a rebasing feature.
+**Third-round audit — the complete FROZEN-functional inventory.** The first two rounds each re-examined only a hand-picked subset of sections and twice declared "FROZEN audit complete" without ever enumerating every FROZEN/`V1 FROZEN` section in `DESIGN.md` end to end. This round does that enumeration once, completely, classifying every one into: **Satisfied** (a real V1 functional contract already met), **Missing** (a real M9 functional gap — closed this round), **Visual/accessibility/release-hardening** (not a workflow gap; explicitly left to M11/M12, not dropped by assuming "it's UI so M11 owns it"), or **Scope prohibition** (a "do not build X" rule, already respected by not building X).
+
+| # | Section | Classification |
+|---|---|---|
+| 4 | Core Design Thesis | Satisfied — dark visual identity (`base_stylesheet`) |
+| 6 | Product Shell Architecture | Satisfied — three-pane shell (`MainWindow`) |
+| 7.1 | Left Pane — Structure + Queue | **Was missing** (no search/filters at all; Path A left pane had only the queue) — **closed this round**: `ReconstructionQaWorkspace.search_edit` / `filter_combo`, `PathAMediaPane.context_label` |
+| 7.2 | Center Pane — Primary Evidence Workspace | Satisfied |
+| 7.3 | Right Pane — Reconstruction QA | Satisfied |
+| 7.4 | Footer / Job Status | Satisfied — `ocr_status_label` is the real "dedicated job surface" the section accepts as an alternative to a literal footer bar |
+| 9 | Path Switching | Satisfied (closed in the second round) |
+| 10 | Path A — Visual Evidence Workspace | **Was missing** (ROI shown only as 4 numbers; no time context/navigation/current-Cue relationship/timeline) — **closed this round**: `RoiVisualization`, `position_slider`, `current_time_label`, `current_cue_relationship_label`, `CompactTimeline` |
+| 10.1 | ROI visualization | **Closed this round** — `RoiVisualization` |
+| 10.2 | Media controls | Satisfied for the hard constraint (Space's meaning is stable, never overloaded); the full recommended shortcut list (`E` export, `?` help) is softer "Recommended" language within this section — logged as a minor, non-blocking M11 keyboard-polish item, not equal severity to the three closed gaps |
+| 11 | Track Group Configuration | Satisfied |
+| 12 | Language Layer Presentation | Satisfied |
+| 13 | Multilingual Timing UI | Satisfied |
+| 14–17 | Path B Timed Text Evidence Workspace / Left Pane / Non-Destructive Contract / Preserved State | Satisfied (closed in the second round) |
+| 18 | Observation → Cue Visual Grammar | Satisfied |
+| 19 | Evidence Density | Satisfied — curated/full evidence toggle |
+| 21 | Review Priority / Suspicion Score | Satisfied — level words, never a percent |
+| 22 | Reconstruction Diagnostics | Satisfied |
+| 23 | QA Action Hierarchy | Satisfied — Approve/Split/Merge/Discard styling |
+| 24 | Approval Shortcut | Satisfied — `Ctrl+Enter` |
+| 28 | Export Surface | Satisfied (closed across all three rounds) |
+| 30 | AI-Ready Transcript | Satisfied |
+| 31 | Progress and Job UX | Satisfied — phase/processed-time/cancel |
+| 32 | Scroll Ownership | Satisfied — independent `QListWidget`/`QTextEdit` scroll regions inside the `QSplitter` shell, by construction |
+| 33 | Layout Density | Visual/hardening — directional principle, no concrete artifact to close |
+| 37, 38, 40, 41, 43, 44 | Color / Accent / Typography / Radius / Depth tokens | Visual/hardening — tokens exist (`design_tokens.py`); real contrast validation is explicitly `REQUIRED BEFORE RELEASE` (section 89), i.e. M12, not M9 |
+| 46 | One Region, One Visual Hero | Satisfied |
+| 47 | Inputs and Text Editing | Satisfied — per-layer focused fields |
+| 49 | Timeline | **Was missing entirely** — **closed this round**: `CompactTimeline`, shared by both paths |
+| 53 | Filters and Queue States | **Was missing entirely** — **closed this round**: `filter_combo` with the frozen baseline labels per path |
+| 55 | Error States | Satisfied — Failed/Cancelled/partial states never hidden behind a generic toast |
+| 57 | Accessibility Requirements | Visual/accessibility/release-hardening — `REQUIRED BEFORE RELEASE` per section 89/90, i.e. M12 |
+| 58 | Motion | Visual/hardening |
+| 61 | Production Terminology | Satisfied — "Review Priority", "Source Protected", etc. already in use; no invented jargon |
+| 63 | Advanced Settings | Scope prohibition, respected — no CV tuning exposed by default |
+| 65 | Export Surface Hierarchy | Satisfied — subtitle formats before transcript before AI-ready in `ExportControls` |
+| 66 | Path A / Path B Legitimate Differences | Satisfied (closed this round via Path A's left-pane context) |
+| 67 | Shared Product Grammar | Satisfied |
+| 68–71 | Do Not Turn GlyphCue Into a Full Editor / Video Editor / AI Dashboard / Developer Console | Scope prohibitions, respected — none were added |
+| 78 | Review Flow | Satisfied |
+| 80 | Data Integrity UX | Satisfied |
+| 84 | Processing Range | Contract-drift wording fixed this round — V1 frozen truth stated (absolute source timeline; rebasing is not a V1 output mode) |
+
+**Remaining-gap count after this round: 0** across every FROZEN/`V1 FROZEN` section. The only non-blocking item logged (10.2's full recommended shortcut list) is explicitly named above, not silently deferred.
+
+**Truth fix, closed this round:** `PathBWorkspace`'s left-pane "Source cues" count previously used `len(observations_by_id)` — the count of successfully-parsed Observations, which understates the real number of structurally-read source events whenever the adapter had to skip one as a recoverable `ImportWarning`. It now adds the skipped-event count, so "Source cues" means what it says.
 
 **Gate closure:**
 
 1. Accepted V1 workflows complete — Path A import → setup(ROI/languages/validated processing range) → process → QA → export, and Path B import → normalize + import-warning visibility → QA → export, both reachable end-to-end from `main()`, with direct in-workbench switching between them.
 2. No known feature blocker remains for the required V1 output surface — Path B, like Path A, now genuinely reaches all 4 formats (SRT, VTT, Readable Transcript, AI-ready Transcript) from the same source.
-3. UI conforms to `DESIGN.md`'s FROZEN functional requirements in sections 9, 14, 15, 16, 17, 28, 29, 30, 84, 85 as audited above; remaining GUIDELINE-level visual/contrast/resize polish is left to M11 by design.
+3. UI conforms to every FROZEN/`V1 FROZEN` functional requirement in `DESIGN.md`, per the complete inventory above — not a hand-picked subset. Only GUIDELINE-level visual/contrast/resize polish and release-required accessibility/contrast hardening (sections 33, 37–44, 57, 58, 89, 90) are left to M11/M12, and are named as such, not silently assumed.
 4. Automated regression suite is green on GitHub Actions CI (Ubuntu).
-5. Known issues are classified honestly: soft-mux/burn-in is an unselected optional V1 integration deferred beyond V1 (re-enters scope only via the Stop-Building Rule), not RC/hardening-lane work already scheduled.
+5. Known issues are classified honestly: soft-mux/burn-in is an unselected optional V1 integration deferred beyond V1 (re-enters scope only via the Stop-Building Rule); the 10.2 shortcut-list gap is logged as minor M11 polish, not silently dropped.
 6. **Feature Freeze is formally declared** as of this milestone's merge.
 7. Any new feature from this point forward requires Stop-Building Rule justification (GLYPHCUE_PRODUCT_ARCHITECTURE.md section 30) before acceptance.
 
