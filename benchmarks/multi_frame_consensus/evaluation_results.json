@@ -1,0 +1,154 @@
+{
+  "mixed_4_clean_1_degraded": {
+    "scenario": "mixed_4_clean_1_degraded",
+    "results": [
+      {
+        "id": "english_line",
+        "language": "en",
+        "ground_truth": "The quick brown fox jumps over the lazy dog.",
+        "readings": [
+          "The quick brown fox jumps over the lazv dog",
+          "The quick brown fox jumps over the lazy dog.",
+          "The quick brown fox jumps over the lazy dog.",
+          "The quick brown fox jumps over the lazy dog.",
+          "The quick brown fox jumps over the lazy dog."
+        ],
+        "single_frame": {
+          "text": "The quick brown fox jumps over the lazv dog",
+          "cer": 0.0455
+        },
+        "consensus": {
+          "text": "The quick brown fox jumps over the lazy dog.",
+          "cer": 0.0,
+          "cue_count": 1,
+          "observations_in_winning_cue": 5
+        },
+        "cer_improvement": 0.0455
+      },
+      {
+        "id": "chinese_line",
+        "language": "zh",
+        "ground_truth": "今天天气非常好，我们一起去公园散步。",
+        "readings": [
+          "今天天气非常好，我们一起去公园散",
+          "今天天气非常好，我们一起去公园散步。",
+          "今天天气非常好，我们一起去公园散步。",
+          "今天天气非常好，我们一起去公园散步。",
+          "今天天气非常好，我们一起去公园散步。"
+        ],
+        "single_frame": {
+          "text": "今天天气非常好，我们一起去公园散",
+          "cer": 0.1111
+        },
+        "consensus": {
+          "text": "今天天气非常好，我们一起去公园散步。",
+          "cer": 0.0,
+          "cue_count": 1,
+          "observations_in_winning_cue": 5
+        },
+        "cer_improvement": 0.1111
+      },
+      {
+        "id": "japanese_line",
+        "language": "ja",
+        "ground_truth": "今日はとても良い天気ですね。",
+        "readings": [
+          "今日はとても良い天気ですね。",
+          "今日はとても良い天気ですね。",
+          "今日はとても良い天気ですね。",
+          "今日はとても良い天気ですね。",
+          "今日はとても良い天気ですね。"
+        ],
+        "single_frame": {
+          "text": "今日はとても良い天気ですね。",
+          "cer": 0.0
+        },
+        "consensus": {
+          "text": "今日はとても良い天気ですね。",
+          "cer": 0.0,
+          "cue_count": 1,
+          "observations_in_winning_cue": 5
+        },
+        "cer_improvement": 0.0
+      }
+    ],
+    "mean_single_frame_cer": 0.0522,
+    "mean_consensus_cer": 0.0
+  },
+  "all_5_heavily_degraded": {
+    "scenario": "all_5_heavily_degraded",
+    "results": [
+      {
+        "id": "english_line",
+        "language": "en",
+        "ground_truth": "The quick brown fox jumps over the lazy dog.",
+        "readings": [
+          "The quick brown fox jumps over the lazv dog",
+          "The quick brown fox jumhe lazy dog.",
+          "The quick brown fox jumps ovlazy dog",
+          "The quiown fox jumps over the lazy dog",
+          "The quick brown fox jumps over the"
+        ],
+        "single_frame": {
+          "text": "The quick brown fox jumps over the lazv dog",
+          "cer": 0.0455
+        },
+        "consensus": {
+          "text": "The quick brown fox jumhe lazy dog.",
+          "cer": 0.2045,
+          "cue_count": 1,
+          "observations_in_winning_cue": 5
+        },
+        "cer_improvement": -0.159
+      },
+      {
+        "id": "chinese_line",
+        "language": "zh",
+        "ground_truth": "今天天气非常好，我们一起去公园散步。",
+        "readings": [
+          "今天天气非常好，我们一起去公园散",
+          "今天天气非常好，我们一数",
+          "今天天气非常好，我们一起去",
+          "今天天气好，我们一起去公园散步",
+          "今天天气非常好，我们一起去公园"
+        ],
+        "single_frame": {
+          "text": "今天天气非常好，我们一起去公园散",
+          "cer": 0.1111
+        },
+        "consensus": {
+          "text": "今天天气非常好，我们一起去公园散",
+          "cer": 0.1111,
+          "cue_count": 1,
+          "observations_in_winning_cue": 5
+        },
+        "cer_improvement": 0.0
+      },
+      {
+        "id": "japanese_line",
+        "language": "ja",
+        "ground_truth": "今日はとても良い天気ですね。",
+        "readings": [
+          "今日はとても良い天気ですね。",
+          "今日はとても良いrh.",
+          "今日はとても良気ですね。",
+          "今日ても良い天気ですね。",
+          "今日はとても良いすね."
+        ],
+        "single_frame": {
+          "text": "今日はとても良い天気ですね。",
+          "cer": 0.0
+        },
+        "consensus": {
+          "text": "今日ても良い天気ですね。",
+          "cer": 0.1429,
+          "cue_count": 1,
+          "observations_in_winning_cue": 5
+        },
+        "cer_improvement": -0.1429
+      }
+    ],
+    "mean_single_frame_cer": 0.0522,
+    "mean_consensus_cer": 0.1528
+  }
+}
