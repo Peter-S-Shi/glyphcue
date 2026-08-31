@@ -33,6 +33,7 @@ class FakeOcrEngine:
         self._fail_recognize_with = fail_recognize_with
         self.initialized = False
         self.shutdown_call_count = 0
+        self.recognize_call_count = 0
 
     def initialize(self) -> None:
         if self._fail_initialize_with is not None:
@@ -40,6 +41,7 @@ class FakeOcrEngine:
         self.initialized = True
 
     def recognize(self, image: object) -> list[OcrTextRegion]:
+        self.recognize_call_count += 1
         if self._fail_recognize_with is not None:
             raise OcrRecognitionError(str(self._fail_recognize_with)) from self._fail_recognize_with
         return list(self._regions)

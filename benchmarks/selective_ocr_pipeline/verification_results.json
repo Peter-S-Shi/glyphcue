@@ -1,0 +1,41 @@
+{
+  "fixture_frame_count": 40,
+  "fixture_ground_truth_segments": [
+    {
+      "start_ms": 0,
+      "end_ms": 1500,
+      "text": "The quick brown fox"
+    },
+    {
+      "start_ms": 1500,
+      "end_ms": 3000,
+      "text": "jumps over the lazy dog"
+    },
+    {
+      "start_ms": 3000,
+      "end_ms": 4000,
+      "text": ""
+    }
+  ],
+  "selective": {
+    "frames_analyzed": 40,
+    "ocr_calls": 3,
+    "observations_created": 2,
+    "elapsed_seconds": 13.641,
+    "ocr_calls_per_minute": 13.2,
+    "effective_processing_speed": 0.2859,
+    "observed_texts": [
+      "The quick brown fox",
+      "jumps over the lazy dog"
+    ]
+  },
+  "dense": {
+    "frames_analyzed": 40,
+    "ocr_calls": 40,
+    "observations_created": 30,
+    "elapsed_seconds": 101.266,
+    "ocr_calls_per_minute": 23.7,
+    "effective_processing_speed": 0.0385
+  },
+  "ocr_call_reduction_percent": 92.5
+}

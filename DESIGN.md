@@ -3,7 +3,7 @@
 **Document type:** Production-facing UI / UX design authority  
 **Project:** GlyphCue  
 **Repository:** `Peter-S-Shi/glyphcue`  
-**Lifecycle phase:** Production Development in progress → Milestone 3 complete, Milestone 4 next  
+**Lifecycle phase:** Production Development in progress → Milestone 4 complete, Milestone 5 next  
 **Status:** Authoritative V1 design specification  
 **Last updated:** 2026-08-30
 

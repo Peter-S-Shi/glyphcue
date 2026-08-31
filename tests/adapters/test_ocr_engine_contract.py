@@ -82,3 +82,13 @@ def test_shutdown_is_idempotent_and_does_not_raise():
 
     engine.shutdown()
     engine.shutdown()
+
+
+def test_recognize_call_count_is_tracked_for_test_assertions():
+    engine = FakeOcrEngine()
+    engine.initialize()
+
+    engine.recognize(image=object())
+    engine.recognize(image=object())
+
+    assert engine.recognize_call_count == 2

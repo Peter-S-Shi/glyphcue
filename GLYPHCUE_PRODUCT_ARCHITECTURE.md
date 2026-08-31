@@ -3,7 +3,7 @@
 **Document type:** Authoritative post-Grill product architecture baseline  
 **Project:** GlyphCue  
 **Repository:** `Peter-S-Shi/glyphcue`  
-**Lifecycle phase:** Production Development in progress → Milestone 3 complete, Milestone 4 next  
+**Lifecycle phase:** Production Development in progress → Milestone 4 complete, Milestone 5 next  
 **Status:** Authoritative V1 product architecture for production development  
 **Last updated:** 2026-08-30
 
@@ -1236,8 +1236,11 @@ Milestone 2 — Path A Media & Job Orchestration
 Milestone 3 — OCR Adapter & Runtime Selection
 ✓ complete
 
+Milestone 4 — Selective OCR Evidence Pipeline
+✓ complete
+
 Production Development
-IN PROGRESS — Milestone 4 (Selective OCR Evidence Pipeline) next
+IN PROGRESS — Milestone 5 (Multi-Frame Consensus & Cue Reconstruction) next
 ```
 
 ---

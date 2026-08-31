@@ -1,0 +1,170 @@
+from __future__ import annotations
+
+import time
+import uuid
+from pathlib import Path
+
+from glyphcue.adapters.ocr_engine import OcrEngine
+from glyphcue.adapters.pyav_media_source import PyAvMediaFrameSource, probe_media
+from glyphcue.application.ocr_invocation_policy import (
+    ChangeTriggeredOcrPolicy,
+    OcrInvocationPolicy,
+)
+from glyphcue.application.pipeline_metrics import PipelineMetrics
+from glyphcue.application.processing_range import ProcessingRange
+from glyphcue.application.roi_crop import crop_to_roi
+from glyphcue.domain.observation import Observation
+from glyphcue.domain.provenance import Provenance, ProvenanceKind
+from glyphcue.domain.roi import ROI
+from glyphcue.jobs.job import Job, JobContext
+from glyphcue.persistence.database import connect
+from glyphcue.persistence.observation_repository import ObservationRepository
+
+_INSTANT_SPAN_SECONDS = 0.001
+"""An OCR observation is a point-in-time sample, not a duration claim --
+Observation requires end_time > start_time, so this is a small fixed
+span marking "this is an instant," not a measured/estimated duration.
+Real duration/spanning across neighboring observations is Milestone 5's
+job (multi-frame consensus / Cue reconstruction), not this one's."""
+
+
+def build_ocr_evidence_job(
+    path: Path,
+    processing_range: ProcessingRange,
+    roi: ROI,
+    ocr_engine: OcrEngine,
+    db_path: Path,
+    metrics: PipelineMetrics,
+    evidence_run_id: str,
+    *,
+    policy: OcrInvocationPolicy | None = None,
+) -> Job:
+    """Cancelable background job implementing ROADMAP Milestone 4's
+    target flow:
+
+        ROI frame stream -> cheap change analysis -> candidate states
+        -> selective OCR -> Observation
+
+    Reuses the Milestone 2 media/job foundation exactly like
+    `build_media_analysis_job`: owns the PyAvMediaFrameSource lifecycle
+    inside `work`, polls cancellation each iteration, reports progress.
+    It likewise owns its SQLite connection's lifecycle inside `work`,
+    opening it fresh on the job's own worker thread and closing it in
+    `finally` -- callers pass a `db_path`, never an already-open
+    connection/repository, so the worker thread's connection is never
+    shared with (or must never be confused for) the caller's own
+    connection on a different thread. Read results afterward with a
+    separate `ObservationRepository(connect(db_path))` opened on the
+    caller's own thread once `job.finished` has fired.
+
+    Persists each Observation as soon as it is produced, so a
+    cancel/failure partway through the run still keeps whatever evidence
+    was already found (ROADMAP M4: "partial working state where
+    appropriate"), tagged with `evidence_run_id` so one run's evidence
+    (partial or complete) never mixes with a different run's -- see
+    `ObservationRepository.list_for_run`.
+
+    `metrics` is filled in as the job actually runs (the same
+    passed-in-mutable-object pattern `JobContext` uses for cancellation)
+    so its counts are read from the real execution path, never
+    estimated. `frames_analyzed`/`ocr_calls`/`media_seconds_processed`/
+    `elapsed_seconds` are all relative to the *resolved processing
+    range*, not the source media's absolute timeline: a range starting
+    well into a longer source must not have its progress or
+    `effective_processing_speed` inflated by that source offset.
+    Emitted Observations still carry source-correct absolute PTS
+    (`start_time`/`end_time`/`frame_reference`) -- only the
+    instrumentation/progress figures are range-relative.
+
+    `policy` defaults to `ChangeTriggeredOcrPolicy()` -- the selective,
+    production behavior. Passing `NaiveDenseOcrPolicy()` is supported
+    only to produce a dense-OCR comparison baseline (ROADMAP M4
+    acceptance gate 3), never as a production default.
+    """
+    active_policy = policy if policy is not None else ChangeTriggeredOcrPolicy()
+
+    def work(context: JobContext) -> None:
+        wall_start = time.monotonic()
+        metadata = probe_media(path)
+        range_start, range_end = processing_range.resolve(metadata.duration_seconds)
+        range_duration = range_end - range_start
+
+        # Every resource below is acquired inside this single
+        # try/finally, in the order acquired, so a failure at any step
+        # (engine init, DB connect, source open) still releases whatever
+        # was already acquired before it -- never just the ones after
+        # the last resource that happened to succeed.
+        engine_initialized = False
+        conn = None
+        source = None
+        try:
+            ocr_engine.initialize()
+            engine_initialized = True
+
+            conn = connect(db_path)
+            observation_repository = ObservationRepository(conn)
+
+            source = PyAvMediaFrameSource()
+            source.open(path)
+
+            for timestamp, frame in source.frames(range_start, range_end):
+                if context.is_cancel_requested():
+                    return
+                metrics.frames_analyzed += 1
+                roi_frame = crop_to_roi(frame, roi)
+
+                if active_policy.should_ocr(roi_frame, timestamp):
+                    metrics.ocr_calls += 1
+                    regions = ocr_engine.recognize(roi_frame)
+                    runtime_info = ocr_engine.runtime_info()
+                    for region in regions:
+                        if not region.text:
+                            continue
+                        observation = Observation(
+                            id=str(uuid.uuid4()),
+                            text=region.text,
+                            start_time=timestamp,
+                            end_time=timestamp + _INSTANT_SPAN_SECONDS,
+                            provenance=Provenance(
+                                kind=ProvenanceKind.OCR_ENGINE,
+                                source=runtime_info.engine_name,
+                                detail={
+                                    "engine_version": runtime_info.version,
+                                    "backend": runtime_info.backend,
+                                    "backend_version": runtime_info.backend_version or "",
+                                },
+                            ),
+                            language=region.language,
+                            confidence=region.confidence,
+                            roi=roi,
+                            geometry=region.geometry,
+                            frame_reference=f"{path}@{timestamp:.6f}s",
+                        )
+                        observation_repository.add(observation, evidence_run_id)
+                        metrics.observations_created += 1
+
+                processed_in_range = timestamp - range_start
+                metrics.media_seconds_processed = processed_in_range
+                metrics.elapsed_seconds = time.monotonic() - wall_start
+                context.report_progress("ocr_evidence", processed_in_range, range_duration)
+
+            # The frame iterator was exhausted naturally -- not by a
+            # cancel-triggered `return` above and not by an exception
+            # (either would skip this) -- so this really did complete.
+            # Emit one final completion progress at exactly the range
+            # total: the last frame's own relative timestamp can fall
+            # short of range_duration, and a successful run must still
+            # report 100%, not "close to it."
+            metrics.media_seconds_processed = range_duration
+            metrics.elapsed_seconds = time.monotonic() - wall_start
+            context.report_progress("ocr_evidence", range_duration, range_duration)
+        finally:
+            if source is not None:
+                source.close()
+            if engine_initialized:
+                ocr_engine.shutdown()
+            if conn is not None:
+                conn.close()
+            metrics.elapsed_seconds = time.monotonic() - wall_start
+
+    return Job(work=work)
