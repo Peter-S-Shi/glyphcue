@@ -38,6 +38,10 @@ def test_recognize_returns_normalized_text_regions_not_vendor_dicts():
     assert isinstance(regions[0], OcrTextRegion)
     assert regions[0].text == "Hello world"
     assert 0.0 < regions[0].confidence <= 1.0
+    assert regions[0].language == "en"
+    assert regions[0].geometry is not None
+    assert len(regions[0].geometry) == 4
+    assert all(isinstance(pt, tuple) and len(pt) == 2 for pt in regions[0].geometry)
 
 
 def test_recognize_before_initialize_raises_a_normalized_error():
@@ -63,7 +67,10 @@ def test_initialize_failure_is_normalized_not_a_vendor_exception(monkeypatch):
 def test_supported_languages_and_runtime_info_are_reported():
     engine = PaddleOcrEngine()
 
-    assert "en" in engine.supported_languages()
+    assert engine.supported_languages() == ("en", "zh", "ja")
     info = engine.runtime_info()
     assert info.engine_name == "PaddleOCR"
     assert info.backend == "cpu"
+    assert info.version != "unknown"
+    assert info.backend_version is not None
+    assert info.backend_version != "unknown"

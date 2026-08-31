@@ -1,39 +1,39 @@
 {
   "rapidocr": {
     "engine_name": "RapidOCR (onnxruntime backend)",
-    "startup_seconds": 0.9955,
-    "memory_baseline_mb": 44.7,
-    "memory_after_load_mb": 124.3,
-    "memory_after_load_delta_mb": 79.6,
-    "memory_peak_mb": 130.0,
+    "startup_seconds": 1.5968,
+    "memory_baseline_mb": 34.8,
+    "memory_after_load_mb": 103.7,
+    "memory_after_load_delta_mb": 68.9,
+    "memory_peak_mb": 114.3,
     "per_item": {
       "english_clean": {
-        "latency_seconds": 3.0498,
+        "latency_seconds": 1.1914,
         "recognized_text": "The quick brown fox jumps over the lazy dog.",
         "cer": 0.0
       },
       "chinese_clean": {
-        "latency_seconds": 3.2177,
+        "latency_seconds": 1.1943,
         "recognized_text": "今天天气非常好，我们一起去公园散步。",
         "cer": 0.0
       },
       "japanese_clean": {
-        "latency_seconds": 3.0319,
+        "latency_seconds": 1.1491,
         "recognized_text": "今良天気。",
         "cer": 0.6429
       },
       "bilingual_crop": {
-        "latency_seconds": 3.2456,
+        "latency_seconds": 1.3777,
         "recognized_text": "Hello, welcome!你好，欢迎！",
         "cer": 0.0
       },
       "low_quality_crop": {
-        "latency_seconds": 3.0691,
+        "latency_seconds": 1.2009,
         "recognized_text": "Please stand byfor further instructions.",
         "cer": 0.0244
       },
       "subtitle_style_representative": {
-        "latency_seconds": 3.078,
+        "latency_seconds": 1.1839,
         "recognized_text": "This is a burned-in subtitle example.",
         "cer": 0.0
       }
@@ -41,11 +41,16 @@
   },
   "paddleocr": {
     "engine_name": "PaddleOCR (PaddlePaddle backend)",
-    "startup_seconds": 4.4179,
-    "memory_baseline_mb": 97.2,
-    "memory_after_load_mb": 469.5,
-    "memory_after_load_delta_mb": 372.3,
-    "memory_peak_mb": 884.4,
+    "startup_seconds": 4.0319,
+    "startup_seconds_by_language": {
+      "en": 1.6694,
+      "ch": 0.6946,
+      "japan": 0.7114
+    },
+    "memory_baseline_mb": 82.8,
+    "memory_after_load_mb": 472.1,
+    "memory_after_load_delta_mb": 389.3,
+    "memory_peak_mb": 791.8,
     "languages_requiring_separate_model_load": [
       "ch",
       "en",
@@ -53,32 +58,32 @@
     ],
     "per_item": {
       "english_clean": {
-        "latency_seconds": 2.3465,
+        "latency_seconds": 0.8028,
         "recognized_text": "The quick brown fox jumps over the lazy dog.",
         "cer": 0.0
       },
       "chinese_clean": {
-        "latency_seconds": 2.84,
+        "latency_seconds": 0.9375,
         "recognized_text": "今天天气非常好，我们一起去公园散步。",
         "cer": 0.0
       },
       "japanese_clean": {
-        "latency_seconds": 2.3993,
+        "latency_seconds": 0.7897,
         "recognized_text": "今日はとても良い天気ですね。",
         "cer": 0.0
       },
       "bilingual_crop": {
-        "latency_seconds": 2.5854,
+        "latency_seconds": 1.035,
         "recognized_text": "Hello, welcome!你好，欢迎！",
         "cer": 0.0
       },
       "low_quality_crop": {
-        "latency_seconds": 2.3938,
+        "latency_seconds": 0.8633,
         "recognized_text": "Please stand by for further instructions.",
         "cer": 0.0
       },
       "subtitle_style_representative": {
-        "latency_seconds": 2.576,
+        "latency_seconds": 0.802,
         "recognized_text": "This is a burned-in subtitle example.",
         "cer": 0.0
       }

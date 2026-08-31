@@ -23,9 +23,20 @@ dev = [
 # is deliberately excluded from the default CI install. Install with
 # `pip install -e ".[ocr]"` to exercise glyphcue.adapters.paddleocr_engine
 # and its tests locally.
+#
+# Pinned exactly (not >=) to the paddleocr/paddlepaddle version pair
+# actually installed and re-verified on Windows Python 3.12 for this
+# milestone's corrective pass. This pairing matters: paddleocr==3.7.0
+# with paddlepaddle==3.3.1's default enable_mkldnn=True raises
+# NotImplementedError on CPU (see docs/adr/0001-ocr-runtime-selection.md
+# and PaddleOcrEngine's enable_mkldnn=False workaround). An unbounded
+# `>=` would let a future install silently drift onto an unverified
+# pair. Bumping either version requires re-running
+# benchmarks/ocr_runtime_selection/run_benchmark.py and updating the
+# ADR/benchmark doc before relaxing this pin.
 ocr = [
-    "paddleocr>=3.7",
-    "paddlepaddle>=3.3",
+    "paddleocr==3.7.0",
+    "paddlepaddle==3.3.1",
 ]
 
 [tool.setuptools.packages.find]

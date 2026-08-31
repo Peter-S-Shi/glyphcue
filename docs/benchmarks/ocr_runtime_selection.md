@@ -4,11 +4,11 @@
 
 ## Environment (for interpreting the numbers below)
 
-- OS: Windows 10 (build 10.0.26200)
-- Python: 3.11.9 (CPython, 64-bit) — V1 targets Python 3.12; the benchmark itself is Python-version-insensitive since it only exercises inference, not GlyphCue's own package
-- CPU: 14 physical / 20 logical cores, 16.8 GB RAM (a developer workstation, not a constrained CI runner — absolute latency numbers should not be read as representative of end-user hardware; the RapidOCR vs PaddleOCR *comparison* is valid since both ran on the identical machine in the same session)
+- OS: Windows 11 Home (build 10.0.26200)
+- Python: **3.12.10 (CPython, 64-bit)** — matches V1's actual target (`requires-python = ">=3.12"` in `pyproject.toml`). An earlier pass of this benchmark ran on Python 3.11.9 and described its results as "Python-version-insensitive since it only exercises inference, not GlyphCue's own package" — that claim was never verified and has been retracted; the numbers below are a real Python 3.12 re-run on the same machine, not an assumption carried over from 3.11. Re-running on 3.12 happened to resolve the identical `paddleocr==3.7.0` / `paddlepaddle==3.3.1` pair from unpinned `>=` constraints, which is itself now moot: `pyproject.toml`'s `[ocr]` extra pins these exactly, so future installs cannot silently drift onto an unverified pair without a maintainer explicitly bumping the pin and re-running this benchmark.
+- CPU: 14 physical / 20 logical cores, 15.7 GB RAM (a developer workstation, not a constrained CI runner — absolute latency numbers should not be read as representative of end-user hardware; the RapidOCR vs PaddleOCR *comparison* is valid since both ran on the identical machine in the same session)
 - CPU-only: no GPU was used or available to either engine (matches ROADMAP's mandatory CPU-only core path)
-- Package versions: `rapidocr-onnxruntime==1.4.4`, `onnxruntime==1.29.0`, `opencv-python==5.0.0.93`, `paddleocr==3.7.0`, `paddlepaddle==3.3.1`, `paddlex==3.7.2`, `numpy==2.3.5`, `pillow==12.3.0`, `psutil==7.2.2`
+- Package versions: `rapidocr-onnxruntime==1.4.4`, `onnxruntime==1.29.0`, `opencv-python==5.0.0.93`, `paddleocr==3.7.0`, `paddlepaddle==3.3.1`, `paddlex==3.7.2`, `numpy==2.3.5`, `pillow==12.3.0`, `psutil==7.2.2` — identical to the earlier 3.11 run's versions; only the Python interpreter and the measurement methodology (see below) changed.
 - Benchmark script: `benchmarks/ocr_runtime_selection/run_benchmark.py` (not run in CI — installs 500MB+ of ML dependencies; run manually to reproduce)
 - Raw results: `benchmarks/ocr_runtime_selection/benchmark_results.json`
 
@@ -27,9 +27,9 @@ Six generated, copyright-safe fixtures (`benchmarks/ocr_runtime_selection/corpus
 
 ## Methodology
 
-- Each engine is constructed once per language configuration it needs, with one throwaway warm-up call before timing begins. "Startup" below is engine construction (model load) time for the first/default language only.
+- Each engine is constructed once per language configuration it needs. **Every** language configuration (not just the first/default one) gets its own throwaway warm-up call immediately after construction, discarded before timing begins. An earlier pass of this benchmark warmed up only PaddleOCR's default (`en`) engine and then timed the Chinese and Japanese engines' *first-ever* call as part of their "steady-state" median — silently folding one-time JIT/session-setup cost into the reported per-item latency for those two languages. That bug is fixed: `run_benchmark.py`'s `get_engine()` now runs a warm-up call for every new language the moment it's constructed. "Startup" below remains engine construction (model load) time for the first/default language only.
 - Per-item latency is the **median of 3 timed calls** after warm-up (`_median_latency` in `run_benchmark.py`).
-- Memory is process RSS (via `psutil`), sampled at three points: baseline (before importing the vendor package), after model load, and peak (after all recognition calls). Deltas isolate the engine's own footprint from the Python interpreter's baseline.
+- Memory is process RSS (via `psutil`). "Peak" is a **running maximum** sampled after every model load and after every per-item call (`_PeakRss` in `run_benchmark.py`), not a single snapshot taken after the run finished. The earlier pass took one RSS reading at the very end and reported it as "peak memory" — that is not what peak means (the true high point could occur mid-run and be partly reclaimed by GC before a final reading), so it has been corrected to an actual running maximum. Baseline is taken before importing the vendor package; deltas isolate the engine's own footprint from the Python interpreter's baseline.
 - CER (Character Error Rate) = Levenshtein edit distance / length of the reference string (`benchmarks/ocr_runtime_selection/cer.py`), verified against the textbook "kitten"→"sitting" example (distance 3, CER 0.5) before use. No external ground-truth tool is involved — the reference strings are the literal constants in `corpus.py`, independently readable.
 
 ## Results
@@ -51,15 +51,15 @@ RapidOCR's Japanese failure is not a close call: it recognized `"今良天気。
 
 | Metric | RapidOCR | PaddleOCR |
 |---|---|---|
-| Startup (engine construction) | 1.00 s | 4.42 s |
-| Per-item latency (median of 3, warm) | 3.0–3.2 s | 2.3–2.8 s |
-| Memory after model load (delta from baseline) | +79.6 MB | +372.3 MB (one language) |
-| Peak memory (after all 6 items, 3 languages loaded for PaddleOCR) | 130.0 MB | 884.4 MB |
+| Startup (default-language engine construction) | 1.60 s | 4.03 s (1.67 s `en` + 0.69 s `ch` + 0.71 s `japan`, each measured on first use — see `startup_seconds_by_language` in the raw JSON) |
+| Per-item latency (median of 3, warm — now genuinely per-language-warm, see Methodology) | 1.15–1.38 s | 0.80–1.04 s |
+| Memory after model load (delta from baseline) | +68.9 MB | +389.3 MB (one language) |
+| Peak memory (running max across the whole run — see Methodology) | 114.3 MB | 791.8 MB |
 | Installed package size (site-packages) | ~212 MB (rapidocr_onnxruntime 16 MB + onnxruntime 45 MB + opencv-python 151 MB) | ~413 MB (paddle 393 MB + paddleocr 1.4 MB + paddlex 19 MB) |
 | Downloaded model weights | bundled in the pip package (no separate download) | ~177 MB, auto-downloaded on first use to `~/.paddlex/official_models` |
 | **Total on-disk footprint** | **~212 MB** | **~590 MB** |
 
-Absolute per-item latency numbers (3+ seconds for a ~300×50px crop) are high in both cases relative to what production selective-OCR would need — this reflects the unthrottled developer workstation and default (non-batched, non-tuned) inference settings, not a hard runtime limit. Milestone 4 (Selective OCR Evidence Pipeline) will need its own throughput-focused evaluation once real ROI-crop batching exists; this benchmark's job is only to pick the V1 default runtime.
+The per-item latency numbers above supersede an earlier pass that reported 3.0–3.2 s (RapidOCR) and 2.3–2.8 s (PaddleOCR): that pass warmed up only PaddleOCR's default language before timing, so the Chinese/Japanese rows' "warm" latency silently included a real first-call cost (see Methodology). The corrected numbers are lower for both engines and PaddleOCR's advantage over RapidOCR is now larger, not smaller — the corrective did not change the runtime decision. Absolute per-item latency (under 1.5 seconds for a ~300×50px crop, even after the fix) is still high relative to what production selective-OCR throughput would need — this reflects the unthrottled developer workstation and default (non-batched, non-tuned) inference settings, not a hard runtime limit. Milestone 4 (Selective OCR Evidence Pipeline) will need its own throughput-focused evaluation once real ROI-crop batching exists; this benchmark's job is only to pick the V1 default runtime.
 
 ### Multilingual support
 
@@ -82,9 +82,9 @@ Absolute per-item latency numbers (3+ seconds for a ~300×50px crop) are high in
 | Criterion | RapidOCR | PaddleOCR | Winner |
 |---|---|---|---|
 | Text quality (CJK, incl. Japanese) | Fails Japanese (CER 0.64) | Perfect on all 6 items | **PaddleOCR** |
-| Startup time | 1.0 s | 4.4 s | RapidOCR |
-| Steady-state latency | 3.0–3.2 s | 2.3–2.8 s | PaddleOCR |
-| Memory footprint | ~80–130 MB | ~372–884 MB | RapidOCR |
+| Startup time | 1.6 s | 4.0 s | RapidOCR |
+| Steady-state latency | 1.15–1.38 s | 0.80–1.04 s | PaddleOCR |
+| Memory footprint | ~69–114 MB | ~389–792 MB | RapidOCR |
 | Package/model size | ~212 MB | ~590 MB | RapidOCR |
 | Multilingual support | One model, missing Japanese | Explicit per-language, needs extra memory | PaddleOCR |
 | API/error behavior | Clean, no issues | Real crash requiring a documented workaround | RapidOCR |

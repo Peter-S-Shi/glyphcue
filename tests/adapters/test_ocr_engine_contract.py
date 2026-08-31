@@ -26,6 +26,25 @@ def test_recognize_returns_normalized_text_regions_not_vendor_objects():
     engine.shutdown()
 
 
+def test_recognize_can_carry_vendor_neutral_geometry():
+    geometry = ((0.0, 0.0), (10.0, 0.0), (10.0, 5.0), (0.0, 5.0))
+    engine = FakeOcrEngine(regions=[OcrTextRegion(text="hi", confidence=0.9, geometry=geometry)])
+    engine.initialize()
+
+    result = engine.recognize(image=object())
+
+    assert result[0].geometry == geometry
+
+
+def test_geometry_defaults_to_none_when_an_engine_does_not_report_it():
+    engine = FakeOcrEngine(regions=[OcrTextRegion(text="hi", confidence=0.9)])
+    engine.initialize()
+
+    result = engine.recognize(image=object())
+
+    assert result[0].geometry is None
+
+
 def test_supported_languages_returns_a_tuple_of_codes():
     engine = FakeOcrEngine(languages=("en", "ja", "zh"))
 

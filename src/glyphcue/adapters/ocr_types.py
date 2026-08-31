@@ -16,6 +16,16 @@ class OcrTextRegion:
     text: str
     confidence: float
     language: str | None = None
+    geometry: tuple[tuple[float, float], ...] | None = None
+    """Vendor-neutral region polygon, or None if the engine reports none.
+
+    When present: a polygon of (x, y) pixel-coordinate points in the same
+    coordinate space as the image passed to recognize() (origin top-left,
+    y increasing downward -- standard image-array indexing), in the point
+    order the engine reported them. No vendor box/polygon type ever
+    crosses the OcrEngine boundary -- only this plain tuple-of-tuples
+    does.
+    """
 
 
 @dataclass(frozen=True)
@@ -26,6 +36,14 @@ class OcrRuntimeInfo:
     engine_name: str
     version: str
     backend: str
+    backend_version: str | None = None
+    """Version of the underlying compute backend/runtime library (e.g.
+    PaddlePaddle's own version), kept distinct from `version` (the OCR
+    package's own version) because compatibility issues can be specific
+    to one (package, backend) version pairing -- see
+    docs/adr/0001-ocr-runtime-selection.md for a real example. None if
+    the engine cannot identify a separate backend version.
+    """
 
 
 class OcrError(Exception):
