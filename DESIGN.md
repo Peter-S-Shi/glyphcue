@@ -3,7 +3,7 @@
 **Document type:** Production-facing UI / UX design authority  
 **Project:** GlyphCue  
 **Repository:** `Peter-S-Shi/glyphcue`  
-**Lifecycle phase:** Production Development in progress → Milestone 2 complete, Milestone 3 next  
+**Lifecycle phase:** Production Development in progress → Milestone 3 complete, Milestone 4 next  
 **Status:** Authoritative V1 design specification  
 **Last updated:** 2026-08-30
 
@@ -2052,11 +2052,10 @@ This document must not resolve architecture questions that remain open.
 
 Examples:
 
-- OCR runtime (remains benchmark-dependent, see `ROADMAP.md` §3/M3);
 - actual consensus algorithm;
 - actual CJK segmentation strategy.
 
-Multilingual timing schema and the desktop technology stack are no longer open — both are frozen for V1 (see §13 above and `ROADMAP.md` §3/§4). This document still must not encode implementation details of consensus/segmentation/OCR runtime choices that remain genuinely open.
+Multilingual timing schema, the desktop technology stack, and the OCR runtime are no longer open — all are frozen for V1 (see §13 above, `ROADMAP.md` §3/§4, and `docs/adr/0001-ocr-runtime-selection.md` for the OCR runtime decision). This document still must not encode implementation details of the consensus/segmentation choices that remain genuinely open.
 
 If implementation needs an open decision resolved, escalate it to architecture / engineering review.
 

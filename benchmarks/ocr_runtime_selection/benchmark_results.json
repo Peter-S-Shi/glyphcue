@@ -1,0 +1,92 @@
+{
+  "rapidocr": {
+    "engine_name": "RapidOCR (onnxruntime backend)",
+    "startup_seconds": 1.5517,
+    "memory_baseline_mb": 34.7,
+    "memory_after_load_mb": 104.7,
+    "memory_after_load_delta_mb": 70.0,
+    "max_observed_rss_mb": 116.1,
+    "per_item": {
+      "english_clean": {
+        "latency_seconds": 3.0237,
+        "recognized_text": "The quick brown fox jumps over the lazy dog.",
+        "cer": 0.0
+      },
+      "chinese_clean": {
+        "latency_seconds": 2.9486,
+        "recognized_text": "今天天气非常好，我们一起去公园散步。",
+        "cer": 0.0
+      },
+      "japanese_clean": {
+        "latency_seconds": 2.9717,
+        "recognized_text": "今良天気。",
+        "cer": 0.6429
+      },
+      "bilingual_crop": {
+        "latency_seconds": 3.1232,
+        "recognized_text": "Hello, welcome!你好，欢迎！",
+        "cer": 0.0
+      },
+      "low_quality_crop": {
+        "latency_seconds": 3.0077,
+        "recognized_text": "Please stand byfor further instructions.",
+        "cer": 0.0244
+      },
+      "subtitle_style_representative": {
+        "latency_seconds": 3.0259,
+        "recognized_text": "This is a burned-in subtitle example.",
+        "cer": 0.0
+      }
+    }
+  },
+  "paddleocr": {
+    "engine_name": "PaddleOCR (PaddlePaddle backend)",
+    "startup_seconds": 4.5732,
+    "startup_seconds_by_language": {
+      "en": 2.5838,
+      "ch": 1.3273,
+      "japan": 1.3538
+    },
+    "memory_baseline_mb": 80.7,
+    "memory_after_load_mb": 448.6,
+    "memory_after_load_delta_mb": 367.9,
+    "max_observed_rss_mb": 789.3,
+    "languages_requiring_separate_model_load": [
+      "ch",
+      "en",
+      "japan"
+    ],
+    "per_item": {
+      "english_clean": {
+        "latency_seconds": 2.3823,
+        "recognized_text": "The quick brown fox jumps over the lazy dog.",
+        "cer": 0.0
+      },
+      "chinese_clean": {
+        "latency_seconds": 2.9378,
+        "recognized_text": "今天天气非常好，我们一起去公园散步。",
+        "cer": 0.0
+      },
+      "japanese_clean": {
+        "latency_seconds": 2.3365,
+        "recognized_text": "今日はとても良い天気ですね。",
+        "cer": 0.0
+      },
+      "bilingual_crop": {
+        "latency_seconds": 2.5448,
+        "recognized_text": "Hello, welcome!你好，欢迎！",
+        "cer": 0.0
+      },
+      "low_quality_crop": {
+        "latency_seconds": 2.4699,
+        "recognized_text": "Please stand by for further instructions.",
+        "cer": 0.0
+      },
+      "subtitle_style_representative": {
+        "latency_seconds": 2.6677,
+        "recognized_text": "This is a burned-in subtitle example.",
+        "cer": 0.0
+      }
+    }
+  }
+}

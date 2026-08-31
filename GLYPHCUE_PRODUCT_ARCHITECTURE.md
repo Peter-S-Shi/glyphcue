@@ -3,7 +3,7 @@
 **Document type:** Authoritative post-Grill product architecture baseline  
 **Project:** GlyphCue  
 **Repository:** `Peter-S-Shi/glyphcue`  
-**Lifecycle phase:** Production Development in progress → Milestone 2 complete, Milestone 3 next  
+**Lifecycle phase:** Production Development in progress → Milestone 3 complete, Milestone 4 next  
 **Status:** Authoritative V1 product architecture for production development  
 **Last updated:** 2026-08-30
 
@@ -1233,8 +1233,11 @@ Milestone 1 — Thin Path B Vertical Slice
 Milestone 2 — Path A Media & Job Orchestration
 ✓ complete
 
+Milestone 3 — OCR Adapter & Runtime Selection
+✓ complete
+
 Production Development
-IN PROGRESS — Milestone 3 (OCR Adapter & Runtime Selection) next
+IN PROGRESS — Milestone 4 (Selective OCR Evidence Pipeline) next
 ```
 
 ---
@@ -1243,13 +1246,7 @@ IN PROGRESS — Milestone 3 (OCR Adapter & Runtime Selection) next
 
 Only unresolved issues that can materially affect production architecture should remain here.
 
-O1 (multilingual timing semantics), O2 (final desktop technology stack), and O4 (final UI / interaction model) are closed — see §12, `ROADMAP.md` §3, and `DESIGN.md` respectively. O3 and O5 remain genuinely open below.
-
-## O3 — OCR runtime selection
-
-The product architecture assumes mature pretrained OCR integration.
-
-The exact engine / runtime should be selected through practical engineering evidence, not preference alone.
+O1 (multilingual timing semantics), O2 (final desktop technology stack), O3 (OCR runtime selection), and O4 (final UI / interaction model) are closed — see §12, `ROADMAP.md` §3, `docs/adr/0001-ocr-runtime-selection.md`, and `DESIGN.md` respectively. O5 remains genuinely open below.
 
 ## O5 — Final public-facing identity wording
 

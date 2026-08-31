@@ -1,26 +1,53 @@
 from __future__ import annotations
 
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
-from glyphcue.domain.observation import Observation
+from glyphcue.adapters.ocr_types import OcrRuntimeInfo, OcrTextRegion
 
 
+@runtime_checkable
 class OcrEngine(Protocol):
     """Boundary isolating a specific OCR runtime (e.g. RapidOCR, PaddleOCR).
 
-    Exact runtime/model selection remains benchmark-dependent (see
-    ROADMAP.md Milestone 3) and is not decided by this contract. Vendor
-    result objects must never cross this boundary — only Observation.
+    Frozen for V1 (ROADMAP.md Milestone 3). Exact runtime/model selection
+    is decided by benchmark evidence, not this contract (see
+    docs/adr/0001-ocr-runtime-selection.md). No vendor object or vendor
+    exception type may ever cross this boundary: recognize() returns
+    only OcrTextRegion, and initialize()/recognize() raise only
+    OcrError subclasses (see ocr_types.py).
     """
 
     def initialize(self) -> None:
-        """Load models / warm up the runtime."""
+        """Load models / warm up the runtime.
+
+        Raises OcrInitializationError (never a vendor exception) on
+        failure.
+        """
         ...
 
-    def recognize(self, image: object) -> list[Observation]:
-        """Run recognition on a single frame/ROI image and return Observations."""
+    def recognize(self, image: object) -> list[OcrTextRegion]:
+        """Run recognition on a single frame/ROI image.
+
+        Raises OcrRecognitionError (never a vendor exception) on
+        failure.
+        """
+        ...
+
+    def supported_languages(self) -> tuple[str, ...]:
+        """GlyphCue canonical language/script codes this implementation
+        can be configured to recognize (e.g. via its constructor) --
+        not the subset already loaded/initialized by this particular
+        instance. A constructed-for-"en" instance still reports every
+        code the implementation supports, since recognize() results
+        only ever reflect the language it was constructed for; callers
+        needing another language construct a separate instance for it.
+        """
+        ...
+
+    def runtime_info(self) -> OcrRuntimeInfo:
+        """Identify the concrete runtime/model/backend in use."""
         ...
 
     def shutdown(self) -> None:
-        """Release runtime resources."""
+        """Release runtime resources. Safe to call more than once."""
         ...
