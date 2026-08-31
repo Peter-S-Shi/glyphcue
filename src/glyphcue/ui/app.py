@@ -33,9 +33,17 @@ def create_path_a_app(db_path: Path = DEFAULT_DB_PATH) -> tuple[QApplication, Pa
     return app, pane
 
 
-def main() -> int:
-    app, window = create_app()
-    window.show()
+def main(db_path: Path | None = None) -> int:
+    """Production entrypoint: the M2 minimal Path A workflow.
+
+    `db_path` defaults to the real user database (DEFAULT_DB_PATH),
+    resolved at call time rather than baked in as a mutable default
+    argument, so it can be overridden (e.g. in tests) without relying on
+    monkeypatching a module-level constant that a default argument would
+    have already captured at import time.
+    """
+    app, pane = create_path_a_app(db_path=db_path or DEFAULT_DB_PATH)
+    pane.window.show()
     return app.exec()
 
 
