@@ -31,9 +31,10 @@ STATE_TRIGGER_DETAIL_KEY = "state_trigger"
 """Provenance.detail key carrying why this OCR call ran (see
 ChangeTriggeredOcrPolicy.last_trigger_reason: "first_frame",
 "change_detected", or "periodic_confirmation"). Milestone 5 reads this
-as real evidence for genuine state-change boundaries, instead of
-inferring them from OCR text similarity alone. Absent (key not present)
-for policies that don't expose a reason, e.g. NaiveDenseOcrPolicy."""
+as candidate evidence when reconstructing state-change boundaries,
+instead of inferring them from OCR text similarity alone. Absent (key
+not present) for policies that don't expose a reason, e.g.
+NaiveDenseOcrPolicy."""
 
 
 def build_ocr_evidence_job(

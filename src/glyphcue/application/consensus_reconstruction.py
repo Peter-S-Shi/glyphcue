@@ -408,7 +408,7 @@ def reconstruct_cues_with_consensus(
        state-change evidence when available (never guessed from text
        alone), with character-level similarity (CJK-safe) as the
        fallback signal when no such evidence exists. Blank-text readings
-       (M4's confirmed-no-text marker) close the current run without
+       (M4's OCR-empty candidate evidence) close the current run without
        becoming a Cue themselves.
     3. Within each run, pick the majority-vote text (and language) as
        the stable reading, keeping every supporting observation's id
