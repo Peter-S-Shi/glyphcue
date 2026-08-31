@@ -264,6 +264,52 @@ def test_observation_provenance_preserves_required_evidence_fields(
     assert observation.provenance.detail["backend_version"] == "9.9"
     assert observation.frame_reference is not None
     assert str(changing_subtitle_video) in observation.frame_reference
+    # The invocation policy's own trigger reason is preserved as real
+    # state-transition evidence for M5, not discarded.
+    assert observation.provenance.detail["state_trigger"] == "first_frame"
+
+
+def test_a_detected_change_is_stamped_as_the_state_trigger(qapp_guard, tmp_path, changing_subtitle_video):
+    db_path = _new_db_path(tmp_path)
+    job = build_ocr_evidence_job(
+        changing_subtitle_video,
+        ProcessingRange(),
+        _FULL_FRAME_ROI,
+        _fake_engine(),
+        db_path,
+        PipelineMetrics(),
+        _new_run_id(),
+    )
+
+    _run(job)
+
+    observations = sorted(_read_repository(db_path).list_all(), key=lambda o: o.start_time)
+    # frame at 0.3s is a real gray-50 -> gray-200 pixel change.
+    changed = next(o for o in observations if o.start_time == pytest.approx(0.3))
+    assert changed.provenance.detail["state_trigger"] == "change_detected"
+
+
+def test_no_readable_text_produces_a_blank_marker_observation(qapp_guard, tmp_path, changing_subtitle_video):
+    # FakeOcrEngine() with no configured regions -> recognize() always
+    # returns [], simulating an OCR call that found no readable text.
+    db_path = _new_db_path(tmp_path)
+    engine = FakeOcrEngine()
+    job = build_ocr_evidence_job(
+        changing_subtitle_video,
+        ProcessingRange(),
+        _FULL_FRAME_ROI,
+        engine,
+        db_path,
+        PipelineMetrics(),
+        _new_run_id(),
+    )
+
+    _run(job)
+
+    observations = _read_repository(db_path).list_all()
+    # At least the first-frame OCR call produced a blank marker instead
+    # of being silently skipped.
+    assert any(observation.text == "" for observation in observations)
 
 
 def test_instrumentation_counts_match_the_real_execution_path(

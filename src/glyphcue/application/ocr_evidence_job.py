@@ -27,6 +27,15 @@ span marking "this is an instant," not a measured/estimated duration.
 Real duration/spanning across neighboring observations is Milestone 5's
 job (multi-frame consensus / Cue reconstruction), not this one's."""
 
+STATE_TRIGGER_DETAIL_KEY = "state_trigger"
+"""Provenance.detail key carrying why this OCR call ran (see
+ChangeTriggeredOcrPolicy.last_trigger_reason: "first_frame",
+"change_detected", or "periodic_confirmation"). Milestone 5 reads this
+as candidate evidence when reconstructing state-change boundaries,
+instead of inferring them from OCR text similarity alone. Absent (key
+not present) for policies that don't expose a reason, e.g.
+NaiveDenseOcrPolicy."""
+
 
 def build_ocr_evidence_job(
     path: Path,
@@ -117,27 +126,61 @@ def build_ocr_evidence_job(
                     metrics.ocr_calls += 1
                     regions = ocr_engine.recognize(roi_frame)
                     runtime_info = ocr_engine.runtime_info()
-                    for region in regions:
-                        if not region.text:
-                            continue
+                    trigger_reason = getattr(active_policy, "last_trigger_reason", None)
+                    detail = {
+                        "engine_version": runtime_info.version,
+                        "backend": runtime_info.backend,
+                        "backend_version": runtime_info.backend_version or "",
+                    }
+                    if trigger_reason is not None:
+                        detail[STATE_TRIGGER_DETAIL_KEY] = trigger_reason
+
+                    non_empty_regions = [region for region in regions if region.text]
+                    if non_empty_regions:
+                        for region in non_empty_regions:
+                            observation = Observation(
+                                id=str(uuid.uuid4()),
+                                text=region.text,
+                                start_time=timestamp,
+                                end_time=timestamp + _INSTANT_SPAN_SECONDS,
+                                provenance=Provenance(
+                                    kind=ProvenanceKind.OCR_ENGINE,
+                                    source=runtime_info.engine_name,
+                                    detail=detail,
+                                ),
+                                language=region.language,
+                                confidence=region.confidence,
+                                roi=roi,
+                                geometry=region.geometry,
+                                frame_reference=f"{path}@{timestamp:.6f}s",
+                            )
+                            observation_repository.add(observation, evidence_run_id)
+                            metrics.observations_created += 1
+                    else:
+                        # OCR-empty candidate: the engine found no
+                        # readable text at all on this OCR call -- this
+                        # is only candidate evidence that the subtitle
+                        # went blank, not a confirmed fact (Milestone 5
+                        # decides confirmation, not M4). Persisting an
+                        # empty-text marker (rather than silently doing
+                        # nothing) gives Milestone 5 real evidence to
+                        # work with in the first place, as opposed to
+                        # "no OCR call happened to run" -- the two are
+                        # otherwise indistinguishable.
                         observation = Observation(
                             id=str(uuid.uuid4()),
-                            text=region.text,
+                            text="",
                             start_time=timestamp,
                             end_time=timestamp + _INSTANT_SPAN_SECONDS,
                             provenance=Provenance(
                                 kind=ProvenanceKind.OCR_ENGINE,
                                 source=runtime_info.engine_name,
-                                detail={
-                                    "engine_version": runtime_info.version,
-                                    "backend": runtime_info.backend,
-                                    "backend_version": runtime_info.backend_version or "",
-                                },
+                                detail=detail,
                             ),
-                            language=region.language,
-                            confidence=region.confidence,
+                            language=None,
+                            confidence=None,
                             roi=roi,
-                            geometry=region.geometry,
+                            geometry=None,
                             frame_reference=f"{path}@{timestamp:.6f}s",
                         )
                         observation_repository.add(observation, evidence_run_id)
