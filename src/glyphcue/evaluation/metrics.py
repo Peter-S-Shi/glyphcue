@@ -145,3 +145,17 @@ def multilingual_layer_assignment_errors(
         else:
             missing.append(language)
     return {"missing": missing, "wrong_assignment": wrong_assignment}
+
+
+def recall_at_top_fraction(
+    ranked_ids: Sequence[str], target_ids: set[str] | frozenset[str], fraction: float
+) -> float:
+    """Of `target_ids`, the fraction that fall within the top
+    `fraction` of `ranked_ids` (e.g. the top 20% of Cues by Review
+    Priority score). Generic over what `target_ids` means -- the same
+    Cues overall, or one observed failure class among them."""
+    if not target_ids:
+        return 0.0
+    top_n = max(1, round(len(ranked_ids) * fraction))
+    reviewed = set(ranked_ids[:top_n])
+    return len(reviewed & target_ids) / len(target_ids)

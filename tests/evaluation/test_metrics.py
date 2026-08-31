@@ -11,6 +11,7 @@ from glyphcue.evaluation.metrics import (
     character_error_rate,
     cue_recovery_precision_recall,
     multilingual_layer_assignment_errors,
+    recall_at_top_fraction,
     timing_error,
     word_error_rate,
 )
@@ -120,3 +121,16 @@ def test_multilingual_layer_assignment_errors_reports_wrong_layer_assignment():
 
     assert errors["missing"] == []
     assert errors["wrong_assignment"] == ["ja"]
+
+
+def test_recall_at_top_fraction_counts_targets_within_the_top_slice():
+    # 10 ranked ids, top 30% = top 3 ("a", "b", "c"). Of the 2 target
+    # ids, only "b" falls in that slice.
+    ranked_ids = ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j"]
+    target_ids = {"b", "h"}
+
+    assert recall_at_top_fraction(ranked_ids, target_ids, fraction=0.3) == pytest.approx(0.5)
+
+
+def test_recall_at_top_fraction_with_no_targets_is_zero():
+    assert recall_at_top_fraction(["a", "b", "c"], set(), fraction=0.5) == 0.0

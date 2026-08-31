@@ -116,6 +116,21 @@ The rewritten methodology removes that leak entirely:
 
 **Scope, stated precisely**: this evaluates the *ranking mechanism*, in a specific synthetic multi-reading-per-Cue scenario, against ground truth actually run through the real reconstruction seam — not a claim about real-world OCR/subtitle error rates. It is Path A/OCR-shaped (`ConsensusDiagnostics`-based) — Path B's evaluation is not attempted since Path B currently has no comparable diagnostics to rank by.
 
+### Milestone 10 addendum: failure-class breakdown (same corpus, ground truth, and frozen scoring — no re-tuning)
+
+The overall mixed result above averages over every wrong Cue together. Splitting the 40 wrong Cues by which real `ReviewPriority` component(s) fired for them (`classify_review_priority_failure`, `benchmarks/review_priority/run_evaluation.py`) shows the mixed result is not uniform:
+
+| Failure class | Count | Top-10% recall vs. random | Top-20% recall vs. random | Top-30% recall vs. random |
+|---|---|---|---|---|
+| `low_confidence_and_other_signal` (both `ocr_confidence` and disagreement fired) | 34/40 | 8.8% vs 9.6% — No | 23.5% vs 19.7% — **Yes** | 35.3% vs 32.4% — **Yes** |
+| `low_confidence_only` (disagreement never fired) | 6/40 | 0% vs 10.8% — No | 0% vs 20.0% — No | 0% vs 28.3% — No |
+
+`no_signal` (zero components — a Cue the heuristic had nothing at all to flag) never occurred among this run's 40 wrong Cues.
+
+This sharpens, rather than overturns, the hypothesis already recorded above: the large majority class (34/40) genuinely does beat random at 2 of 3 cuts — the ranking mechanism is doing real work when disagreement co-occurs with low confidence, consistent with `had_disagreement` firing whenever the vote sees ANY noise, as already diagnosed. The smaller `low_confidence_only` class is a real, specific, structural miss: when 6 identically-noisy-but-not-disagreeing readings still land the reconstruction on the wrong answer, Review Priority's only remaining signal is `ocr_confidence` alone, and in this corpus that signal alone never ranks those Cues above random. **This is reported as a genuine negative finding for this specific slice, not tuned away** — per the same M7 scope discipline, no new signal (e.g. `agreement_ratio`) is wired in to fix it here.
+
+Raw per-class output: `top_fraction_recall_by_failure_class` and `missed_failure_classes` in `benchmarks/review_priority/evaluation_results.json`.
+
 ## Deliberately out of scope
 
 Per ROADMAP M7 and DESIGN.md section 25 (`DEFERRED`): batch approval, advanced styling, comprehensive format repair, professional retiming, and Path B linked video are not attempted here. Durable cross-restart QA persistence remains a documented, minimal-migration follow-up. Wiring `agreement_ratio` (or any other new signal) into Review Priority, and M8 (Path B CJK / rolling normalization deepening), are both explicitly deferred, not started here.
