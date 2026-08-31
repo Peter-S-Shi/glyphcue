@@ -40,3 +40,25 @@ def test_irregular_timing_span_case_verifies_the_real_merged_span():
     # actually check the real (start_time, end_time), not just text.
     case = next(c for c in _CASES if c.name == "english_irregular_timing_span_covers_latest_end")
     assert case.expected_spans == ((0.0, 5.0),)
+
+
+def test_roadmap_metrics_breakdown_matches_the_hand_tagged_corpus():
+    # Milestone 10: locks the count of cases hand-tagged for each of
+    # ROADMAP.md section 17's three named Path B metrics, so a case
+    # added to _CASES without an intentional roadmap_metrics tag (or a
+    # tag silently dropped) is caught here, the same way the other
+    # tests in this file catch corpus/evaluation drift.
+    duplicate_removal_cases = [c for c in _CASES if "duplicate_removal" in c.roadmap_metrics]
+    segmentation_cases = [c for c in _CASES if "segmentation" in c.roadmap_metrics]
+    timing_cases = [c for c in _CASES if "timing_normalization" in c.roadmap_metrics]
+    assert len(duplicate_removal_cases) == 2
+    assert len(segmentation_cases) == 14
+    assert len(timing_cases) == 3
+
+    results = run()
+    assert results["roadmap_metrics"]["duplicate_removal"] == {"pass": 2, "fail": 0}
+    assert results["roadmap_metrics"]["segmentation"] == {"pass": 14, "fail": 0}
+    assert results["roadmap_metrics"]["timing_normalization"]["pass"] == 3
+    assert results["roadmap_metrics"]["timing_normalization"]["fail"] == 0
+    assert results["roadmap_metrics"]["timing_normalization"]["mean_start_error_seconds"] == 0.0
+    assert results["roadmap_metrics"]["timing_normalization"]["mean_end_error_seconds"] == 0.0

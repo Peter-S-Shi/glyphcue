@@ -10,6 +10,7 @@ import pytest
 from glyphcue.evaluation.metrics import (
     character_error_rate,
     cue_recovery_precision_recall,
+    group_pass_fail_by_tag,
     multilingual_layer_assignment_errors,
     recall_at_top_fraction,
     timing_error,
@@ -134,3 +135,24 @@ def test_recall_at_top_fraction_counts_targets_within_the_top_slice():
 
 def test_recall_at_top_fraction_with_no_targets_is_zero():
     assert recall_at_top_fraction(["a", "b", "c"], set(), fraction=0.5) == 0.0
+
+
+def test_group_pass_fail_by_tag_counts_each_tag_independently():
+    # A case can carry more than one tag (e.g. a case that is evidence
+    # for both segmentation and timing normalization at once) -- each
+    # (tag, passed) pair contributes to that tag's own count.
+    results = [
+        ("segmentation", True),
+        ("segmentation", False),
+        ("timing_normalization", True),
+        ("segmentation", True),
+    ]
+
+    assert group_pass_fail_by_tag(results) == {
+        "segmentation": {"pass": 2, "fail": 1},
+        "timing_normalization": {"pass": 1, "fail": 0},
+    }
+
+
+def test_group_pass_fail_by_tag_with_no_results_is_empty():
+    assert group_pass_fail_by_tag([]) == {}

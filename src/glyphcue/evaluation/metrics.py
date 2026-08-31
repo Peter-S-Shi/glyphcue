@@ -159,3 +159,16 @@ def recall_at_top_fraction(
     top_n = max(1, round(len(ranked_ids) * fraction))
     reviewed = set(ranked_ids[:top_n])
     return len(reviewed & target_ids) / len(target_ids)
+
+
+def group_pass_fail_by_tag(results: Sequence[tuple[str, bool]]) -> dict[str, dict[str, int]]:
+    """Groups (tag, passed) pairs into independent per-tag pass/fail
+    counts. One case can contribute to more than one tag (e.g. a fixture
+    that is evidence for both segmentation and timing normalization) --
+    each pair is counted under its own tag, not forced into a single
+    bucket."""
+    counts: dict[str, dict[str, int]] = {}
+    for tag, passed in results:
+        bucket = counts.setdefault(tag, {"pass": 0, "fail": 0})
+        bucket["pass" if passed else "fail"] += 1
+    return counts

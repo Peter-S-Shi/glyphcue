@@ -80,6 +80,18 @@ Two artifact-truth corrections folded into this count: the corpus was missing th
 
 **Over-merge risk** (the most dangerous failure mode -- actively merging two genuinely unrelated captions) is exactly what the `over_merge_guard` category measures, now covering both English and CJK, both temporally-overlapping-but-textually-thin and non-overlapping-but-textually-coincidental variants, plus the far-distant-identical-text case. **Under-merge risk** (a genuine rolling caption failing to merge) is what `rolling_reconstruction`'s pass rate measures. **Out-of-order** and **malformed/recoverable import** are reported as two separate, honestly-scoped categories, not conflated under one "malformed_safe" label.
 
+### Milestone 10 addendum: independent duplicate-removal / segmentation / timing-normalization metrics
+
+The category breakdown above answers "did this specific fixture reconstruct correctly," but ROADMAP.md section 17 names three independent Path B metrics, and `per_category` blends them (e.g. `rolling_reconstruction` mixes growth/sliding-merge cases with duplicate-collapse cases). Each of the 17 cases is now also hand-tagged with which of the three it is real evidence for -- no algorithm change, no new cases, same `reconstruct_cues_with_diagnostics` call:
+
+| ROADMAP metric | Cases tagged | Result |
+|---|---|---|
+| Duplicate-removal correctness (`repetition_collapsed` cases) | 2 | 2/2 pass |
+| Segmentation correctness (merge/no-merge/ordering decisions: rolling growth, sliding overlap, over-merge guard, out-of-order) | 14 | 14/14 pass |
+| Timing normalization (cases with an asserted `expected_spans`) | 3 | 3/3 pass, mean start/end error 0.0s |
+
+A case can be evidence for more than one metric (e.g. the irregular-timing-span case is tagged both `segmentation` and `timing_normalization`); a case that is evidence for none of the three (malformed-import recovery) is left untagged rather than forced into an ill-fitting bucket, per M10's "don't force a number everywhere." The 0.0s timing error is expected, not a generalization claim: these are hand-authored fixtures with exact-match ground truth, the same `scope_note` caveat that already applies to the 100% pass rate above. Raw output: `roadmap_metrics` in `benchmarks/path_b_normalization/evaluation_results.json`; regression-locked in `tests/application/test_path_b_normalization_evaluation.py::test_roadmap_metrics_breakdown_matches_the_hand_tagged_corpus`.
+
 ## Clean-caption preservation and non-destructive export (unchanged contracts)
 
 Normal, non-overlapping captions produce 1:1 Cues with unchanged text/timing and no diagnostic flags at all (verified for English and CJK). Export continues through `Pysubs2SubtitleFormatAdapter` (atomic temp-file-then-rename, source-overwrite refusal, `REJECTED`-Cue exclusion from M7) -- nothing about the non-destructive contract changed.
