@@ -226,3 +226,63 @@ def test_review_signals_from_multilingual_diagnostics_counts_missing_and_ambiguo
 
     assert signals.missing_language_count == 1
     assert signals.ambiguous_language_count == 1
+
+
+def test_disagreement_component_uses_a_path_specific_explanation_when_provided():
+    # Reusing the "cross_frame_disagreement" component for a Path B Cue
+    # must not carry Path A's OCR-majority-vote wording -- that would
+    # be a genuinely FALSE explanation for a Path B Cue, which has no
+    # OCR frames or majority vote at all. When a caller supplies a
+    # path-specific (name, explanation) pair, it must be used verbatim.
+    signals = ReviewSignals(
+        cue_id="c1", mean_ocr_confidence=None, had_disagreement=True,
+        missing_language_count=0, ambiguous_language_count=0,
+        disagreement_detail=("segmentation_ambiguous", "Only a coincidental one-character overlap."),
+    )
+
+    priority = compute_review_priority(signals)
+
+    assert len(priority.components) == 1
+    assert priority.components[0].name == "segmentation_ambiguous"
+    assert priority.components[0].explanation == "Only a coincidental one-character overlap."
+
+
+def test_disagreement_component_defaults_to_the_original_cross_frame_wording():
+    signals = ReviewSignals(
+        cue_id="c1", mean_ocr_confidence=None, had_disagreement=True,
+        missing_language_count=0, ambiguous_language_count=0,
+    )
+
+    priority = compute_review_priority(signals)
+
+    assert priority.components[0].name == "cross_frame_disagreement"
+    assert "majority vote" in priority.components[0].explanation
+
+
+def test_review_signals_from_path_b_diagnostics_flags_only_the_uncertain_cases():
+    from glyphcue.application.review_priority import review_signals_from_path_b_diagnostics
+    from glyphcue.application.reconstruction import PathBDiagnostics
+
+    # A confidently-resolved Cue (rolling growth successfully merged) --
+    # no review flag: M8's whole point is that confidently-restored
+    # content does NOT need a human to double-check it.
+    confident = PathBDiagnostics(
+        cue_id="c1", source_order_issue=False, rolling_growth=True,
+        sliding_overlap=False, repetition_collapsed=False,
+        timing_collision=False, segmentation_ambiguous=False,
+    )
+    confident_signals = review_signals_from_path_b_diagnostics(confident)
+    assert confident_signals.had_disagreement is False
+    assert confident_signals.mean_ocr_confidence is None  # Path B has no OCR confidence concept
+    assert compute_review_priority(confident_signals).level == "None"
+
+    # An uncertain Cue (segmentation ambiguity) -- must surface as a
+    # real review flag.
+    uncertain = PathBDiagnostics(
+        cue_id="c2", source_order_issue=False, rolling_growth=False,
+        sliding_overlap=False, repetition_collapsed=False,
+        timing_collision=False, segmentation_ambiguous=True,
+    )
+    uncertain_signals = review_signals_from_path_b_diagnostics(uncertain)
+    assert uncertain_signals.had_disagreement is True
+    assert compute_review_priority(uncertain_signals).score > 0.0

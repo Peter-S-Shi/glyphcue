@@ -1,0 +1,56 @@
+{
+  "total_cases": 17,
+  "total_pass": 17,
+  "total_fail": 0,
+  "per_category": {
+    "clean_preservation": {
+      "pass": 2,
+      "fail": 0
+    },
+    "rolling_reconstruction": {
+      "pass": 8,
+      "fail": 0
+    },
+    "over_merge_guard": {
+      "pass": 5,
+      "fail": 0
+    },
+    "out_of_order_safe": {
+      "pass": 1,
+      "fail": 0
+    },
+    "malformed_recoverable_import": {
+      "pass": 1,
+      "fail": 0
+    }
+  },
+  "per_language": {
+    "en": {
+      "pass": 11,
+      "fail": 0
+    },
+    "cjk": {
+      "pass": 5,
+      "fail": 0
+    }
+  },
+  "malformed_recoverable_import_detail": {
+    "category": "malformed_recoverable_import",
+    "pass": 1,
+    "fail": 0,
+    "expected_texts": [
+      "First valid line.",
+      "Second valid line."
+    ],
+    "actual_texts": [
+      "First valid line.",
+      "Second valid line."
+    ],
+    "warning_count": 1,
+    "warning_source_indices": [
+      1
+    ]
+  },
+  "failures": [],
+  "scope_note": "This corpus is the same hand-authored, ground-truth fixture matrix the implementation was built against via TDD (a superset of tests/application/test_path_b_diagnostics.py), not a held-out validation set. A 100% pass rate demonstrates these specific, deliberately adversarial edge cases (over-merge risk, irregular timing spans, CJK single-character growth vs. coincidence, malformed per-event import recovery) are each individually verified, not a claim of generalization beyond this fixture corpus."
+}

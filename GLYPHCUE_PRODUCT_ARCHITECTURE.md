@@ -3,7 +3,7 @@
 **Document type:** Authoritative post-Grill product architecture baseline  
 **Project:** GlyphCue  
 **Repository:** `Peter-S-Shi/glyphcue`  
-**Lifecycle phase:** Production Development in progress → Milestone 7 complete, Milestone 8 next  
+**Lifecycle phase:** Production Development in progress → Milestone 8 complete, Milestone 9 next  
 **Status:** Authoritative V1 product architecture for production development  
 **Last updated:** 2026-08-31
 
@@ -1248,8 +1248,11 @@ Milestone 6 — Multilingual Track Group Reconstruction
 Milestone 7 — Reconstruction QA & Review Priority
 ✓ complete
 
+Milestone 8 — Path B Deepening: CJK / Rolling Normalization
+✓ complete
+
 Production Development
-IN PROGRESS — Milestone 8 (Path B Deepening: CJK / Rolling Normalization) next
+IN PROGRESS — Milestone 9 (V1 Product Completion & Feature Freeze) next
 ```
 
 ---

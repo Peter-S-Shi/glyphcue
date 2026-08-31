@@ -5,45 +5,86 @@ from pathlib import Path
 from PySide6.QtWidgets import QLabel, QPushButton, QTextEdit, QVBoxLayout, QWidget
 
 from glyphcue.adapters.pysubs2_subtitle_io import Pysubs2SubtitleFormatAdapter
-from glyphcue.application.review_priority import ReviewPriority
+from glyphcue.application.reconstruction import PathBDiagnostics
+from glyphcue.application.review_priority import (
+    ReviewPriority,
+    compute_review_priority,
+    review_signals_from_path_b_diagnostics,
+)
 from glyphcue.domain.cue import Cue
 from glyphcue.domain.observation import Observation
 from glyphcue.ui.design_tokens import Spacing
 from glyphcue.ui.reconstruction_qa_workspace import ReconstructionQaWorkspace
 
-_NO_PRIORITY_SIGNAL_EXPLANATION = (
-    "Path B (subtitle-file import) reconstruction does not currently produce "
-    "OCR-confidence/disagreement diagnostics the way Path A's OCR pipeline "
-    "does -- Review Priority has no signal to rank this Cue by yet, so it "
-    "shows 'No Review Flags' rather than a fabricated score."
-)
-
 
 def _no_priority_signal(cue_id: str) -> ReviewPriority:
-    """Path B's `reconstruct_cues` (application/reconstruction.py) does
-    not emit per-Cue reconstruction diagnostics the way M5/M6's Path A
-    pipeline does -- there is no real cross-frame disagreement or OCR
-    confidence signal to build a `ReviewSignals` from. Every Path B Cue
-    therefore gets an honest "no signal" priority (`level="None"`)
-    rather than a fabricated score; this is a documented scope
-    boundary, not a silent gap (see docs/qa/reconstruction_qa_review_priority.md)."""
+    """Pre-M8 fallback: without real `PathBDiagnostics` for a Cue (e.g.
+    a caller that hasn't been updated to pass them), there is no signal
+    to rank it by. Every such Cue gets an honest "no signal" priority
+    (`level="None"`) rather than a fabricated score."""
     return ReviewPriority(cue_id=cue_id, score=0.0, level="None", components=())
 
 
-def _consolidation_explanation(cue: Cue | None, observations_by_id: dict[str, Observation]) -> str:
+def _priority_for_cue(cue_id: str, diagnostics_by_cue_id: dict[str, PathBDiagnostics]) -> ReviewPriority:
+    diagnostics = diagnostics_by_cue_id.get(cue_id)
+    if diagnostics is None:
+        return _no_priority_signal(cue_id)
+    return compute_review_priority(review_signals_from_path_b_diagnostics(diagnostics))
+
+
+_NORMALIZATION_KIND_LABELS = (
+    ("source_order_issue", "Source order issue"),
+    ("timing_collision", "Timing collision"),
+    ("segmentation_ambiguous", "Segmentation ambiguous"),
+    ("rolling_growth", "Rolling growth consolidated"),
+    ("sliding_overlap", "Sliding overlap consolidated"),
+    ("repetition_collapsed", "Repetition collapsed"),
+)
+
+
+def _normalization_kind_line(diagnostics: PathBDiagnostics | None) -> str | None:
+    """A plain-language line naming which M8 normalization phenomena
+    this Cue actually went through -- shown regardless of whether any
+    of them raised Review Priority. A confidently-resolved rolling/
+    sliding/repetition Cue stays "No Review Flags" (M8's whole point:
+    content GlyphCue could reliably restore doesn't need a human
+    re-check), but the reviewer must still be able to SEE what actually
+    happened, not just a blank center pane. Reuses the existing
+    consolidation explanation widget -- no second QA UI."""
+    if diagnostics is None:
+        return None
+    kinds = [label for field_name, label in _NORMALIZATION_KIND_LABELS if getattr(diagnostics, field_name)]
+    if not kinds:
+        return None
+    return "Normalization: " + ", ".join(kinds)
+
+
+def _consolidation_explanation(
+    cue: Cue | None,
+    observations_by_id: dict[str, Observation],
+    diagnostics_by_cue_id: dict[str, PathBDiagnostics],
+) -> str:
     """DESIGN.md section 14.2's "Consolidation / Reconstruction
     Explanation": which source observations became this reconstructed
     Cue -- descriptive, not falsely authoritative about an algorithm
-    that is only known by its behavior."""
+    that is only known by its behavior. Also names which M8
+    normalization phenomena (if any) were involved, independent of
+    whether that raised a Review Priority flag."""
     if cue is None:
         return ""
     source_ids = [
         observation_id for layer in cue.language_layers for observation_id in layer.observation_ids
     ]
     if not source_ids:
-        return f"Reconstructed Cue {cue.id} has no recorded source observations."
-    sources = " + ".join(source_ids)
-    return f"Source observations {sources}\n→ Reconstructed Cue {cue.id}"
+        base = f"Reconstructed Cue {cue.id} has no recorded source observations."
+    else:
+        sources = " + ".join(source_ids)
+        base = f"Source observations {sources}\n→ Reconstructed Cue {cue.id}"
+
+    kind_line = _normalization_kind_line(diagnostics_by_cue_id.get(cue.id))
+    if kind_line is None:
+        return base
+    return f"{base}\n{kind_line}"
 
 
 class PathBWorkspace:
@@ -64,11 +105,14 @@ class PathBWorkspace:
         observations_by_id: dict[str, Observation],
         source_path: Path,
         export_destination: Path,
+        diagnostics_by_cue_id: dict[str, PathBDiagnostics] | None = None,
     ) -> None:
         self._source_path = source_path
         self._export_destination = export_destination
         self._observations_by_id = observations_by_id
         self._adapter = Pysubs2SubtitleFormatAdapter()
+        self._diagnostics_by_cue_id = diagnostics_by_cue_id or {}
+        diagnostics_by_cue_id = self._diagnostics_by_cue_id
 
         self.consolidation_view = QTextEdit()
         self.consolidation_view.setReadOnly(True)
@@ -80,7 +124,7 @@ class PathBWorkspace:
         center_layout.addWidget(QLabel("Timed Text Evidence Workspace"))
         center_layout.addWidget(self.consolidation_view)
 
-        priorities = {cue.id: _no_priority_signal(cue.id) for cue in cues}
+        priorities = {cue.id: _priority_for_cue(cue.id, diagnostics_by_cue_id) for cue in cues}
 
         self.qa = ReconstructionQaWorkspace(
             cues,
@@ -110,7 +154,7 @@ class PathBWorkspace:
 
     def _on_active_cue_changed(self, cue: Cue | None) -> None:
         self.consolidation_view.setPlainText(
-            _consolidation_explanation(cue, self._observations_by_id)
+            _consolidation_explanation(cue, self._observations_by_id, self._diagnostics_by_cue_id)
         )
 
     def export(self) -> Path:

@@ -1,6 +1,6 @@
 import pytest
 
-from glyphcue.application.thin_path_b import run_thin_path_b
+from glyphcue.application.thin_path_b import parse_and_reconstruct, run_thin_path_b
 
 _NORMAL_SRT = """1
 00:00:00,000 --> 00:00:02,000
@@ -97,3 +97,33 @@ def test_refuses_to_write_over_the_source_file(tmp_path):
 
     with pytest.raises(ValueError):
         run_thin_path_b(source, destination=source)
+
+
+_SRT_WITH_ONE_INVALID_EVENT = """1
+00:00:00,000 --> 00:00:02,000
+First valid line.
+
+2
+00:00:03,000 --> 00:00:02,500
+Invalid inverted timing line.
+
+3
+00:00:04,000 --> 00:00:06,000
+Second valid line.
+"""
+
+
+def test_parse_and_reconstruct_recovers_valid_cues_and_surfaces_the_invalid_event(tmp_path):
+    # The application flow (parse_and_reconstruct) must not drop the
+    # import warning the adapter produces for a skipped invalid event --
+    # both legitimate captions are still recoverable AND the bad one is
+    # visible, not silently discarded.
+    source = tmp_path / "mixed.srt"
+    source.write_text(_SRT_WITH_ONE_INVALID_EVENT, encoding="utf-8")
+
+    cues, _observations_by_id, _diagnostics_by_cue_id, import_warnings = parse_and_reconstruct(source)
+
+    texts = [cue.language_layers[0].text for cue in cues]
+    assert texts == ["First valid line.", "Second valid line."]
+    assert len(import_warnings) == 1
+    assert import_warnings[0].source_index == 1
