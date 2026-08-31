@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import sys
+import uuid
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -44,16 +45,16 @@ FULL_FRAME_ROI = ROI(x=0.0, y=0.0, width=1.0, height=1.0)
 
 def _run_job(video_path: Path, db_path: Path, *, dense: bool) -> tuple[PipelineMetrics, list]:
     engine = PaddleOcrEngine(language="en")
-    conn = connect(db_path)
-    repository = ObservationRepository(conn)
     metrics = PipelineMetrics()
+    evidence_run_id = str(uuid.uuid4())
     job = build_ocr_evidence_job(
         video_path,
         ProcessingRange(),
         FULL_FRAME_ROI,
         engine,
-        repository,
+        db_path,
         metrics,
+        evidence_run_id,
         policy=NaiveDenseOcrPolicy() if dense else None,
     )
 
@@ -67,7 +68,12 @@ def _run_job(video_path: Path, db_path: Path, *, dense: bool) -> tuple[PipelineM
     loop.exec()
     job.wait(timeout=1.0)
 
-    observations = repository.list_all()
+    # A fresh connection on this (caller's) thread, opened only after
+    # the job's own worker-thread connection has closed -- see
+    # tests/persistence/test_database.py for the connection-separation
+    # contract build_ocr_evidence_job relies on.
+    repository = ObservationRepository(connect(db_path))
+    observations = repository.list_for_run(evidence_run_id)
     return metrics, observations
 
 

@@ -11,12 +11,12 @@ def connect(db_path: str | Path) -> sqlite3.Connection:
     path = Path(db_path)
     path.parent.mkdir(parents=True, exist_ok=True)
 
-    # check_same_thread=False: background jobs (e.g. the Milestone 4 OCR
-    # evidence job) write to this connection from a worker thread, not
-    # the thread that created it. Safe here because access is always
-    # effectively serialized -- callers `.wait()` for the writing job to
-    # finish before reading from this connection again elsewhere.
-    conn = sqlite3.connect(path, check_same_thread=False)
+    # check_same_thread stays at its default (True) deliberately: a
+    # background job (e.g. the Milestone 4 OCR evidence job) must open
+    # its own connection on its own worker thread rather than reusing a
+    # connection created on the caller's thread. See
+    # ObservationRepository / build_ocr_evidence_job for the pattern.
+    conn = sqlite3.connect(path)
     conn.execute("PRAGMA foreign_keys = ON")
     apply_migrations(conn)
     return conn

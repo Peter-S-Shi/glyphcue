@@ -50,17 +50,24 @@ class ObservationRepository:
     def __init__(self, conn: sqlite3.Connection) -> None:
         self._conn = conn
 
-    def add(self, observation: Observation) -> None:
+    def add(self, observation: Observation, evidence_run_id: str) -> None:
+        """Persist `observation` as belonging to `evidence_run_id`.
+
+        Every OCR evidence job run produces observations under one run
+        id (ROADMAP M4: observations must not silently pool across
+        separate videos or re-runs) -- see `list_for_run`.
+        """
         roi = observation.roi
         with self._conn:
             self._conn.execute(
                 "INSERT INTO observations "
-                "(id, text, start_time, end_time, language, confidence, "
+                "(id, evidence_run_id, text, start_time, end_time, language, confidence, "
                 "roi_x, roi_y, roi_width, roi_height, geometry, frame_reference, "
                 "provenance_kind, provenance_source, provenance_detail) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     observation.id,
+                    evidence_run_id,
                     observation.text,
                     observation.start_time,
                     observation.end_time,
@@ -96,6 +103,22 @@ class ObservationRepository:
             "roi_x, roi_y, roi_width, roi_height, geometry, frame_reference, "
             "provenance_kind, provenance_source, provenance_detail "
             "FROM observations ORDER BY start_time"
+        ).fetchall()
+        return [self._build_observation(row) for row in rows]
+
+    def list_for_run(self, evidence_run_id: str) -> list[Observation]:
+        """Observations produced by exactly one OCR evidence job run,
+        ordered by start_time. This is the QA-workbench-facing seam --
+        it deliberately does not return every observation ever stored
+        (that's what `list_all` is for), so a completed run's evidence
+        view only ever shows that run's own findings, never evidence
+        left over from a different video or an earlier re-run."""
+        rows = self._conn.execute(
+            "SELECT id, text, start_time, end_time, language, confidence, "
+            "roi_x, roi_y, roi_width, roi_height, geometry, frame_reference, "
+            "provenance_kind, provenance_source, provenance_detail "
+            "FROM observations WHERE evidence_run_id = ? ORDER BY start_time",
+            (evidence_run_id,),
         ).fetchall()
         return [self._build_observation(row) for row in rows]
 

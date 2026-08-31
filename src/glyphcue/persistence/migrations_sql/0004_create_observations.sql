@@ -1,5 +1,6 @@
 CREATE TABLE observations (
     id TEXT PRIMARY KEY,
+    evidence_run_id TEXT NOT NULL,
     text TEXT NOT NULL,
     start_time REAL NOT NULL,
     end_time REAL NOT NULL,
@@ -15,3 +16,5 @@ CREATE TABLE observations (
     provenance_source TEXT NOT NULL,
     provenance_detail TEXT NOT NULL DEFAULT ''
 );
+
+CREATE INDEX idx_observations_evidence_run_id ON observations(evidence_run_id);

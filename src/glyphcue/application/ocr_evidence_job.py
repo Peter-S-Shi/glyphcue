@@ -17,6 +17,7 @@ from glyphcue.domain.observation import Observation
 from glyphcue.domain.provenance import Provenance, ProvenanceKind
 from glyphcue.domain.roi import ROI
 from glyphcue.jobs.job import Job, JobContext
+from glyphcue.persistence.database import connect
 from glyphcue.persistence.observation_repository import ObservationRepository
 
 _INSTANT_SPAN_SECONDS = 0.001
@@ -32,8 +33,9 @@ def build_ocr_evidence_job(
     processing_range: ProcessingRange,
     roi: ROI,
     ocr_engine: OcrEngine,
-    observation_repository: ObservationRepository,
+    db_path: Path,
     metrics: PipelineMetrics,
+    evidence_run_id: str,
     *,
     policy: OcrInvocationPolicy | None = None,
 ) -> Job:
@@ -46,13 +48,33 @@ def build_ocr_evidence_job(
     Reuses the Milestone 2 media/job foundation exactly like
     `build_media_analysis_job`: owns the PyAvMediaFrameSource lifecycle
     inside `work`, polls cancellation each iteration, reports progress.
+    It likewise owns its SQLite connection's lifecycle inside `work`,
+    opening it fresh on the job's own worker thread and closing it in
+    `finally` -- callers pass a `db_path`, never an already-open
+    connection/repository, so the worker thread's connection is never
+    shared with (or must never be confused for) the caller's own
+    connection on a different thread. Read results afterward with a
+    separate `ObservationRepository(connect(db_path))` opened on the
+    caller's own thread once `job.finished` has fired.
+
     Persists each Observation as soon as it is produced, so a
     cancel/failure partway through the run still keeps whatever evidence
     was already found (ROADMAP M4: "partial working state where
-    appropriate"). `metrics` is filled in as the job actually runs (the
-    same passed-in-mutable-object pattern `JobContext` uses for
-    cancellation) so its counts are read from the real execution path,
-    never estimated.
+    appropriate"), tagged with `evidence_run_id` so one run's evidence
+    (partial or complete) never mixes with a different run's -- see
+    `ObservationRepository.list_for_run`.
+
+    `metrics` is filled in as the job actually runs (the same
+    passed-in-mutable-object pattern `JobContext` uses for cancellation)
+    so its counts are read from the real execution path, never
+    estimated. `frames_analyzed`/`ocr_calls`/`media_seconds_processed`/
+    `elapsed_seconds` are all relative to the *resolved processing
+    range*, not the source media's absolute timeline: a range starting
+    well into a longer source must not have its progress or
+    `effective_processing_speed` inflated by that source offset.
+    Emitted Observations still carry source-correct absolute PTS
+    (`start_time`/`end_time`/`frame_reference`) -- only the
+    instrumentation/progress figures are range-relative.
 
     `policy` defaults to `ChangeTriggeredOcrPolicy()` -- the selective,
     production behavior. Passing `NaiveDenseOcrPolicy()` is supported
@@ -64,13 +86,16 @@ def build_ocr_evidence_job(
     def work(context: JobContext) -> None:
         wall_start = time.monotonic()
         metadata = probe_media(path)
-        start, end = processing_range.resolve(metadata.duration_seconds)
+        range_start, range_end = processing_range.resolve(metadata.duration_seconds)
+        range_duration = range_end - range_start
 
         ocr_engine.initialize()
+        conn = connect(db_path)
+        observation_repository = ObservationRepository(conn)
         source = PyAvMediaFrameSource()
         source.open(path)
         try:
-            for timestamp, frame in source.frames(start, end):
+            for timestamp, frame in source.frames(range_start, range_end):
                 if context.is_cancel_requested():
                     return
                 metrics.frames_analyzed += 1
@@ -103,15 +128,17 @@ def build_ocr_evidence_job(
                             geometry=region.geometry,
                             frame_reference=f"{path}@{timestamp:.6f}s",
                         )
-                        observation_repository.add(observation)
+                        observation_repository.add(observation, evidence_run_id)
                         metrics.observations_created += 1
 
-                metrics.media_seconds_processed = timestamp
+                processed_in_range = timestamp - range_start
+                metrics.media_seconds_processed = processed_in_range
                 metrics.elapsed_seconds = time.monotonic() - wall_start
-                context.report_progress("ocr_evidence", timestamp, metadata.duration_seconds)
+                context.report_progress("ocr_evidence", processed_in_range, range_duration)
         finally:
             source.close()
             ocr_engine.shutdown()
+            conn.close()
             metrics.elapsed_seconds = time.monotonic() - wall_start
 
     return Job(work=work)
