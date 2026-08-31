@@ -162,7 +162,16 @@ def compute_review_priority(signals: ReviewSignals) -> ReviewPriority:
             )
         )
 
-    score = sum(component.contribution for component in components) / len(components) if components else 0.0
+    # Sum-and-cap, not an average: ROADMAP M7's monotonic invariant --
+    # adding evidence of ANY new, independently-explainable problem must
+    # never LOWER a Cue's score. An average violates this (a strong
+    # signal averaged with a weak one drops below the strong signal
+    # alone); a capped sum of non-negative contributions cannot -- each
+    # additional component can only add to the running total before the
+    # `min(1.0, ...)` cap is applied, so the score is monotonic
+    # non-decreasing in the number and strength of contributing signals
+    # by construction, not by tuning.
+    score = min(1.0, sum(component.contribution for component in components))
     return ReviewPriority(
         cue_id=signals.cue_id,
         score=score,

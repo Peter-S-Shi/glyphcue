@@ -1,6 +1,7 @@
 from glyphcue.adapters.pysubs2_subtitle_io import Pysubs2SubtitleFormatAdapter
 from glyphcue.domain.cue import Cue
 from glyphcue.domain.language_layer import LanguageLayer
+from glyphcue.domain.review_state import ReviewState
 
 _SRT_TEXT = """1
 00:00:00,000 --> 00:00:02,000
@@ -57,6 +58,31 @@ def test_write_creates_a_new_file_without_touching_the_source(tmp_path):
     assert source.read_text(encoding="utf-8") == _SRT_TEXT
     assert destination.exists()
     assert "Reconstructed text" in destination.read_text(encoding="utf-8")
+
+
+def test_write_excludes_discarded_rejected_cues(tmp_path):
+    destination = tmp_path / "output.srt"
+    cues = [
+        Cue(
+            id="cue-1",
+            start_time=0.0,
+            end_time=2.0,
+            language_layers=(LanguageLayer(language="en", text="Keep this line"),),
+        ),
+        Cue(
+            id="cue-2",
+            start_time=2.0,
+            end_time=4.0,
+            language_layers=(LanguageLayer(language="en", text="Discarded garbage reading"),),
+            review_state=ReviewState.REJECTED,
+        ),
+    ]
+
+    Pysubs2SubtitleFormatAdapter().write(cues, destination)
+
+    exported = destination.read_text(encoding="utf-8")
+    assert "Keep this line" in exported
+    assert "Discarded garbage reading" not in exported
 
 
 def test_write_leaves_no_temporary_file_behind(tmp_path):

@@ -111,10 +111,10 @@ def test_merge_cues_spans_both_original_ranges():
         _cue("c2", 2.0, 4.0, texts={"en": "world"}),
     ]
 
-    result = merge_cues(cues, "c1", "c2")
+    result, merged_id = merge_cues(cues, "c1", "c2")
 
     assert len(result) == 1
-    merged = result[0]
+    merged = next(cue for cue in result if cue.id == merged_id)
     assert merged.start_time == 0.0
     assert merged.end_time == 4.0
     assert merged.review_state == ReviewState.NEEDS_REVIEW
@@ -126,12 +126,27 @@ def test_merge_cues_combines_matching_language_layers_and_keeps_provenance():
         _cue("c2", 2.0, 4.0, texts={"en": "world"}),
     ]
 
-    result = merge_cues(cues, "c1", "c2")
+    result, merged_id = merge_cues(cues, "c1", "c2")
 
-    layer = result[0].language_layers[0]
+    layer = next(cue for cue in result if cue.id == merged_id).language_layers[0]
     assert layer.language == "en"
     assert "Hello" in layer.text and "world" in layer.text
     assert set(layer.observation_ids) == {"c1-en", "c2-en"}
+
+
+def test_merge_cues_joins_text_with_a_structural_separator_not_an_ascii_space():
+    # A bare space silently assumes a Western word-boundary convention;
+    # a structural line break makes no assumption about any script's
+    # word boundaries (and mirrors the multi-layer export join).
+    cues = [
+        _cue("c1", 0.0, 2.0, texts={"en": "Hello"}),
+        _cue("c2", 2.0, 4.0, texts={"en": "world"}),
+    ]
+
+    result, merged_id = merge_cues(cues, "c1", "c2")
+
+    layer = next(cue for cue in result if cue.id == merged_id).language_layers[0]
+    assert layer.text == "Hello\nworld"
 
 
 def test_merge_cues_preserves_a_language_present_in_only_one_side():
@@ -140,7 +155,43 @@ def test_merge_cues_preserves_a_language_present_in_only_one_side():
         _cue("c2", 2.0, 4.0, texts={"en": "world"}),
     ]
 
-    result = merge_cues(cues, "c1", "c2")
+    result, merged_id = merge_cues(cues, "c1", "c2")
 
-    layers = {layer.language: layer for layer in result[0].language_layers}
+    layers = {layer.language: layer for layer in next(cue for cue in result if cue.id == merged_id).language_layers}
     assert layers["zh"].text == "你好"
+
+
+def test_merge_cues_returns_the_merged_cues_own_id_reliably_among_other_cues():
+    # A real regression for "guessing" the merged Cue by picking the
+    # first one whose id isn't one of the two old ids -- with a third,
+    # unrelated Cue in the list that also isn't either old id, that
+    # guess can silently pick the WRONG Cue.
+    cues = [
+        _cue("other", 10.0, 11.0, texts={"en": "unrelated"}),
+        _cue("c1", 0.0, 2.0, texts={"en": "Hello"}),
+        _cue("c2", 2.0, 4.0, texts={"en": "world"}),
+    ]
+
+    result, merged_id = merge_cues(cues, "c1", "c2")
+
+    merged = next(cue for cue in result if cue.id == merged_id)
+    assert merged.id not in {"other", "c1", "c2"}
+    assert merged.language_layers[0].text == "Hello\nworld"
+    other = next(cue for cue in result if cue.id == "other")
+    assert other.language_layers[0].text == "unrelated"
+
+
+def test_merge_cues_after_a_prior_split_does_not_duplicate_observation_ids():
+    # Both halves of a Split keep every original observation_id (see
+    # `split_cue`) -- merging those two halves back together must not
+    # end up with each id counted twice.
+    cues = [_cue("c1", 0.0, 4.0, texts={"en": "Hello world"})]
+    split_result = split_cue(cues, "c1", split_time=2.0)
+    first_half, second_half = split_result
+
+    result, merged_id = merge_cues(split_result, first_half.id, second_half.id)
+
+    merged = next(cue for cue in result if cue.id == merged_id)
+    ids = merged.language_layers[0].observation_ids
+    assert len(ids) == len(set(ids))
+    assert set(ids) == {"c1-en"}

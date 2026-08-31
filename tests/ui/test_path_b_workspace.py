@@ -111,6 +111,21 @@ def test_export_button_click_refuses_to_overwrite_source_without_crashing(qapp_g
     assert "refus" in workspace.status_label.text().lower()
 
 
+def test_discarding_a_cue_then_exporting_excludes_it_from_the_output_file(qapp_guard, tmp_path):
+    cues = [_cue("c1", "keep this line"), _cue("c2", "discard this garbage reading")]
+    destination = tmp_path / "out.srt"
+    workspace = PathBWorkspace(cues, {}, tmp_path / "input.srt", destination)
+    workspace.queue.setCurrentRow(1)
+    assert workspace.active_cue.id == "c2"
+
+    workspace.qa.discard_button.click()
+    workspace.export_button.click()
+
+    exported = destination.read_text(encoding="utf-8")
+    assert "keep this line" in exported
+    assert "discard this garbage reading" not in exported
+
+
 def test_path_b_cues_show_no_review_flags_not_a_fabricated_priority(qapp_guard, tmp_path):
     # Path B's reconstruction has no OCR-confidence/disagreement
     # diagnostics to score with -- this must show up honestly as "no

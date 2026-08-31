@@ -1,3 +1,5 @@
+from dataclasses import replace
+
 from glyphcue.application.review_priority import (
     ReviewSignals,
     compute_review_priority,
@@ -147,6 +149,66 @@ def test_review_signals_from_consensus_diagnostics_uses_real_observation_confide
     assert signals.had_disagreement is True
     assert signals.missing_language_count == 0
     assert signals.ambiguous_language_count == 0
+
+
+def test_adding_any_single_nonzero_signal_never_lowers_the_score():
+    # ROADMAP M7 correctness invariant: adding evidence of a NEW problem
+    # must never make a Cue look LESS worth reviewing. A pure average
+    # (the pre-corrective formula) violated this -- e.g. a Cue with only
+    # disagreement (score 1.0) would DROP to ~0.5 once a mild low-
+    # confidence reading was also added, because averaging a strong
+    # signal with a weak one pulls the result down.
+    clean = ReviewSignals(
+        cue_id="c1", mean_ocr_confidence=None, had_disagreement=False,
+        missing_language_count=0, ambiguous_language_count=0,
+    )
+    clean_score = compute_review_priority(clean).score
+
+    single_signal_variants = [
+        replace(clean, mean_ocr_confidence=0.5),
+        replace(clean, had_disagreement=True),
+        replace(clean, missing_language_count=1),
+        replace(clean, ambiguous_language_count=1),
+    ]
+    for variant in single_signal_variants:
+        assert compute_review_priority(variant).score >= clean_score
+
+
+def test_adding_a_weak_signal_on_top_of_a_strong_one_never_lowers_the_score():
+    strong_alone = ReviewSignals(
+        cue_id="c1", mean_ocr_confidence=None, had_disagreement=True,
+        missing_language_count=0, ambiguous_language_count=0,
+    )
+    strong_plus_weak = replace(strong_alone, mean_ocr_confidence=0.89)
+
+    strong_alone_score = compute_review_priority(strong_alone).score
+    strong_plus_weak_score = compute_review_priority(strong_plus_weak).score
+
+    assert strong_plus_weak_score >= strong_alone_score
+
+
+def test_score_is_monotonic_non_decreasing_across_every_added_signal_combination():
+    import itertools
+
+    toggles = {
+        "mean_ocr_confidence": 0.85,  # a real, but weak, below-threshold reading
+        "had_disagreement": True,
+        "missing_language_count": 1,
+        "ambiguous_language_count": 1,
+    }
+    base = ReviewSignals(
+        cue_id="c1", mean_ocr_confidence=None, had_disagreement=False,
+        missing_language_count=0, ambiguous_language_count=0,
+    )
+    names = list(toggles)
+    for subset_size in range(len(names)):
+        for on_subset in itertools.combinations(names, subset_size):
+            for extra in names:
+                if extra in on_subset:
+                    continue
+                smaller = replace(base, **{name: toggles[name] for name in on_subset})
+                larger = replace(base, **{name: toggles[name] for name in (*on_subset, extra)})
+                assert compute_review_priority(larger).score >= compute_review_priority(smaller).score
 
 
 def test_review_signals_from_multilingual_diagnostics_counts_missing_and_ambiguous():

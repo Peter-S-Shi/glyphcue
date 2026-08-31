@@ -112,16 +112,51 @@ def split_cue(cues: list[Cue], cue_id: str, split_time: float) -> list[Cue]:
     return result
 
 
-def merge_cues(cues: list[Cue], first_cue_id: str, second_cue_id: str) -> list[Cue]:
+_MERGED_TEXT_SEPARATOR = "\n"
+"""The join between two merged language layers' text: a plain
+structural line break, not a space. A space silently assumes a Western
+ASCII word-boundary convention (English "Hello" + "world" ->
+"Hello world" reads fine; the same join is meaningless for scripts with
+no inter-word space at all). A newline makes no assumption about word
+boundaries in any script and mirrors how multiple language layers are
+already joined on export (`Pysubs2SubtitleFormatAdapter.write`) -- it is
+a placeholder for the human reviewer to actually fix (the merged Cue is
+marked NEEDS_REVIEW, never auto-approved), not an attempt at real
+CJK-aware text-boundary normalization, which is out of scope here (see
+Milestone 8)."""
+
+
+def _deduplicated_ids(first_ids: tuple[str, ...], second_ids: tuple[str, ...]) -> tuple[str, ...]:
+    """Concatenates two observation-id tuples, order-preserving, without
+    duplicating an id present in both -- e.g. merging two Cues that both
+    came from the same prior Split, which gives each half every original
+    id (see `split_cue`)."""
+    combined = list(first_ids)
+    seen = set(combined)
+    for observation_id in second_ids:
+        if observation_id not in seen:
+            combined.append(observation_id)
+            seen.add(observation_id)
+    return tuple(combined)
+
+
+def merge_cues(cues: list[Cue], first_cue_id: str, second_cue_id: str) -> tuple[list[Cue], str]:
     """Combines two Cues into one, spanning the full range of both.
-    Matching-language layers are combined (text concatenated, evidence
-    ids unioned); a language present in only one of the two Cues is
-    kept as-is, still counted as real evidence, not a missing layer.
-    Layer order follows the first Cue's own language order, then any
-    additional languages only the second Cue had. The result is marked
-    NEEDS_REVIEW -- a machine merge is not itself a correct
-    reconstruction. `first_cue_id` and `second_cue_id` must both exist
-    and be different Cues; raises `ValueError` otherwise.
+    Matching-language layers are combined (text joined by
+    `_MERGED_TEXT_SEPARATOR`, evidence ids unioned with stable dedup);
+    a language present in only one of the two Cues is kept as-is, still
+    counted as real evidence, not a missing layer. Layer order follows
+    the first Cue's own language order, then any additional languages
+    only the second Cue had. The result is marked NEEDS_REVIEW -- a
+    machine merge is not itself a correct reconstruction.
+    `first_cue_id` and `second_cue_id` must both exist and be different
+    Cues; raises `ValueError` otherwise.
+
+    Returns `(cues, merged_cue_id)` -- the merged Cue's own fresh id, so
+    a caller can reliably locate it in the returned list without
+    guessing (e.g. "the first Cue whose id isn't one of the two old
+    ones" silently picks the wrong Cue whenever a third, unrelated Cue
+    happens to sort earlier in the list).
     """
     if first_cue_id == second_cue_id:
         raise ValueError("Cannot merge a Cue with itself")
@@ -145,8 +180,10 @@ def merge_cues(cues: list[Cue], first_cue_id: str, second_cue_id: str) -> list[C
             merged_layers.append(
                 LanguageLayer(
                     language=language,
-                    text=f"{first_layer.text} {second_layer.text}",
-                    observation_ids=first_layer.observation_ids + second_layer.observation_ids,
+                    text=f"{first_layer.text}{_MERGED_TEXT_SEPARATOR}{second_layer.text}",
+                    observation_ids=_deduplicated_ids(
+                        first_layer.observation_ids, second_layer.observation_ids
+                    ),
                 )
             )
         else:
@@ -164,4 +201,4 @@ def merge_cues(cues: list[Cue], first_cue_id: str, second_cue_id: str) -> list[C
     result.pop(higher_index)
     result.pop(lower_index)
     result.insert(lower_index, merged)
-    return result
+    return result, merged.id
