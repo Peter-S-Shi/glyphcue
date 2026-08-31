@@ -11,7 +11,12 @@ def connect(db_path: str | Path) -> sqlite3.Connection:
     path = Path(db_path)
     path.parent.mkdir(parents=True, exist_ok=True)
 
-    conn = sqlite3.connect(path)
+    # check_same_thread=False: background jobs (e.g. the Milestone 4 OCR
+    # evidence job) write to this connection from a worker thread, not
+    # the thread that created it. Safe here because access is always
+    # effectively serialized -- callers `.wait()` for the writing job to
+    # finish before reading from this connection again elsewhere.
+    conn = sqlite3.connect(path, check_same_thread=False)
     conn.execute("PRAGMA foreign_keys = ON")
     apply_migrations(conn)
     return conn
