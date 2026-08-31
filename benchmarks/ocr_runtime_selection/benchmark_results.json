@@ -1,0 +1,87 @@
+{
+  "rapidocr": {
+    "engine_name": "RapidOCR (onnxruntime backend)",
+    "startup_seconds": 0.9955,
+    "memory_baseline_mb": 44.7,
+    "memory_after_load_mb": 124.3,
+    "memory_after_load_delta_mb": 79.6,
+    "memory_peak_mb": 130.0,
+    "per_item": {
+      "english_clean": {
+        "latency_seconds": 3.0498,
+        "recognized_text": "The quick brown fox jumps over the lazy dog.",
+        "cer": 0.0
+      },
+      "chinese_clean": {
+        "latency_seconds": 3.2177,
+        "recognized_text": "今天天气非常好，我们一起去公园散步。",
+        "cer": 0.0
+      },
+      "japanese_clean": {
+        "latency_seconds": 3.0319,
+        "recognized_text": "今良天気。",
+        "cer": 0.6429
+      },
+      "bilingual_crop": {
+        "latency_seconds": 3.2456,
+        "recognized_text": "Hello, welcome!你好，欢迎！",
+        "cer": 0.0
+      },
+      "low_quality_crop": {
+        "latency_seconds": 3.0691,
+        "recognized_text": "Please stand byfor further instructions.",
+        "cer": 0.0244
+      },
+      "subtitle_style_representative": {
+        "latency_seconds": 3.078,
+        "recognized_text": "This is a burned-in subtitle example.",
+        "cer": 0.0
+      }
+    }
+  },
+  "paddleocr": {
+    "engine_name": "PaddleOCR (PaddlePaddle backend)",
+    "startup_seconds": 4.4179,
+    "memory_baseline_mb": 97.2,
+    "memory_after_load_mb": 469.5,
+    "memory_after_load_delta_mb": 372.3,
+    "memory_peak_mb": 884.4,
+    "languages_requiring_separate_model_load": [
+      "ch",
+      "en",
+      "japan"
+    ],
+    "per_item": {
+      "english_clean": {
+        "latency_seconds": 2.3465,
+        "recognized_text": "The quick brown fox jumps over the lazy dog.",
+        "cer": 0.0
+      },
+      "chinese_clean": {
+        "latency_seconds": 2.84,
+        "recognized_text": "今天天气非常好，我们一起去公园散步。",
+        "cer": 0.0
+      },
+      "japanese_clean": {
+        "latency_seconds": 2.3993,
+        "recognized_text": "今日はとても良い天気ですね。",
+        "cer": 0.0
+      },
+      "bilingual_crop": {
+        "latency_seconds": 2.5854,
+        "recognized_text": "Hello, welcome!你好，欢迎！",
+        "cer": 0.0
+      },
+      "low_quality_crop": {
+        "latency_seconds": 2.3938,
+        "recognized_text": "Please stand by for further instructions.",
+        "cer": 0.0
+      },
+      "subtitle_style_representative": {
+        "latency_seconds": 2.576,
+        "recognized_text": "This is a burned-in subtitle example.",
+        "cer": 0.0
+      }
+    }
+  }
+}

@@ -12,6 +12,8 @@ def test_subtitle_format_adapter_declares_parse_and_write():
 def test_ocr_engine_declares_lifecycle_and_recognition():
     assert hasattr(OcrEngine, "initialize")
     assert hasattr(OcrEngine, "recognize")
+    assert hasattr(OcrEngine, "supported_languages")
+    assert hasattr(OcrEngine, "runtime_info")
     assert hasattr(OcrEngine, "shutdown")
 
 
