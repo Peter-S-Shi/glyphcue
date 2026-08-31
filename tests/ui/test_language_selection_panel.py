@@ -15,6 +15,22 @@ def test_set_languages_restores_a_previously_configured_multilingual_selection(q
     assert panel.selected_languages() == ("ja", "en")
 
 
+def test_set_languages_filters_unsupported_and_duplicate_codes_in_saved_order(qapp_guard):
+    panel = LanguageSelectionPanel(available_languages=("en", "zh", "ja"))
+
+    panel.set_languages(("und", "zh", "zh", "ja", "unsupported", "en"))
+
+    assert panel.selected_languages() == ("zh", "ja", "en")
+
+
+def test_set_languages_falls_back_when_no_saved_code_is_supported(qapp_guard):
+    panel = LanguageSelectionPanel(available_languages=("en", "zh", "ja"))
+
+    panel.set_languages(("und", "unsupported"))
+
+    assert panel.selected_languages() == ("en",)
+
+
 def test_add_language_appends_a_generic_selection_not_hard_coded_to_two(qapp_guard):
     panel = LanguageSelectionPanel(available_languages=("en", "zh", "ja"))
 

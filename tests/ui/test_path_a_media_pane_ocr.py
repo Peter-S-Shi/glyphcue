@@ -205,6 +205,68 @@ def test_single_language_track_group_still_uses_the_single_engine_job(
     assert pane.language_layers_panel.cards == []
 
 
+def test_single_language_factory_follows_the_live_selection_when_plain_engine_is_also_wired(
+    qapp_guard, track_group_repository, db_path, test_video
+):
+    # Production used to wire both PaddleOcrEngine() and
+    # PaddleOcrEngine.  The live Track Group language must choose the
+    # factory engine rather than silently reusing that default-English
+    # plain engine.
+    default_english_engine = FakeOcrEngine()
+    factory_calls: list[str] = []
+
+    def factory(language: str) -> FakeOcrEngine:
+        factory_calls.append(language)
+        return FakeOcrEngine(
+            regions=[OcrTextRegion(text="你好朋友", language=language, confidence=0.9)]
+        )
+
+    pane = PathAMediaPane(
+        track_group_repository,
+        ocr_engine=default_english_engine,
+        ocr_engine_factory=factory,
+        db_path=db_path,
+    )
+    pane.language_selection_panel.set_languages(("zh",))
+    pane.open_video(test_video)
+
+    pane.run_ocr_button.click()
+    _wait_for(pane.current_ocr_job)
+
+    assert pane.current_ocr_job.state is JobState.SUCCEEDED
+    assert factory_calls == ["zh"]
+    assert default_english_engine.recognize_call_count == 0
+
+
+def test_legacy_und_is_removed_before_a_restored_zh_track_group_runs(
+    qapp_guard, track_group_repository, db_path, test_video
+):
+    track_group_repository.save(
+        TrackGroup(
+            id="default",
+            roi=ROI(0.0, 0.0, 1.0, 1.0),
+            languages=("und", "zh"),
+        )
+    )
+    factory_calls: list[str] = []
+
+    def factory(language: str) -> FakeOcrEngine:
+        factory_calls.append(language)
+        return FakeOcrEngine(
+            regions=[OcrTextRegion(text="你好朋友", language=language, confidence=0.9)]
+        )
+
+    pane = PathAMediaPane(track_group_repository, ocr_engine_factory=factory, db_path=db_path)
+    assert pane.language_selection_panel.selected_languages() == ("zh",)
+    pane.open_video(test_video)
+
+    pane.run_ocr_button.click()
+    _wait_for(pane.current_ocr_job)
+
+    assert pane.current_ocr_job.state is JobState.SUCCEEDED
+    assert factory_calls == ["zh"]
+
+
 def test_user_configured_language_selection_persists_and_drives_the_real_multi_engine_run(
     qapp_guard, track_group_repository, db_path, test_video
 ):

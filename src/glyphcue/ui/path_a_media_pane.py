@@ -69,22 +69,21 @@ class PathAMediaPane:
     starts. Final QA/review workspace is a later milestone (M7+).
 
     `ocr_engine_factory` (Milestone 6) is an optional
-    `language -> OcrEngine` constructor: when the current Track Group
-    has more than one configured language, this pane actually builds
-    one engine per language and runs the real
+    `language -> OcrEngine` constructor: when present, the current
+    Track Group's live language selection always constructs the real
+    engine set from it. Multilingual groups run the real
     `build_multilingual_ocr_evidence_job`, then reconstructs and
     displays every language layer via `language_layers_panel` -- it
     does not silently fall back to a single engine. A single-language
-    Track Group keeps using the plain `ocr_engine` (if given) or
-    `ocr_engine_factory(language)`, and `build_ocr_evidence_job`
-    exactly as before M6 -- unchanged M4/M5 behavior, not a
-    reimplementation of it.
+    Track Group keeps using `build_ocr_evidence_job`; a plain
+    `ocr_engine` remains a compatibility fallback only when no factory
+    is wired.
 
     `language_selection_panel` (Milestone 6) is the real, user-reachable
     1..N language configuration surface (DESIGN.md section 11): a
     generic add/remove/select list, never hard-coded to "Language A" /
     "Language B", constrained to `available_languages` (defaults to
-    `PaddleOcrEngine.CANONICAL_LANGUAGES` -- the only languages the
+    the module-level `CANONICAL_LANGUAGES` -- the only languages the
     real production OCR runtime can actually be constructed for; never
     the old "und" placeholder, which it cannot). Saving persists both
     ROI and the selected languages together into one `TrackGroup`;
@@ -265,11 +264,13 @@ class PathAMediaPane:
         )
 
         if len(languages) == 1:
-            # Unchanged M4/M5 single-engine path: a plain `ocr_engine`
-            # takes precedence when given (existing callers/tests), the
-            # factory is only used when that's all that's wired.
-            engine = self._ocr_engine if self._ocr_engine is not None else self._ocr_engine_factory(
-                languages[0]
+            # The live language selection must choose the real runtime
+            # whenever a factory is available. A plain engine remains
+            # only as the M4/M5 injection compatibility fallback.
+            engine = (
+                self._ocr_engine_factory(languages[0])
+                if self._ocr_engine_factory is not None
+                else self._ocr_engine
             )
             self.current_ocr_job = build_ocr_evidence_job(
                 self._video_path,

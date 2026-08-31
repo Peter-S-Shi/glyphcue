@@ -139,6 +139,22 @@ def test_reconstructing_the_pane_restores_the_previously_saved_roi(qapp_guard, r
     assert pane.current_roi() == ROI(x=0.2, y=0.3, width=0.4, height=0.25)
 
 
+def test_reconstructing_the_pane_replaces_a_legacy_und_language_with_the_canonical_default(
+    qapp_guard, repository
+):
+    repository.save(
+        TrackGroup(
+            id="default",
+            roi=ROI(x=0.0, y=0.0, width=1.0, height=1.0),
+            languages=("und",),
+        )
+    )
+
+    pane = PathAMediaPane(repository)
+
+    assert pane.language_selection_panel.selected_languages() == ("en",)
+
+
 def test_saving_the_roi_again_updates_it_rather_than_erroring(qapp_guard, repository):
     pane = PathAMediaPane(repository, track_group_id="tg-1")
     pane.roi_x_spin.setValue(0.1)

@@ -13,7 +13,7 @@ class LanguageSelectionPanel(QWidget):
 
     `available_languages` is the closed set of language codes this
     surface can offer -- for the real production entrypoint, this is
-    `PaddleOcrEngine.CANONICAL_LANGUAGES`, since only those are
+    the module-level `CANONICAL_LANGUAGES`, since only those are
     languages the real OCR runtime can actually be constructed for.
     Tests can pass any tuple, so this widget itself never hard-codes
     specific language codes.
@@ -55,12 +55,21 @@ class LanguageSelectionPanel(QWidget):
         return tuple(self.language_list.item(index).text() for index in range(self.language_list.count()))
 
     def set_languages(self, languages: tuple[str, ...]) -> None:
-        """Replaces the current selection with `languages`, in that
-        order. Falls back to a single legal language if `languages` is
-        empty -- the picker must never show zero (TrackGroup requires
-        at least one)."""
+        """Restore supported saved languages in first-seen order.
+
+        Legacy or otherwise unsupported codes and duplicates are
+        discarded. If nothing legal remains, the picker falls back to
+        its first available language and therefore never shows zero.
+        """
+        supported_languages: list[str] = []
+        seen: set[str] = set()
+        for language in languages:
+            if language in self._available_languages and language not in seen:
+                supported_languages.append(language)
+                seen.add(language)
+
         self.language_list.clear()
-        for language in languages or (self._available_languages[0],):
+        for language in supported_languages or (self._available_languages[0],):
             self.language_list.addItem(language)
 
     def _on_add_clicked(self) -> None:
