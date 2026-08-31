@@ -8,6 +8,10 @@ from PySide6.QtCore import QEventLoop, QTimer
 from PySide6.QtMultimedia import QMediaPlayer
 from PySide6.QtMultimediaWidgets import QVideoWidget
 
+from glyphcue.domain.roi import ROI
+from glyphcue.domain.track_group import TrackGroup
+from glyphcue.persistence.database import connect
+from glyphcue.persistence.track_group_repository import TrackGroupRepository
 from glyphcue.ui.path_a_media_pane import PathAMediaPane
 
 
@@ -58,15 +62,40 @@ def test_video(tmp_path) -> Path:
     return path
 
 
-def test_pane_embeds_a_video_widget_in_the_frozen_shell(qapp_guard, test_video):
-    pane = PathAMediaPane(test_video)
+@pytest.fixture
+def repository(tmp_path):
+    conn = connect(tmp_path / "glyphcue.sqlite3")
+    return TrackGroupRepository(conn)
+
+
+def test_pane_embeds_a_video_widget_in_the_frozen_shell(qapp_guard, repository):
+    pane = PathAMediaPane(repository)
 
     assert isinstance(pane.video_widget, QVideoWidget)
     assert pane.window.centralWidget().count() == 3
 
 
-def test_play_button_plays_and_pause_button_pauses(qapp_guard, test_video):
-    pane = PathAMediaPane(test_video)
+def test_open_video_loads_the_given_path(qapp_guard, repository, test_video):
+    pane = PathAMediaPane(repository)
+
+    pane.open_video(test_video)
+
+    assert Path(pane.controller.player.source().toLocalFile()) == test_video
+
+
+def test_open_video_displays_basic_metadata(qapp_guard, repository, test_video):
+    pane = PathAMediaPane(repository)
+
+    pane.open_video(test_video)
+
+    text = pane.metadata_label.text()
+    assert "32" in text  # width and height
+    assert "h264" in text.lower()
+
+
+def test_play_button_plays_and_pause_button_pauses(qapp_guard, repository, test_video):
+    pane = PathAMediaPane(repository)
+    pane.open_video(test_video)
     _wait_for_media_status(pane.controller.player)
 
     pane.play_button.click()
@@ -76,7 +105,50 @@ def test_play_button_plays_and_pause_button_pauses(qapp_guard, test_video):
     assert pane.controller.player.playbackState() == QMediaPlayer.PlaybackState.PausedState
 
 
-def test_pane_loads_the_given_video_path(qapp_guard, test_video):
-    pane = PathAMediaPane(test_video)
+def test_roi_fields_default_to_the_full_frame_when_nothing_is_saved(qapp_guard, repository):
+    pane = PathAMediaPane(repository)
 
-    assert Path(pane.controller.player.source().toLocalFile()) == test_video
+    assert pane.current_roi() == ROI(x=0.0, y=0.0, width=1.0, height=1.0)
+
+
+def test_saving_the_roi_persists_it_to_the_repository(qapp_guard, repository):
+    pane = PathAMediaPane(repository, track_group_id="tg-1")
+    pane.roi_x_spin.setValue(0.1)
+    pane.roi_y_spin.setValue(0.8)
+    pane.roi_width_spin.setValue(0.8)
+    pane.roi_height_spin.setValue(0.15)
+
+    pane.save_roi_button.click()
+
+    saved = repository.get("tg-1")
+    assert saved is not None
+    assert saved.roi == ROI(x=0.1, y=0.8, width=0.8, height=0.15)
+
+
+def test_reconstructing_the_pane_restores_the_previously_saved_roi(qapp_guard, repository):
+    repository.save(
+        TrackGroup(
+            id="tg-1",
+            roi=ROI(x=0.2, y=0.3, width=0.4, height=0.25),
+            languages=("ja", "en"),
+        )
+    )
+
+    pane = PathAMediaPane(repository, track_group_id="tg-1")
+
+    assert pane.current_roi() == ROI(x=0.2, y=0.3, width=0.4, height=0.25)
+
+
+def test_saving_the_roi_again_updates_it_rather_than_erroring(qapp_guard, repository):
+    pane = PathAMediaPane(repository, track_group_id="tg-1")
+    pane.roi_x_spin.setValue(0.1)
+    pane.roi_y_spin.setValue(0.1)
+    pane.roi_width_spin.setValue(0.5)
+    pane.roi_height_spin.setValue(0.5)
+    pane.save_roi_button.click()
+
+    pane.roi_x_spin.setValue(0.2)
+    pane.save_roi_button.click()
+
+    assert repository.get("tg-1").roi == ROI(x=0.2, y=0.1, width=0.5, height=0.5)
+    assert len(repository.list_all()) == 1

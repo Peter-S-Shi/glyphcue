@@ -35,3 +35,22 @@ def test_list_all_returns_every_added_track_group(repository):
     repository.add(second)
 
     assert {tg.id for tg in repository.list_all()} == {"a", "b"}
+
+
+def test_save_persists_a_new_track_group(repository):
+    track_group = TrackGroup(id="tg-1", roi=ROI(x=0.1, y=0.1, width=0.5, height=0.5), languages=("en",))
+
+    repository.save(track_group)
+
+    assert repository.get("tg-1") == track_group
+
+
+def test_save_again_with_the_same_id_updates_the_roi_instead_of_erroring(repository):
+    original = TrackGroup(id="tg-1", roi=ROI(x=0.1, y=0.1, width=0.5, height=0.5), languages=("en",))
+    repository.save(original)
+
+    redefined = TrackGroup(id="tg-1", roi=ROI(x=0.2, y=0.3, width=0.4, height=0.3), languages=("ja", "en"))
+    repository.save(redefined)
+
+    assert repository.get("tg-1") == redefined
+    assert len(repository.list_all()) == 1

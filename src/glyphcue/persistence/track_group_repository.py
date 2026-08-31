@@ -30,6 +30,34 @@ class TrackGroupRepository:
                 ),
             )
 
+    def save(self, track_group: TrackGroup) -> None:
+        """Insert or, if `track_group.id` already exists, update it.
+
+        This is the seam a UI redefining a Track Group's ROI should use:
+        re-saving the same id updates it in place rather than raising a
+        primary-key error.
+        """
+        with self._conn:
+            self._conn.execute(
+                "INSERT INTO track_groups "
+                "(id, roi_x, roi_y, roi_width, roi_height, languages) "
+                "VALUES (?, ?, ?, ?, ?, ?) "
+                "ON CONFLICT(id) DO UPDATE SET "
+                "roi_x = excluded.roi_x, "
+                "roi_y = excluded.roi_y, "
+                "roi_width = excluded.roi_width, "
+                "roi_height = excluded.roi_height, "
+                "languages = excluded.languages",
+                (
+                    track_group.id,
+                    track_group.roi.x,
+                    track_group.roi.y,
+                    track_group.roi.width,
+                    track_group.roi.height,
+                    _LANGUAGE_SEPARATOR.join(track_group.languages),
+                ),
+            )
+
     def get(self, track_group_id: str) -> TrackGroup | None:
         row = self._conn.execute(
             "SELECT id, roi_x, roi_y, roi_width, roi_height, languages "
