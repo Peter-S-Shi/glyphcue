@@ -4,10 +4,31 @@ from pathlib import Path
 import av
 import numpy as np
 import pytest
+from PySide6.QtCore import QEventLoop, QTimer
 from PySide6.QtMultimedia import QMediaPlayer
 from PySide6.QtMultimediaWidgets import QVideoWidget
 
 from glyphcue.ui.path_a_media_pane import PathAMediaPane
+
+
+def _wait_for_media_status(player: QMediaPlayer, timeout_ms: int = 3000) -> None:
+    if player.mediaStatus() in (
+        QMediaPlayer.MediaStatus.LoadedMedia,
+        QMediaPlayer.MediaStatus.InvalidMedia,
+    ):
+        return
+    loop = QEventLoop()
+    player.mediaStatusChanged.connect(
+        lambda status: loop.quit()
+        if status
+        in (QMediaPlayer.MediaStatus.LoadedMedia, QMediaPlayer.MediaStatus.InvalidMedia)
+        else None
+    )
+    timer = QTimer()
+    timer.setSingleShot(True)
+    timer.timeout.connect(loop.quit)
+    timer.start(timeout_ms)
+    loop.exec()
 
 
 def _write_test_video(path: Path) -> None:
@@ -46,6 +67,7 @@ def test_pane_embeds_a_video_widget_in_the_frozen_shell(qapp_guard, test_video):
 
 def test_play_button_plays_and_pause_button_pauses(qapp_guard, test_video):
     pane = PathAMediaPane(test_video)
+    _wait_for_media_status(pane.controller.player)
 
     pane.play_button.click()
     assert pane.controller.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState
