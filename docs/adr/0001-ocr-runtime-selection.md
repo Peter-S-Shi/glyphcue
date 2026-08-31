@@ -31,7 +31,7 @@ PaddleOCR's steady-state per-item latency was also lower than or comparable to R
 
 - ~212 MB total footprint vs PaddleOCR's ~590 MB (packages + downloaded models).
 - ~70–116 MB memory footprint (`max_observed_rss_mb`, an approximation -- see benchmark report) vs PaddleOCR's ~368–789 MB.
-- 1.55s startup (construction only, warm-up excluded) vs PaddleOCR's 4.57s.
+- 1.55s startup (import + default-language construction, warm-up excluded) vs PaddleOCR's 4.57s.
 - Zero API/compatibility issues encountered, vs PaddleOCR's real crash (below).
 
 If a future evidence-based need arises for a lighter-weight or English/Chinese-only deployment mode, RapidOCR remains a legitimate second implementation of the same `OcrEngine` contract — see "What remains swappable."

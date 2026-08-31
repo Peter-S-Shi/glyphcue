@@ -52,7 +52,7 @@ RapidOCR's Japanese failure is not a close call: it recognized `"今良天気。
 
 | Metric | RapidOCR | PaddleOCR |
 |---|---|---|
-| Startup (import + default-language construction only, warm-up excluded — see Methodology) | 1.55 s | 4.57 s (2.58 s `en` + 1.33 s `ch` + 1.35 s `japan` construction-only, each measured on first use — see `startup_seconds_by_language` in the raw JSON) |
+| Startup (import + default-language construction only, warm-up excluded — see Methodology) | 1.55 s | 4.57 s; separate construction-only costs: `en` 2.58 s, `ch` 1.33 s, `japan` 1.35 s — these are not additive components of the 4.57 s figure (that figure already includes the import cost and `en`'s own construction, measured independently on first use of each language — see `startup_seconds_by_language` in the raw JSON) |
 | Per-item latency (median of 3, warm — genuinely per-language-warm, see Methodology) | 2.95–3.12 s | 2.34–2.94 s |
 | Memory after model load (delta from baseline) | +70.0 MB | +367.9 MB (one language) |
 | `max_observed_rss_mb` (see Methodology — an approximation, not a true peak) | 116.1 MB | 789.3 MB |
@@ -83,7 +83,7 @@ The per-item latency numbers above are from the most recent full re-run (fixing 
 | Criterion | RapidOCR | PaddleOCR | Winner |
 |---|---|---|---|
 | Text quality (CJK, incl. Japanese) | Fails Japanese (CER 0.64) | Perfect on all 6 items | **PaddleOCR** |
-| Startup time (construction only) | 1.55 s | 4.57 s | RapidOCR |
+| Startup time (import + default-language construction; warm-up excluded) | 1.55 s | 4.57 s | RapidOCR |
 | Steady-state latency | 2.95–3.12 s (varies run-to-run, see above) | 2.34–2.94 s (varies run-to-run, see above) | PaddleOCR |
 | Memory footprint | ~70–116 MB | ~368–789 MB | RapidOCR |
 | Package/model size | ~212 MB | ~590 MB | RapidOCR |
