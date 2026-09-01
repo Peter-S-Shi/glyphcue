@@ -15,6 +15,14 @@ measures each real cost in isolation, on small deterministic fixtures,
 so later M10/M11 optimization decisions are evidence-based, not a guess
 from one confounded total.
 
+Job orchestration here uses the shared, hardened
+`benchmarks._job_harness.run_job_or_cancel`, which never returns while a
+job's worker thread may still be alive: if a job does not reach a
+terminal state within its cancellation grace period, it raises
+`EvaluationJobDidNotTerminateError` and this script's fixture loop (no
+try/except around it) aborts the whole diagnosis run rather than
+starting the next fixture.
+
 Every timing below uses the REAL, frozen production seams (real
 PaddleOcrEngine, real build_ocr_evidence_job /
 build_multilingual_ocr_evidence_job, real reconstruct_cues_with_consensus
@@ -33,9 +41,9 @@ import time
 import uuid
 from pathlib import Path
 
-from PySide6.QtCore import QEventLoop, QTimer
 from PySide6.QtWidgets import QApplication
 
+from benchmarks._job_harness import run_job_or_cancel
 from glyphcue.adapters.paddleocr_engine import PaddleOcrEngine
 from glyphcue.adapters.pyav_media_source import PyAvMediaFrameSource
 from glyphcue.application.consensus_reconstruction import reconstruct_cues_with_consensus
@@ -61,42 +69,6 @@ FIXTURE_DIR = Path(__file__).parent / "generated_fixture"
 RESULTS_PATH = Path(__file__).parent / "performance_diagnosis_results.json"
 _FULL_ROI = ROI(x=0.0, y=0.0, width=1.0, height=1.0)
 _JOB_TIMEOUT_SECONDS = 60.0
-
-
-def _run_job_or_cancel(job) -> str:
-    """Fixes the bug found in benchmarks/private_video_corpus/run_evaluation.py:
-    on timeout, actually requests cancellation AND waits (bounded) for the
-    background thread to really stop, instead of abandoning it orphaned.
-    Also subscribes to `job.progress` so a run is never silently invisible
-    again. Returns the real terminal job state name."""
-    progress_log: list[tuple[str, float, float]] = []
-    job.progress.connect(lambda phase, done, total: progress_log.append((phase, done, total)))
-
-    loop = QEventLoop()
-    job.finished.connect(loop.quit)
-    timer = QTimer()
-    timer.setSingleShot(True)
-    timer.timeout.connect(loop.quit)
-    timer.start(int(_JOB_TIMEOUT_SECONDS * 1000))
-    job.start()
-    loop.exec()
-
-    if job.state.value == "running":
-        print(f"  [!] job exceeded {_JOB_TIMEOUT_SECONDS}s -- requesting real cancellation, not abandoning it")
-        job.request_cancel()
-        cancel_loop = QEventLoop()
-        job.finished.connect(cancel_loop.quit)
-        cancel_timer = QTimer()
-        cancel_timer.setSingleShot(True)
-        cancel_timer.timeout.connect(cancel_loop.quit)
-        cancel_timer.start(10_000)
-        cancel_loop.exec()
-
-    job.wait(timeout=5.0)
-    if progress_log:
-        last_phase, last_done, last_total = progress_log[-1]
-        print(f"  progress: {len(progress_log)} updates, last={last_phase} {last_done:.2f}/{last_total:.2f}s")
-    return job.state.value
 
 
 def _time_engine_construction(language: str) -> tuple[float, PaddleOcrEngine]:
@@ -189,7 +161,7 @@ def _run_real_job(video_path: Path, languages: tuple[str, ...], db_path: Path, *
             video_path, processing_range, _FULL_ROI, engine, db_path, metrics, evidence_run_id, policy=policy
         )
 
-    state = _run_job_or_cancel(job)
+    state = run_job_or_cancel(job, timeout_seconds=_JOB_TIMEOUT_SECONDS, cancel_grace_seconds=10.0)
     outer_elapsed = time.perf_counter() - outer_start
 
     read_conn = connect(db_path)

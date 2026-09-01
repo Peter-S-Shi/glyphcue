@@ -14,13 +14,22 @@ without the private assets ever being present.
 
 **Not run for Milestone 10.** The one real attempt against this corpus
 crashed after ~40 minutes of wall clock, exposing a real bug in this
-script's own job orchestration (fixed below, per
+script's own job orchestration (fixed via the shared, hardened
+`benchmarks._job_harness.run_job_or_cancel`, per
 `docs/m10_private_corpus_incident.md`) compounded by a real, separately
 diagnosed product-performance cost (`docs/m10_performance_diagnosis.md`).
-M10's representative-video evaluation closes on the controlled/synthetic
-corpus in `benchmarks/m10_controlled_video_corpus/` instead. This script
-is kept, fixed, and tracked so a future milestone can safely re-attempt
-the real corpus once the performance question is addressed.
+`run_job_or_cancel` never returns while a job's worker thread may still
+be alive: if cancellation is requested but the job does not reach a
+terminal state within its grace period, it raises
+`EvaluationJobDidNotTerminateError` and this script's `for entry in
+entries:` loop (no try/except around it) aborts the whole run rather
+than starting the next entry.
+The controlled/synthetic corpus in `benchmarks/m10_controlled_video_corpus/`
+closes only the reproducible performance-diagnosis seam, not ROADMAP
+§17's representative-video target -- that target remains an open M10
+limitation (see `docs/m10_private_corpus_incident.md`). This script is
+kept, fixed, and tracked so a future milestone can safely re-attempt the
+real corpus once the performance question is addressed.
 
 Ground-truth methodology (see the manifest's own per-entry `notes`, kept
 private): each entry's ground truth is a small number of
@@ -54,9 +63,9 @@ import tempfile
 import uuid
 from pathlib import Path
 
-from PySide6.QtCore import QEventLoop, QTimer
 from PySide6.QtWidgets import QApplication
 
+from benchmarks._job_harness import run_job_or_cancel
 from glyphcue.adapters.paddleocr_engine import PaddleOcrEngine
 from glyphcue.application.consensus_reconstruction import reconstruct_cues_with_consensus
 from glyphcue.application.multilingual_ocr_evidence_job import build_multilingual_ocr_evidence_job
@@ -96,7 +105,7 @@ def _run_single_language_job(video_path: Path, entry: CorpusEntry, db_path: Path
     job = build_ocr_evidence_job(
         video_path, processing_range, _ROI_BY_ENTRY_ID[entry.id], engine, db_path, metrics, evidence_run_id
     )
-    state = _run_job_or_cancel(job)
+    state = run_job_or_cancel(job, timeout_seconds=_JOB_TIMEOUT_SECONDS)
     read_conn = connect(db_path)
     observations = ObservationRepository(read_conn).list_for_run(evidence_run_id)
     read_conn.close()
@@ -113,7 +122,7 @@ def _run_multilingual_job(video_path: Path, entry: CorpusEntry, db_path: Path) -
     job = build_multilingual_ocr_evidence_job(
         video_path, processing_range, track_group, engines, db_path, metrics, evidence_run_id
     )
-    state = _run_job_or_cancel(job)
+    state = run_job_or_cancel(job, timeout_seconds=_JOB_TIMEOUT_SECONDS)
     read_conn = connect(db_path)
     observations = ObservationRepository(read_conn).list_for_run(evidence_run_id)
     read_conn.close()
@@ -122,46 +131,6 @@ def _run_multilingual_job(video_path: Path, entry: CorpusEntry, db_path: Path) -
 
 
 _JOB_TIMEOUT_SECONDS = 600.0
-
-
-def _run_job_or_cancel(job) -> str:
-    """M10 incident fix (docs/m10_private_corpus_incident.md): the
-    original version of this function quit only the LOCAL Qt event loop
-    on timeout, never the job itself -- the job's background thread kept
-    running, orphaned, while the caller moved on to start the NEXT
-    entry's job, turning an intended sequential run into unbounded
-    concurrent execution. This version actually requests cancellation
-    and waits (bounded) for the real thread to stop before returning, and
-    subscribes to `job.progress` so a long run is never silently
-    invisible again."""
-    progress_log: list[tuple[str, float, float]] = []
-    job.progress.connect(lambda phase, done, total: progress_log.append((phase, done, total)))
-
-    loop = QEventLoop()
-    job.finished.connect(loop.quit)
-    timer = QTimer()
-    timer.setSingleShot(True)
-    timer.timeout.connect(loop.quit)
-    timer.start(int(_JOB_TIMEOUT_SECONDS * 1000))
-    job.start()
-    loop.exec()
-
-    if job.state.value == "running":
-        print(f"  [!] job exceeded {_JOB_TIMEOUT_SECONDS}s -- requesting real cancellation, not abandoning it")
-        job.request_cancel()
-        cancel_loop = QEventLoop()
-        job.finished.connect(cancel_loop.quit)
-        cancel_timer = QTimer()
-        cancel_timer.setSingleShot(True)
-        cancel_timer.timeout.connect(cancel_loop.quit)
-        cancel_timer.start(30_000)
-        cancel_loop.exec()
-
-    job.wait(timeout=5.0)
-    if progress_log:
-        last_phase, last_done, last_total = progress_log[-1]
-        print(f"  progress: {len(progress_log)} updates, last={last_phase} {last_done:.2f}/{last_total:.2f}s")
-    return job.state.value
 
 
 def _cue_covering(cues: list, timestamp: float):
