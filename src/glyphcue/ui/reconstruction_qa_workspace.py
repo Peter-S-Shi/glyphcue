@@ -375,6 +375,20 @@ class ReconstructionQaWorkspace:
         self.window.installEventFilter(self._close_filter)
 
     @property
+    def central_widget(self) -> QWidget:
+        """Returns the embeddable 3-pane central widget (splitter)."""
+        return self.window.centralWidget()
+
+    def bind_to_host(self, host: QWidget) -> None:
+        """Binds QA keyboard shortcuts to a host window (e.g. GlyphCueWorkbench)
+        when hosted inside a persistent product shell."""
+        self.play_pause_shortcut.setParent(host)
+        self.approve_shortcut.setParent(host)
+        self.replay_shortcut.setParent(host)
+        self.next_shortcut.setParent(host)
+        self.previous_shortcut.setParent(host)
+
+    @property
     def cues(self) -> list[Cue]:
         return list(self._cues)
 

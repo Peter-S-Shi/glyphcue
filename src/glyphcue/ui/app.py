@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Callable
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QCloseEvent
 from PySide6.QtWidgets import (
     QApplication,
     QFileDialog,
@@ -98,7 +99,8 @@ class GlyphCueWorkbench(QMainWindow):
         _app, self.path_a_pane = create_path_a_app(
             db_path=self._db_path, on_open_caption_file=self.open_caption_file
         )
-        self._stack.addWidget(self.path_a_pane.qa.window.centralWidget())
+        self.path_a_pane.qa.bind_to_host(self)
+        self._stack.addWidget(self.path_a_pane.qa.central_widget)
 
         # Container for main layout
         root_container = QWidget()
@@ -117,16 +119,11 @@ class GlyphCueWorkbench(QMainWindow):
         self.open_video_button.clicked.connect(self._on_open_video_clicked)
         self.open_caption_button.clicked.connect(self._on_open_caption_clicked)
 
-    def _show(self, window: QMainWindow) -> None:
-        if self.path_a_pane is not None:
-            self.path_a_pane.commit_pending_edits()
-        if self.path_b_workspace is not None:
-            self.path_b_workspace.commit_pending_edits()
-        if self._active_window is not None and self._active_window is not window:
-            self._active_window.hide()
-        window.show()
-        self._active_window = window
-        self.show()
+    def closeEvent(self, event: QCloseEvent) -> None:
+        """DOG-004: Closing the persistent workbench shell commits pending
+        edits in whichever workspace is currently active."""
+        self.commit_pending_edits()
+        super().closeEvent(event)
 
     def commit_pending_edits(self) -> None:
         if self.path_a_pane is not None:
@@ -141,10 +138,12 @@ class GlyphCueWorkbench(QMainWindow):
             self.path_a_mode_button.setChecked(True)
             self.path_b_mode_button.setChecked(False)
             self._stack.setCurrentIndex(0)
-            if self.path_a_pane and self.path_a_pane._video_path:
-                self.asset_status_label.setText(f"Video: {self.path_a_pane._video_path.name}")
-            else:
-                self.asset_status_label.setText("Path A: Ready · No video loaded")
+            if self.path_a_pane is not None:
+                self.path_a_pane.qa.bind_to_host(self)
+                if self.path_a_pane._video_path:
+                    self.asset_status_label.setText(f"Video: {self.path_a_pane._video_path.name}")
+                else:
+                    self.asset_status_label.setText("Path A: Ready · No video loaded")
         elif mode == "path_b":
             self.current_mode = "path_b"
             self.path_a_mode_button.setChecked(False)
@@ -155,7 +154,8 @@ class GlyphCueWorkbench(QMainWindow):
                 self.path_b_workspace = PathBWorkspace(
                     [], {}, dummy_path, on_open_video=self.open_video
                 )
-                self._stack.addWidget(self.path_b_workspace.qa.window.centralWidget())
+                self._stack.addWidget(self.path_b_workspace.qa.central_widget)
+            self.path_b_workspace.qa.bind_to_host(self)
             self._stack.setCurrentIndex(1)
             if self.path_b_workspace and self.path_b_workspace._source_path.name != "untitled.srt":
                 self.asset_status_label.setText(f"Captions: {self.path_b_workspace._source_path.name}")
@@ -168,10 +168,10 @@ class GlyphCueWorkbench(QMainWindow):
             _app, self.path_a_pane = create_path_a_app(
                 db_path=self._db_path, on_open_caption_file=self.open_caption_file
             )
-            self._stack.insertWidget(0, self.path_a_pane.qa.window.centralWidget())
+            self._stack.insertWidget(0, self.path_a_pane.qa.central_widget)
         self.path_a_pane.open_video(path)
+        self.path_a_pane.qa.bind_to_host(self)
         self.switch_to_mode("path_a")
-        self._show(self.path_a_pane.window)
         self.asset_status_label.setText(f"Video: {path.name}")
         return self.path_a_pane
 
@@ -189,13 +189,13 @@ class GlyphCueWorkbench(QMainWindow):
             on_open_video=self.open_video,
         )
         self.path_b_workspace = workspace
+        workspace.qa.bind_to_host(self)
         # Update or add page 1
         if self._stack.count() > 1:
             old_widget = self._stack.widget(1)
             self._stack.removeWidget(old_widget)
-        self._stack.addWidget(workspace.qa.window.centralWidget())
+        self._stack.addWidget(workspace.qa.central_widget)
         self.switch_to_mode("path_b")
-        self._show(workspace.window)
         self.asset_status_label.setText(f"Captions: {path.name} ({len(cues)} cues)")
         return workspace
 

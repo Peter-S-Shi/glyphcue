@@ -112,13 +112,16 @@ def test_path_a_workbench_can_switch_directly_to_path_b_without_restarting(qapp_
     source = tmp_path / "input.srt"
     source.write_text(_SRT_TEXT, encoding="utf-8")
     _app, entry = create_app(db_path=tmp_path / "glyphcue.sqlite3")
+    entry.window.show()
     path_a_pane = entry.open_video(video_path)
-    assert path_a_pane.window.isVisible() is True
+    assert entry.window.isVisible() is True
+    assert entry.current_mode == "path_a"
 
     path_a_pane.switch_to_caption_file(source)
 
     assert isinstance(entry.path_b_workspace, PathBWorkspace)
-    assert entry.path_b_workspace.window.isVisible() is True
+    assert entry.window.isVisible() is True
+    assert entry.current_mode == "path_b"
     assert path_a_pane.window.isVisible() is False
 
 
@@ -128,11 +131,14 @@ def test_path_b_workbench_can_switch_directly_to_path_a_without_restarting(qapp_
     video_path = tmp_path / "clip.mp4"
     _write_test_video(video_path)
     _app, entry = create_app(db_path=tmp_path / "glyphcue.sqlite3")
+    entry.window.show()
     path_b_workspace = entry.open_caption_file(source)
-    assert path_b_workspace.window.isVisible() is True
+    assert entry.window.isVisible() is True
+    assert entry.current_mode == "path_b"
 
     path_b_workspace.switch_to_video(video_path)
 
     assert isinstance(entry.path_a_pane, PathAMediaPane)
-    assert entry.path_a_pane.window.isVisible() is True
+    assert entry.window.isVisible() is True
+    assert entry.current_mode == "path_a"
     assert path_b_workspace.window.isVisible() is False
