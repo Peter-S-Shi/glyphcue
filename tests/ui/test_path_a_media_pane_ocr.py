@@ -909,10 +909,12 @@ def test_discard_latest_ocr_run_restores_pre_run_workspace_and_persisted_db(
     pane.run_ocr_button.click()
     _wait_for(pane.current_ocr_job)
     assert len(pane.qa.cues) >= 1
+    assert pane.discard_latest_run_button.isEnabled() is True
     pane.qa.approve_and_advance()
     assert pane.qa.cues[0].review_state == ReviewState.APPROVED
     first_cue_id = pane.qa.cues[0].id
-    assert pane.discard_latest_run_button.isEnabled() is True
+    # Manual approve invalidated Run 1 rollback
+    assert pane.discard_latest_run_button.isEnabled() is False
 
     # Run 2: 0.3 - 0.5s with different text
     engine2 = FakeOcrEngine([
@@ -923,6 +925,7 @@ def test_discard_latest_ocr_run_restores_pre_run_workspace_and_persisted_db(
     pane.processing_range_end_spin.setValue(0.5)
     pane.run_ocr_button.click()
     _wait_for(pane.current_ocr_job)
+    assert pane.discard_latest_run_button.isEnabled() is True
 
     # Workspace now has cues from both runs
     assert len(pane.qa.cues) >= 2
@@ -977,6 +980,76 @@ def test_ocr_job_progress_and_completion_metrics_ui(
     assert "OCR calls" in status_text
     assert "observations" in status_text
     assert "cues" in status_text
+
+
+def test_manual_cue_mutation_after_ocr_run_invalidates_discard_snapshot(
+    qapp_guard, track_group_repository, db_path, test_video
+):
+    from glyphcue.domain.review_state import ReviewState
+
+    engine = FakeOcrEngine([
+        OcrTextRegion(text="Line to edit", confidence=0.9, geometry=((0, 0), (10, 0), (10, 10), (0, 10)), language="en")
+    ])
+    pane = PathAMediaPane(track_group_repository, ocr_engine=engine, db_path=db_path)
+    pane.open_video(test_video)
+
+    pane.run_ocr_button.click()
+    _wait_for(pane.current_ocr_job)
+
+    assert pane.discard_latest_run_button.isEnabled() is True
+    assert pane._last_pre_run_cues is not None
+
+    # User performs a manual text edit in QA pane
+    pane.qa.language_layers_panel.cards[0].text_edit.setPlainText("Manually Edited Text")
+    pane.qa._commit_displayed_edits()
+
+    # Discard snapshot must now be invalidated and button disabled to protect manual work
+    assert pane._last_pre_run_cues is None
+    assert pane.discard_latest_run_button.isEnabled() is False
+
+
+def test_discard_latest_ocr_run_clears_evidence_pane_while_retaining_qa_raw_evidence(
+    qapp_guard, track_group_repository, db_path, test_video
+):
+    from glyphcue.domain.review_state import ReviewState
+
+    # Run 1: first OCR run produces initial cue with obs1
+    engine1 = FakeOcrEngine([
+        OcrTextRegion(text="First run obs", confidence=0.9, geometry=((0, 0), (10, 0), (10, 10), (0, 10)), language="en")
+    ])
+    pane = PathAMediaPane(track_group_repository, ocr_engine=engine1, db_path=db_path)
+    pane.open_video(test_video)
+    pane.limit_processing_range_checkbox.setChecked(True)
+    pane.processing_range_start_spin.setValue(0.0)
+    pane.processing_range_end_spin.setValue(0.2)
+    pane.run_ocr_button.click()
+    _wait_for(pane.current_ocr_job)
+    pane.qa.approve_and_advance()
+
+    # Run 2: second run produces bad obs
+    engine2 = FakeOcrEngine([
+        OcrTextRegion(text="Second bad run obs", confidence=0.9, geometry=((0, 0), (10, 0), (10, 10), (0, 10)), language="en")
+    ])
+    pane._ocr_engine = engine2
+    pane.processing_range_start_spin.setValue(0.3)
+    pane.processing_range_end_spin.setValue(0.5)
+    pane.run_ocr_button.click()
+    _wait_for(pane.current_ocr_job)
+
+    # Lower evidence pane currently shows Run 2 observations
+    assert len(pane.evidence_pane._observations) > 0
+    assert any("Second bad run obs" in obs.text for obs in pane.evidence_pane._observations)
+
+    # Discard latest run
+    pane.discard_latest_run_button.click()
+
+    # Evidence pane must no longer display discarded machine observations
+    assert len(pane.evidence_pane._observations) == 0
+
+    # QA pane for the restored Cue still has its own raw OCR evidence intact
+    assert len(pane.qa.cues) == 1
+    assert "First run obs" in pane.qa.evidence_view.toPlainText()
+
 
 
 

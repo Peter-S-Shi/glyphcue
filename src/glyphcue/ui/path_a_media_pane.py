@@ -381,6 +381,8 @@ class PathAMediaPane:
     def _on_qa_cues_changed(self, cues: list[Cue]) -> None:
         if self._source_id and self._cue_repository is not None:
             self._cue_repository.save_cues_for_source(self._source_id, cues)
+        self._last_pre_run_cues = None
+        self.discard_latest_run_button.setEnabled(False)
         self._refresh_timeline()
         self._refresh_current_cue_relationship(self.controller.player.position() / 1000.0)
 
@@ -863,6 +865,7 @@ class PathAMediaPane:
             for c in restored_cues
         }
         self.qa.set_cues_and_priorities(restored_cues, obs_map, priorities)
+        self.evidence_pane.set_observations([])
         self._refresh_timeline()
         self._last_pre_run_cues = None
         self.discard_latest_run_button.setEnabled(False)
