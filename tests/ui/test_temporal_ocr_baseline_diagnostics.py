@@ -60,12 +60,19 @@ def test_pipeline_metrics_records_and_aggregates_invocation_diagnostics():
     assert pytest.approx(metrics.latency_median_seconds, rel=1e-3) == 0.050
     assert pytest.approx(metrics.latency_p95_seconds, rel=1e-3) == 0.068
     assert pytest.approx(metrics.ocr_calls_per_media_minute, rel=1e-3) == 18.0
-    assert pytest.approx(metrics.realtime_ratio, rel=1e-3) == 2.0
+    assert pytest.approx(metrics.effective_processing_speed, rel=1e-3) == 2.0
+    assert pytest.approx(metrics.wall_media_ratio, rel=1e-3) == 0.5
+    assert pytest.approx(metrics.slowdown_factor, rel=1e-3) == 0.5
 
     diag_dict = metrics.to_dict(include_invocations=True)
     assert diag_dict["summary"]["frames_analyzed"] == 100
     assert diag_dict["summary"]["ocr_calls"] == 3
     assert diag_dict["summary"]["engine_initialization_seconds"] == 0.42
+    assert diag_dict["summary"]["effective_processing_speed"] == 2.0
+    assert diag_dict["summary"]["wall_media_ratio"] == 0.5
+    assert diag_dict["summary"]["slowdown_factor"] == 0.5
+    assert "realtime_ratio" not in diag_dict["summary"]
+
     assert len(diag_dict["invocations"]) == 3
     assert diag_dict["invocations"][1]["trigger_reason"] == "change_detected"
     assert diag_dict["invocations"][1]["difference_score"] == 0.085
@@ -75,6 +82,21 @@ def test_pipeline_metrics_records_and_aggregates_invocation_diagnostics():
     assert "Temporal OCR Baseline Diagnostic Report" in report
     assert "Frames Analyzed:" in report and "100" in report
     assert "OCR Calls:" in report and "3" in report
+
+
+def test_slow_run_speed_and_wall_media_slowdown_ratio():
+    metrics = PipelineMetrics()
+    metrics.frames_analyzed = 1000
+    metrics.media_seconds_processed = 10.0
+    metrics.elapsed_seconds = 200.0
+
+    assert pytest.approx(metrics.effective_processing_speed, rel=1e-3) == 0.05
+    assert pytest.approx(metrics.wall_media_ratio, rel=1e-3) == 20.0
+    assert pytest.approx(metrics.slowdown_factor, rel=1e-3) == 20.0
+
+    report = metrics.format_summary_report()
+    assert "20.00x slower than realtime" in report
+    assert "0.05x realtime" in report
 
 
 def test_change_triggered_policy_exposes_difference_score():
@@ -204,6 +226,8 @@ def test_path_a_ui_exposes_diagnostics_report_and_save_actions(qapp_guard, tmp_p
         assert target_json.exists()
         saved_data = json.loads(target_json.read_text(encoding="utf-8"))
         assert saved_data["summary"]["ocr_calls"] == 1
+        assert saved_data["summary"]["effective_processing_speed"] == 2.0
+        assert saved_data["summary"]["wall_media_ratio"] == 0.5
         assert len(saved_data["invocations"]) == 1
 
     # Test Copy Summary behavior

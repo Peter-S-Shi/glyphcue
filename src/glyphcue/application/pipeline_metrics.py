@@ -80,14 +80,22 @@ class PipelineMetrics:
 
     @property
     def effective_processing_speed(self) -> float:
-        """Media seconds processed per wall-clock second (real-time factor)."""
+        """Media seconds processed per wall-clock second (e.g. 2.0x realtime processing speed)."""
         if self.elapsed_seconds <= 0:
             return 0.0
         return self.media_seconds_processed / self.elapsed_seconds
 
     @property
-    def realtime_ratio(self) -> float:
-        return self.effective_processing_speed
+    def wall_media_ratio(self) -> float:
+        """Wall-clock elapsed seconds per media second processed (e.g. 20.0x slower than realtime)."""
+        if self.media_seconds_processed <= 0:
+            return 0.0
+        return self.elapsed_seconds / self.media_seconds_processed
+
+    @property
+    def slowdown_factor(self) -> float:
+        """Alias for wall_media_ratio."""
+        return self.wall_media_ratio
 
     @property
     def trigger_counts(self) -> dict[str, int]:
@@ -124,7 +132,9 @@ class PipelineMetrics:
                 "elapsed_seconds": round(self.elapsed_seconds, 3),
                 "engine_initialization_seconds": round(self.engine_initialization_seconds, 4),
                 "ocr_calls_per_media_minute": round(self.ocr_calls_per_media_minute, 2),
-                "realtime_ratio": round(self.realtime_ratio, 2),
+                "effective_processing_speed": round(self.effective_processing_speed, 3),
+                "wall_media_ratio": round(self.wall_media_ratio, 3),
+                "slowdown_factor": round(self.slowdown_factor, 3),
                 "trigger_counts": self.trigger_counts,
                 "latency_mean_ms": round(self.latency_mean_seconds * 1000.0, 2),
                 "latency_median_ms": round(self.latency_median_seconds * 1000.0, 2),
@@ -141,6 +151,11 @@ class PipelineMetrics:
         p95_ms = self.latency_p95_seconds * 1000.0
         triggers_str = ", ".join(f"{k}: {v}" for k, v in sorted(self.trigger_counts.items())) or "none"
 
+        if self.wall_media_ratio > 1.0:
+            speed_desc = f"{self.effective_processing_speed:.2f}x realtime ({self.wall_media_ratio:.2f}x slower than realtime)"
+        else:
+            speed_desc = f"{self.effective_processing_speed:.2f}x realtime ({self.wall_media_ratio:.2f}x wall/media ratio)"
+
         return (
             "=== Temporal OCR Baseline Diagnostic Report ===\n\n"
             f"Frames Analyzed:            {self.frames_analyzed}\n"
@@ -148,7 +163,7 @@ class PipelineMetrics:
             f"Observations Created:       {self.observations_created}\n"
             f"Media Duration Processed:   {self.media_seconds_processed:.2f}s\n"
             f"Wall-Clock Elapsed Time:    {self.elapsed_seconds:.2f}s\n"
-            f"Realtime Factor:            {self.realtime_ratio:.2f}x\n"
+            f"Processing Speed:           {speed_desc}\n"
             f"OCR Calls / Media Minute:   {self.ocr_calls_per_media_minute:.2f}\n"
             f"Engine Initialization:      {self.engine_initialization_seconds * 1000.0:.1f}ms\n\n"
             "--- OCR Call Latency ---\n"

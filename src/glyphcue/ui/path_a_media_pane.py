@@ -986,9 +986,15 @@ class PathAMediaPane:
         if has_data:
             mean_ms = self.ocr_metrics.latency_mean_seconds * 1000.0
             p95_ms = self.ocr_metrics.latency_p95_seconds * 1000.0
+            if self.ocr_metrics.wall_media_ratio > 1.0:
+                speed_str = (
+                    f"{self.ocr_metrics.wall_media_ratio:.2f}x slower than realtime "
+                    f"({self.ocr_metrics.effective_processing_speed:.2f}x speed)"
+                )
+            else:
+                speed_str = f"{self.ocr_metrics.effective_processing_speed:.2f}x realtime speed"
             self.diagnostics_summary_label.setText(
-                f"Diagnostics: Calls: {self.ocr_metrics.ocr_calls} · Mean: {mean_ms:.1f}ms (p95: {p95_ms:.1f}ms) · "
-                f"Speed: {self.ocr_metrics.realtime_ratio:.2f}x realtime"
+                f"Diagnostics: Calls: {self.ocr_metrics.ocr_calls} · Mean: {mean_ms:.1f}ms (p95: {p95_ms:.1f}ms) · {speed_str}"
             )
         else:
             self.diagnostics_summary_label.setText("")
