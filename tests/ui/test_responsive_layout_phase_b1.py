@@ -75,15 +75,14 @@ def test_right_qa_inspector_has_vertical_scroll_area_and_reflowed_timing_grid(qa
     assert grid_layout.columnCount() == 2
 
 
-def test_left_pane_structure_scroll_region_preserves_persistent_queue_usability(qapp_guard, tmp_path):
+def test_left_pane_structure_collapsible_region_preserves_persistent_queue_usability(qapp_guard, tmp_path):
     app, workbench = create_app(db_path=tmp_path / "glyphcue.sqlite3")
     pane = workbench.path_a_pane
     assert pane is not None
 
-    # Structure card region must be in a scroll area so it never starves the queue
-    structure_scroll = workbench.findChild(QScrollArea, "leftPaneStructureScroll")
-    assert structure_scroll is not None
-    assert structure_scroll.widgetResizable()
+    # Structure card region is in a collapsible section so it never starves the queue
+    assert hasattr(pane.qa, "structure_section")
+    assert pane.qa.structure_section.is_expanded()
 
     # Search and Queue must remain in the persistent left layout
     assert not pane.qa.search_edit.isHidden()

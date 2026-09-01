@@ -36,6 +36,7 @@ from glyphcue.application.review_priority import ReviewPriority
 from glyphcue.domain.cue import Cue
 from glyphcue.domain.observation import Observation
 from glyphcue.domain.review_state import ReviewState
+from glyphcue.ui.collapsible_section import CollapsibleSection
 from glyphcue.ui.design_tokens import Color, Spacing
 from glyphcue.ui.language_layer_presentation import LanguageLayersPanel, queue_label_for_cue
 from glyphcue.ui.main_window import MainWindow
@@ -299,24 +300,29 @@ class ReconstructionQaWorkspace:
         )
         left_layout.setSpacing(Spacing.COMPACT)
 
-        # Dedicated scrollable container for injected structure/metadata widgets
-        self._left_structure_container = QWidget()
-        self._left_structure_layout = QVBoxLayout(self._left_structure_container)
-        self._left_structure_layout.setContentsMargins(0, 0, 0, 0)
-        self._left_structure_layout.setSpacing(Spacing.COMPACT)
+        # 1. Structure & Region Collapsible Section (default expanded)
+        self.structure_section = CollapsibleSection("STRUCTURE & REGION", expanded=True)
+        self.structure_section.setObjectName("structureSection")
 
-        self._left_structure_scroll = QScrollArea()
-        self._left_structure_scroll.setObjectName("leftPaneStructureScroll")
-        self._left_structure_scroll.setWidgetResizable(True)
-        self._left_structure_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self._left_structure_scroll.setFrameShape(QFrame.Shape.NoFrame)
-        self._left_structure_scroll.setWidget(self._left_structure_container)
-        self._left_structure_scroll.setMaximumHeight(340)
+        # 2. Cue Queue Collapsible Section (default expanded, consumes remaining height)
+        queue_content = QWidget()
+        queue_layout = QVBoxLayout(queue_content)
+        queue_layout.setContentsMargins(0, Spacing.COMPACT, 0, 0)
+        queue_layout.setSpacing(Spacing.COMPACT)
+        queue_layout.addWidget(self.search_edit)
+        queue_layout.addWidget(self.filter_combo)
+        queue_layout.addWidget(self.queue, stretch=1)
 
-        left_layout.addWidget(self._left_structure_scroll)
-        left_layout.addWidget(self.search_edit)
-        left_layout.addWidget(self.filter_combo)
-        left_layout.addWidget(self.queue, stretch=1)
+        self.queue_section = CollapsibleSection("CUE QUEUE", content=queue_content, expanded=True)
+        self.queue_section.setObjectName("queueSection")
+
+        # 3. Source Context Collapsible Section (default collapsed)
+        self.context_section = CollapsibleSection("SOURCE CONTEXT", expanded=False)
+        self.context_section.setObjectName("contextSection")
+
+        left_layout.addWidget(self.structure_section)
+        left_layout.addWidget(self.queue_section, stretch=1)
+        left_layout.addWidget(self.context_section)
         self._left_layout = left_layout
 
         right_pane = QWidget()
@@ -888,11 +894,9 @@ class ReconstructionQaWorkspace:
         self._right_layout.addWidget(widget)
 
     def add_left_pane_widget(self, widget: QWidget) -> None:
-        """Appends `widget` into the scrollable structure/context region
-        above search and review queue in the left pane."""
-        self._left_structure_layout.addWidget(widget)
+        """Appends `widget` into the SOURCE CONTEXT collapsible section."""
+        self.context_section.add_widget(widget)
 
     def insert_left_pane_widget(self, index: int, widget: QWidget) -> None:
-        """Inserts `widget` at `index` in the scrollable structure/context region
-        above search and review queue in the left pane."""
-        self._left_structure_layout.insertWidget(index, widget)
+        """Inserts `widget` into the STRUCTURE & REGION collapsible section."""
+        self.structure_section.insert_widget(index, widget)
