@@ -5,7 +5,7 @@ import av
 import numpy as np
 import pytest
 from PySide6.QtCore import QEventLoop, QTimer
-from PySide6.QtMultimedia import QMediaPlayer
+from PySide6.QtMultimedia import QMediaPlayer, QVideoSink
 
 from glyphcue.ui.playback_controller import PlaybackController
 
@@ -40,6 +40,7 @@ def test_video(tmp_path) -> Path:
 def _wait_for_media_status(player: QMediaPlayer, timeout_ms: int = 3000) -> None:
     if player.mediaStatus() in (
         QMediaPlayer.MediaStatus.LoadedMedia,
+        QMediaPlayer.MediaStatus.BufferedMedia,
         QMediaPlayer.MediaStatus.InvalidMedia,
     ):
         return
@@ -48,6 +49,7 @@ def _wait_for_media_status(player: QMediaPlayer, timeout_ms: int = 3000) -> None
     def on_status_changed(status):
         if status in (
             QMediaPlayer.MediaStatus.LoadedMedia,
+            QMediaPlayer.MediaStatus.BufferedMedia,
             QMediaPlayer.MediaStatus.InvalidMedia,
         ):
             loop.quit()
@@ -62,19 +64,19 @@ def _wait_for_media_status(player: QMediaPlayer, timeout_ms: int = 3000) -> None
 
 def test_load_sets_the_media_source_and_prerolls_paused_state(qapp_guard, test_video):
     controller = PlaybackController()
+    sink = QVideoSink(controller)
+    controller.set_video_output(sink)
 
     controller.load(test_video)
     _wait_for_media_status(controller.player)
 
     assert Path(controller.player.source().toLocalFile()) == test_video
+    assert controller.player.mediaStatus() in (
+        QMediaPlayer.MediaStatus.LoadedMedia,
+        QMediaPlayer.MediaStatus.BufferedMedia,
+    )
+    assert controller.player.playbackState() == QMediaPlayer.PlaybackState.PausedState
     assert controller.position_seconds == pytest.approx(0.0, abs=0.01)
-    if controller.player.mediaStatus() == QMediaPlayer.MediaStatus.LoadedMedia:
-        assert controller.player.playbackState() == QMediaPlayer.PlaybackState.PausedState
-    else:
-        assert controller.player.playbackState() in (
-            QMediaPlayer.PlaybackState.PausedState,
-            QMediaPlayer.PlaybackState.StoppedState,
-        )
 
 
 def test_play_and_pause_update_playback_state(qapp_guard, test_video):
