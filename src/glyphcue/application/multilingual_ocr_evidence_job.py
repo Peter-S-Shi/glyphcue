@@ -198,10 +198,14 @@ def build_multilingual_ocr_evidence_job(
                 processed_in_range = timestamp - range_start
                 metrics.media_seconds_processed = processed_in_range
                 metrics.elapsed_seconds = time.monotonic() - wall_start
+                metrics.transition_episodes = getattr(active_policy, "transition_episodes", 0)
+                metrics.suppressed_candidate_triggers = getattr(active_policy, "suppressed_candidate_triggers", 0)
                 context.report_progress("multilingual_ocr_evidence", processed_in_range, range_duration)
 
             metrics.media_seconds_processed = range_duration
             metrics.elapsed_seconds = time.monotonic() - wall_start
+            metrics.transition_episodes = getattr(active_policy, "transition_episodes", 0)
+            metrics.suppressed_candidate_triggers = getattr(active_policy, "suppressed_candidate_triggers", 0)
             context.report_progress("multilingual_ocr_evidence", range_duration, range_duration)
         finally:
             if source is not None:
