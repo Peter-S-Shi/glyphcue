@@ -26,6 +26,7 @@ from glyphcue.adapters.ocr_engine import OcrEngine
 from glyphcue.adapters.paddleocr_engine import CANONICAL_LANGUAGES
 from glyphcue.adapters.pyav_media_source import probe_media
 from glyphcue.application.consensus_reconstruction import reconstruct_cues_with_consensus
+from glyphcue.application.cue_merge import merge_incremental_cues
 from glyphcue.application.multilingual_ocr_evidence_job import build_multilingual_ocr_evidence_job
 from glyphcue.application.multilingual_reconstruction import (
     reconstruct_multilingual_cues_for_track_group,
@@ -39,11 +40,14 @@ from glyphcue.application.review_priority import (
     review_signals_from_multilingual_diagnostics,
     compute_review_priority,
 )
+from glyphcue.application.source_identity import normalize_source_id
+from glyphcue.domain.review_state import ReviewState
 from glyphcue.domain.roi import ROI
 from glyphcue.domain.track_group import TrackGroup
 from glyphcue.jobs.job import Job, JobState
 from glyphcue.persistence.database import connect
 from glyphcue.persistence.observation_repository import ObservationRepository
+from glyphcue.persistence.repository import CueRepository
 from glyphcue.persistence.track_group_repository import TrackGroupRepository
 from glyphcue.ui.compact_timeline import CompactTimeline
 from glyphcue.ui.design_tokens import Spacing
@@ -123,12 +127,17 @@ class PathAMediaPane:
         self._on_open_caption_file = on_open_caption_file
         self._current_track_group: TrackGroup | None = None
         self._processing_range = ProcessingRange()
+        self._source_id: str | None = None
         # A connection of its own on the UI thread, separate from
         # whatever connection the OCR job opens on its own worker
         # thread (build_ocr_evidence_job owns that one) -- never shared
         # across the thread boundary.
+        self._db_conn = connect(db_path) if db_path is not None else None
         self._observation_repository = (
-            ObservationRepository(connect(db_path)) if db_path is not None else None
+            ObservationRepository(self._db_conn) if self._db_conn is not None else None
+        )
+        self._cue_repository = (
+            CueRepository(self._db_conn) if self._db_conn is not None else None
         )
         self._video_path: Path | None = None
         self._video_duration_seconds: float = 0.0
@@ -286,6 +295,7 @@ class PathAMediaPane:
             play_pause_callback=self.controller.toggle_play_pause,
             replay_callback=self._on_replay,
             on_active_cue_changed=self._on_qa_active_cue_changed,
+            on_cues_changed=self._on_qa_cues_changed,
         )
         self.window = self.qa.window
 
@@ -349,6 +359,12 @@ class PathAMediaPane:
         if path_str:
             self.switch_to_caption_file(Path(path_str))
 
+    def _on_qa_cues_changed(self, cues: list[Cue]) -> None:
+        if self._source_id and self._cue_repository is not None:
+            self._cue_repository.save_cues_for_source(self._source_id, cues)
+        self._refresh_timeline()
+        self._refresh_current_cue_relationship(self.controller.player.position() / 1000.0)
+
     @property
     def last_reconstructed_cues(self) -> list | None:
         """The most recently reconstructed Cues, or `None` if no
@@ -358,7 +374,10 @@ class PathAMediaPane:
         return self.qa.cues or None
 
     def open_video(self, path: Path) -> None:
+        switching = self._video_path is not None and self._video_path != path
         self._video_path = path
+        self._source_id = normalize_source_id(path)
+        self._track_group_id = f"tg:{self._source_id}"
         self._video_duration_seconds = 0.0
         self.controller.load(path)
         metadata = probe_media(path)
@@ -375,6 +394,32 @@ class PathAMediaPane:
         self.processing_range_start_spin.setRange(0.0, metadata.duration_seconds)
         self.processing_range_end_spin.setRange(0.0, metadata.duration_seconds)
         self.processing_range_end_spin.setValue(metadata.duration_seconds)
+
+        self._restore_roi(switching=switching)
+        self._restore_languages(switching=switching)
+
+        if self._cue_repository is not None and self._source_id:
+            persisted_cues = self._cue_repository.list_for_source(self._source_id)
+            if persisted_cues:
+                obs_ids: list[str] = []
+                for c in persisted_cues:
+                    for layer in c.language_layers:
+                        obs_ids.extend(layer.observation_ids)
+                obs_map = (
+                    self._observation_repository.get_by_ids(obs_ids)
+                    if self._observation_repository is not None
+                    else {}
+                )
+                priorities = {
+                    c.id: ReviewPriority(cue_id=c.id, score=0.0, level="None", components=())
+                    if c.review_state is ReviewState.APPROVED
+                    else ReviewPriority(cue_id=c.id, score=1.0, level="Low", components=())
+                    for c in persisted_cues
+                }
+                self.qa.set_cues_and_priorities(persisted_cues, obs_map, priorities)
+            else:
+                self.qa.set_cues_and_priorities([], {}, {})
+
         self._refresh_context_label()
 
         # DESIGN.md section 10: PTS-aware time context/navigation and
@@ -506,15 +551,24 @@ class PathAMediaPane:
             end_time=self.processing_range_end_spin.value(),
         )
 
-    def _restore_roi(self) -> None:
+    def _restore_roi(self, switching: bool = False) -> None:
         track_group = self._repository.get(self._track_group_id)
-        roi = track_group.roi if track_group is not None else ROI(0.0, 0.0, 1.0, 1.0)
-        self.set_roi(roi)
-
-    def _restore_languages(self) -> None:
-        track_group = self._repository.get(self._track_group_id)
+        if track_group is None and not switching:
+            track_group = self._repository.get("default")
         if track_group is not None:
-            self.language_selection_panel.set_languages(track_group.languages)
+            self.set_roi(track_group.roi)
+        else:
+            self.reset_roi()
+
+    def _restore_languages(self, switching: bool = False) -> None:
+        track_group = self._repository.get(self._track_group_id)
+        if track_group is None and not switching:
+            track_group = self._repository.get("default")
+        if track_group is not None:
+            clean_languages = tuple(lang for lang in track_group.languages if lang != "und")
+            self.language_selection_panel.set_languages(clean_languages or ("en",))
+        elif switching:
+            self.language_selection_panel.set_languages(("en",))
 
     def _on_save_roi_clicked(self) -> None:
         track_group = TrackGroup(
@@ -680,7 +734,35 @@ class PathAMediaPane:
                     signal_builder(diagnostics, cue_observations)
                 )
 
+            if self._source_id and self._cue_repository is not None:
+                existing_cues = self._cue_repository.list_for_source(self._source_id)
+                range_start = self._processing_range.start_time or 0.0
+                range_end = self._current_processing_end_time or (self._processing_range.end_time or 999999.0)
+                merged_cues = merge_incremental_cues(existing_cues, cues, range_start, range_end)
+                self._cue_repository.save_cues_for_source(self._source_id, merged_cues)
+                cues = merged_cues
+
+            if self._source_id and self._repository is not None:
+                self._repository.save(
+                    TrackGroup(
+                        id=self._track_group_id,
+                        roi=self.current_roi(),
+                        languages=self.language_selection_panel.selected_languages(),
+                    )
+                )
+
+            if self._observation_repository is not None:
+                all_obs_ids = [
+                    obs_id
+                    for c in cues
+                    for layer in c.language_layers
+                    for obs_id in layer.observation_ids
+                ]
+                all_obs = self._observation_repository.get_by_ids(all_obs_ids)
+                observations_by_id.update(all_obs)
+
         self.qa.set_cues_and_priorities(cues, observations_by_id, priorities)
+        self._refresh_timeline()
 
         frames = self.ocr_metrics.frames_analyzed
         calls = self.ocr_metrics.ocr_calls

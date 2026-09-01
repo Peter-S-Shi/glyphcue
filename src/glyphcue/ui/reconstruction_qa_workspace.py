@@ -170,6 +170,7 @@ class ReconstructionQaWorkspace:
         play_pause_callback: Callable[[], None] | None = None,
         replay_callback: Callable[[Cue], None] | None = None,
         on_active_cue_changed: Callable[[Cue | None], None] | None = None,
+        on_cues_changed: Callable[[list[Cue]], None] | None = None,
         filter_labels: tuple[str, str, str] = ("All", "Review Needed", "Clean / Approved"),
         third_filter_predicate: Callable[[Cue], bool] | None = None,
     ) -> None:
@@ -179,6 +180,7 @@ class ReconstructionQaWorkspace:
         self._play_pause_callback = play_pause_callback
         self._replay_callback = replay_callback
         self._on_active_cue_changed = on_active_cue_changed
+        self._on_cues_changed = on_cues_changed
         self._filter_labels = filter_labels
         self._third_filter_predicate = third_filter_predicate
         self._displayed_cue_id: str | None = None
@@ -471,6 +473,10 @@ class ReconstructionQaWorkspace:
         if self._on_active_cue_changed is not None:
             self._on_active_cue_changed(self.active_cue)
 
+    def _notify_cues_changed(self) -> None:
+        if self._on_cues_changed is not None:
+            self._on_cues_changed(self.cues)
+
     def _commit_displayed_edits(self) -> None:
         """Commits whatever is currently typed into the language-layer
         text edits into `self._cues`, for the Cue that was on screen
@@ -489,12 +495,16 @@ class ReconstructionQaWorkspace:
         cue = next((c for c in self._cues if c.id == self._displayed_cue_id), None)
         if cue is None:
             return
+        modified = False
         for language, text in self.language_layers_panel.current_texts().items():
             existing = next(
                 (layer for layer in cue.language_layers if layer.language == language), None
             )
             if existing is not None and existing.text != text:
                 self._cues = edit_cue_language_text(self._cues, cue.id, language, text)
+                modified = True
+        if modified:
+            self._notify_cues_changed()
 
     def _refresh_active_pane(self) -> None:
         cue = self.active_cue
@@ -560,6 +570,7 @@ class ReconstructionQaWorkspace:
         if cue is None:
             return
         self._cues = approve_cue(self._cues, cue.id)
+        self._notify_cues_changed()
         self.go_to_next()
 
     def discard_active_cue(self) -> None:
@@ -568,6 +579,7 @@ class ReconstructionQaWorkspace:
         if cue is None:
             return
         self._cues = discard_cue(self._cues, cue.id)
+        self._notify_cues_changed()
         self._rebuild_queue(select_cue_id=cue.id)
 
     def _nudge_active(self, *, start_delta: float = 0.0, end_delta: float = 0.0) -> None:
@@ -579,6 +591,7 @@ class ReconstructionQaWorkspace:
             self._cues = nudge_cue_timing(self._cues, cue.id, start_delta=start_delta, end_delta=end_delta)
         except ValueError:
             return  # invalid nudge (e.g. would invert the range) -- silently refused, not applied
+        self._notify_cues_changed()
         self._rebuild_queue(select_cue_id=cue.id)
 
     def split_active_cue(self) -> None:
@@ -604,6 +617,7 @@ class ReconstructionQaWorkspace:
                     components=parent_priority.components,
                 )
                 next_select = next_select or new_cue.id
+        self._notify_cues_changed()
         self._rebuild_queue(select_cue_id=next_select)
 
     def _temporal_next_cue(self, cue: Cue) -> Cue | None:
@@ -640,6 +654,7 @@ class ReconstructionQaWorkspace:
             self._priorities_by_cue_id[merged_id] = ReviewPriority(
                 cue_id=merged_id, score=best.score, level=best.level, components=best.components
             )
+        self._notify_cues_changed()
         self._rebuild_queue(select_cue_id=merged_id)
 
     def go_to_next(self) -> None:

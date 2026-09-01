@@ -15,6 +15,7 @@ from glyphcue.application.ocr_invocation_policy import (
 from glyphcue.application.pipeline_metrics import PipelineMetrics
 from glyphcue.application.processing_range import ProcessingRange
 from glyphcue.application.roi_crop import crop_to_roi
+from glyphcue.application.source_identity import normalize_source_id
 from glyphcue.domain.observation import Observation
 from glyphcue.domain.provenance import Provenance, ProvenanceKind
 from glyphcue.domain.track_group import TrackGroup
@@ -157,7 +158,8 @@ def build_multilingual_ocr_evidence_job(
                                     geometry=region.geometry,
                                     frame_reference=frame_reference,
                                 )
-                                observation_repository.add(observation, evidence_run_id)
+                                source_id = normalize_source_id(path)
+                                observation_repository.add(observation, evidence_run_id, source_id)
                                 metrics.observations_created += 1
                         else:
                             observation = Observation(
@@ -176,7 +178,8 @@ def build_multilingual_ocr_evidence_job(
                                 geometry=None,
                                 frame_reference=frame_reference,
                             )
-                            observation_repository.add(observation, evidence_run_id)
+                            source_id = normalize_source_id(path)
+                            observation_repository.add(observation, evidence_run_id, source_id)
                             metrics.observations_created += 1
 
                 processed_in_range = timestamp - range_start

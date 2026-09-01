@@ -19,12 +19,12 @@ class CueRepository:
     def __init__(self, conn: sqlite3.Connection) -> None:
         self._conn = conn
 
-    def add(self, cue: Cue) -> None:
+    def add(self, cue: Cue, source_id: str = "") -> None:
         with self._conn:
             self._conn.execute(
-                "INSERT INTO cues (id, start_time, end_time, review_state) "
-                "VALUES (?, ?, ?, ?)",
-                (cue.id, cue.start_time, cue.end_time, cue.review_state.value),
+                "INSERT INTO cues (id, start_time, end_time, review_state, source_id) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (cue.id, cue.start_time, cue.end_time, cue.review_state.value, source_id),
             )
             for position, layer in enumerate(cue.language_layers):
                 self._conn.execute(
@@ -40,6 +40,13 @@ class CueRepository:
                     ),
                 )
 
+    def update_cue_state(self, cue_id: str, review_state: ReviewState) -> None:
+        with self._conn:
+            self._conn.execute(
+                "UPDATE cues SET review_state = ? WHERE id = ?",
+                (review_state.value, cue_id),
+            )
+
     def get(self, cue_id: str) -> Cue | None:
         row = self._conn.execute(
             "SELECT id, start_time, end_time, review_state FROM cues WHERE id = ?",
@@ -54,6 +61,60 @@ class CueRepository:
             "SELECT id, start_time, end_time, review_state FROM cues ORDER BY start_time"
         ).fetchall()
         return [self._build_cue(row) for row in rows]
+
+    def list_for_source(self, source_id: str) -> list[Cue]:
+        if not source_id:
+            return []
+        rows = self._conn.execute(
+            "SELECT id, start_time, end_time, review_state FROM cues "
+            "WHERE source_id = ? ORDER BY start_time",
+            (source_id,),
+        ).fetchall()
+        return [self._build_cue(row) for row in rows]
+
+    def save_cues_for_source(self, source_id: str, cues: list[Cue]) -> None:
+        """Atomically replaces all cues and language layers for `source_id`."""
+        with self._conn:
+            self._conn.execute(
+                "DELETE FROM language_layers WHERE cue_id IN (SELECT id FROM cues WHERE source_id = ?)",
+                (source_id,),
+            )
+            self._conn.execute(
+                "DELETE FROM cues WHERE source_id = ?",
+                (source_id,),
+            )
+            for cue in cues:
+                self._conn.execute(
+                    "INSERT INTO cues (id, start_time, end_time, review_state, source_id) "
+                    "VALUES (?, ?, ?, ?, ?)",
+                    (cue.id, cue.start_time, cue.end_time, cue.review_state.value, source_id),
+                )
+                for position, layer in enumerate(cue.language_layers):
+                    self._conn.execute(
+                        "INSERT INTO language_layers "
+                        "(cue_id, position, language, text, observation_ids) "
+                        "VALUES (?, ?, ?, ?, ?)",
+                        (
+                            cue.id,
+                            position,
+                            layer.language,
+                            layer.text,
+                            _OBSERVATION_ID_SEPARATOR.join(layer.observation_ids),
+                        ),
+                    )
+
+    def delete_for_source(self, source_id: str) -> None:
+        """Deletes all cues and language layers for `source_id`."""
+        with self._conn:
+            self._conn.execute(
+                "DELETE FROM language_layers WHERE cue_id IN (SELECT id FROM cues WHERE source_id = ?)",
+                (source_id,),
+            )
+            self._conn.execute(
+                "DELETE FROM cues WHERE source_id = ?",
+                (source_id,),
+            )
+
 
     def _build_cue(self, row: tuple) -> Cue:
         cue_id, start_time, end_time, review_state = row

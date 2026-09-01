@@ -39,8 +39,9 @@ def edit_cue_language_text(cues: list[Cue], cue_id: str, language: str, new_text
     human-edited correction, keeping that layer's `observation_ids` --
     a manual correction does not discard the evidence that led to the
     original reconstruction. Raises `ValueError` if `cue_id` or
-    `language` isn't found. Never adds per-layer timing (ROADMAP M6/M7:
-    Language Layers always inherit the Cue's own timing)."""
+    `language` isn't found. Sets review_state to NEEDS_REVIEW to mark
+    human modification so it is never overwritten by automated reprocessing.
+    """
     result = list(cues)
     index = _find_index(result, cue_id)
     cue = result[index]
@@ -49,7 +50,11 @@ def edit_cue_language_text(cues: list[Cue], cue_id: str, language: str, new_text
     for layer_index, layer in enumerate(layers):
         if layer.language == language:
             layers[layer_index] = replace(layer, text=new_text)
-            result[index] = replace(cue, language_layers=tuple(layers))
+            result[index] = replace(
+                cue,
+                language_layers=tuple(layers),
+                review_state=ReviewState.NEEDS_REVIEW,
+            )
             return result
     raise ValueError(f"Cue {cue_id!r} has no language layer {language!r}")
 
@@ -61,8 +66,8 @@ def nudge_cue_timing(
     Cue-level only, since Language Layers have no timing of their own
     to nudge (ROADMAP section 4, frozen). Reuses `Cue`'s own
     `__post_init__` invariants (non-negative start, end after start) to
-    reject an invalid nudge, rather than re-deriving that validation
-    here."""
+    reject an invalid nudge. Sets review_state to NEEDS_REVIEW to protect
+    human timing adjustments from automated reprocessing."""
     result = list(cues)
     index = _find_index(result, cue_id)
     cue = result[index]
@@ -70,6 +75,7 @@ def nudge_cue_timing(
         cue,
         start_time=cue.start_time + start_delta,
         end_time=cue.end_time + end_delta,
+        review_state=ReviewState.NEEDS_REVIEW,
     )
     return result
 

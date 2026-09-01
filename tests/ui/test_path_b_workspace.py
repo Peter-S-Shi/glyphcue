@@ -344,8 +344,8 @@ def test_editing_text_then_exporting_immediately_without_approving_exports_the_e
     assert "Hello" in exported
     assert "Helo" not in exported
     # Export must not implicitly approve -- committing an edit for
-    # export is not a review decision.
-    assert workspace.cues[0].review_state == ReviewState.PENDING
+    # export is not a review decision, but transitions to NEEDS_REVIEW to preserve the hand-edit.
+    assert workspace.cues[0].review_state == ReviewState.NEEDS_REVIEW
 
 
 def test_confidently_resolved_rolling_cue_shows_normalization_kind_but_no_review_flags(

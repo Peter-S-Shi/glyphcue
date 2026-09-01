@@ -617,3 +617,126 @@ def test_timeline_reflects_reconstructed_cue_spans(
 
     assert len(pane.timeline.spans) == 1
     assert pane.timeline.spans[0][:2] == (0.0, 0.1)
+
+
+def test_reopen_video_restores_persisted_cues_and_review_state(
+    qapp_guard, track_group_repository, db_path, test_video
+):
+    from glyphcue.domain.review_state import ReviewState
+
+    engine = FakeOcrEngine([
+        OcrTextRegion(text="First Line", confidence=0.9, geometry=((0, 0), (10, 0), (10, 10), (0, 10)), language="en")
+    ])
+    pane1 = PathAMediaPane(track_group_repository, ocr_engine=engine, db_path=db_path)
+    pane1.open_video(test_video)
+    pane1.run_ocr_button.click()
+    _wait_for(pane1.current_ocr_job)
+
+    assert len(pane1.qa.cues) >= 1
+    pane1.qa.approve_and_advance()
+    assert pane1.qa.cues[0].review_state == ReviewState.APPROVED
+
+    # Open a second pane over the same db_path and reopen the video
+    pane2 = PathAMediaPane(track_group_repository, ocr_engine=engine, db_path=db_path)
+    pane2.open_video(test_video)
+
+    assert len(pane2.qa.cues) >= 1
+    assert pane2.qa.cues[0].review_state == ReviewState.APPROVED
+
+
+def test_source_bound_track_group_isolation(
+    qapp_guard, track_group_repository, db_path, tmp_path
+):
+    video_a = tmp_path / "video_a.mp4"
+    video_b = tmp_path / "video_b.mp4"
+    _write_test_video(video_a)
+    _write_test_video(video_b)
+
+    pane = PathAMediaPane(track_group_repository, db_path=db_path)
+
+    # Open video A, set custom ROI, click save
+    pane.open_video(video_a)
+    pane.set_roi(ROI(0.1, 0.2, 0.3, 0.4))
+    pane.save_roi_button.click()
+
+    # Open video B -> should have default ROI (0, 0, 1, 1), not video A's
+    pane.open_video(video_b)
+    assert pane.current_roi() == ROI(0.0, 0.0, 1.0, 1.0)
+
+    # Set video B ROI, click save
+    pane.set_roi(ROI(0.5, 0.5, 0.2, 0.2))
+    pane.save_roi_button.click()
+
+    # Reopen video A -> restores video A's ROI
+    pane.open_video(video_a)
+    assert pane.current_roi() == ROI(0.1, 0.2, 0.3, 0.4)
+
+    # Reopen video B -> restores video B's ROI
+    pane.open_video(video_b)
+    assert pane.current_roi() == ROI(0.5, 0.5, 0.2, 0.2)
+
+
+def test_incremental_processing_range_appends_cues_and_preserves_approved(
+    qapp_guard, track_group_repository, db_path, test_video
+):
+    from glyphcue.domain.review_state import ReviewState
+
+    engine = FakeOcrEngine([
+        OcrTextRegion(text="Hello", confidence=0.9, geometry=((0, 0), (10, 0), (10, 10), (0, 10)), language="en")
+    ])
+    pane = PathAMediaPane(track_group_repository, ocr_engine=engine, db_path=db_path)
+    pane.open_video(test_video)
+
+    # First run: range 0.0s - 0.2s
+    pane.limit_processing_range_checkbox.setChecked(True)
+    pane.processing_range_start_spin.setValue(0.0)
+    pane.processing_range_end_spin.setValue(0.2)
+    pane.run_ocr_button.click()
+    _wait_for(pane.current_ocr_job)
+
+    assert len(pane.qa.cues) >= 1
+    pane.qa.approve_and_advance()
+    assert pane.qa.cues[0].review_state == ReviewState.APPROVED
+    first_cue_id = pane.qa.cues[0].id
+
+    # Second run: range 0.2s - 0.5s
+    pane.processing_range_start_spin.setValue(0.2)
+    pane.processing_range_end_spin.setValue(0.5)
+    pane.run_ocr_button.click()
+    _wait_for(pane.current_ocr_job)
+
+    # Both cues are in the workspace, first cue is still APPROVED
+    cues = pane.qa.cues
+    assert len(cues) >= 2
+    assert any(c.id == first_cue_id and c.review_state == ReviewState.APPROVED for c in cues)
+
+
+def test_overlapping_reprocessing_preserves_needs_review_and_approved_cues(
+    qapp_guard, track_group_repository, db_path, test_video
+):
+    from glyphcue.domain.review_state import ReviewState
+
+    engine = FakeOcrEngine([
+        OcrTextRegion(text="Line 1", confidence=0.9, geometry=((0, 0), (10, 0), (10, 10), (0, 10)), language="en")
+    ])
+    pane = PathAMediaPane(track_group_repository, ocr_engine=engine, db_path=db_path)
+    pane.open_video(test_video)
+
+    pane.run_ocr_button.click()
+    _wait_for(pane.current_ocr_job)
+    assert len(pane.qa.cues) >= 1
+
+    # Nudge timing -> transitions to NEEDS_REVIEW (human edit)
+    pane.qa.nudge_end_later_button.click()
+    assert pane.qa.cues[0].review_state == ReviewState.NEEDS_REVIEW
+    nudged_id = pane.qa.cues[0].id
+
+    # Re-run OCR over same video range
+    pane.run_ocr_button.click()
+    _wait_for(pane.current_ocr_job)
+
+    # Human-edited NEEDS_REVIEW cue is preserved and not overwritten
+    cues = pane.qa.cues
+    assert any(c.id == nudged_id and c.review_state == ReviewState.NEEDS_REVIEW for c in cues)
+
+

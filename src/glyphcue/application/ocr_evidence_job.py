@@ -13,6 +13,7 @@ from glyphcue.application.ocr_invocation_policy import (
 from glyphcue.application.pipeline_metrics import PipelineMetrics
 from glyphcue.application.processing_range import ProcessingRange
 from glyphcue.application.roi_crop import crop_to_roi
+from glyphcue.application.source_identity import normalize_source_id
 from glyphcue.domain.observation import Observation
 from glyphcue.domain.provenance import Provenance, ProvenanceKind
 from glyphcue.domain.roi import ROI
@@ -154,7 +155,8 @@ def build_ocr_evidence_job(
                                 geometry=region.geometry,
                                 frame_reference=f"{path}@{timestamp:.6f}s",
                             )
-                            observation_repository.add(observation, evidence_run_id)
+                            source_id = normalize_source_id(path)
+                            observation_repository.add(observation, evidence_run_id, source_id)
                             metrics.observations_created += 1
                     else:
                         # OCR-empty candidate: the engine found no
@@ -183,7 +185,8 @@ def build_ocr_evidence_job(
                             geometry=None,
                             frame_reference=f"{path}@{timestamp:.6f}s",
                         )
-                        observation_repository.add(observation, evidence_run_id)
+                        source_id = normalize_source_id(path)
+                        observation_repository.add(observation, evidence_run_id, source_id)
                         metrics.observations_created += 1
 
                 processed_in_range = timestamp - range_start
