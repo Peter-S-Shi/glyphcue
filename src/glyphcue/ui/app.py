@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QMainWindow,
     QPushButton,
+    QSplitter,
     QStackedWidget,
     QVBoxLayout,
     QWidget,
@@ -31,7 +32,7 @@ DEFAULT_DB_PATH = Path.home() / ".glyphcue" / "glyphcue.sqlite3"
 
 class GlyphCueWorkbench(QMainWindow):
     """The persistent Evidence Workbench product shell (M11 UI Reconstruction
-    Phase A / DOG-008).
+    Phase A & Phase B / DOG-008).
 
     Replaces the previous thin chooser / separate-window model with a single,
     persistent product shell. Path A (Video Extraction) and Path B (Caption
@@ -43,7 +44,7 @@ class GlyphCueWorkbench(QMainWindow):
     def __init__(self, db_path: Path = DEFAULT_DB_PATH) -> None:
         super().__init__()
         self._db_path = db_path
-        self.setWindowTitle("GlyphCue")
+        self.setWindowTitle("GlyphCue — Subtitle Reconstruction Evidence Workbench")
         self.setStyleSheet(base_stylesheet())
         self.resize(1360, 860)
 
@@ -55,36 +56,52 @@ class GlyphCueWorkbench(QMainWindow):
         self.path_b_workspace: PathBWorkspace | None = None
         self.current_mode: str = "path_a"
 
-        # 1. Top App Header / Chrome
+        # 1. Top App Header / Chrome (Prototype Visual Hierarchy)
         header_widget = QWidget()
         header_widget.setObjectName("appHeader")
         header_layout = QHBoxLayout(header_widget)
         header_layout.setContentsMargins(
-            Spacing.PANEL_MAJOR, Spacing.STANDARD, Spacing.PANEL_MAJOR, Spacing.STANDARD
+            Spacing.PANEL_MAJOR, Spacing.COMPACT, Spacing.PANEL_MAJOR, Spacing.COMPACT
         )
 
+        brand_box = QHBoxLayout()
+        brand_box.setSpacing(Spacing.STANDARD)
+        brand_logo = QLabel("GC")
+        brand_logo.setObjectName("brandLogoBox")
         brand_label = QLabel("GlyphCue")
-        brand_label.setStyleSheet(
-            f"font-weight: 800; font-size: 15px; color: {Color.TEXT_PRIMARY};"
-        )
-        header_layout.addWidget(brand_label)
+        brand_label.setObjectName("brandLabel")
+        app_badge = QLabel("v0.1.0 · LOCAL")
+        app_badge.setObjectName("appBadge")
+        brand_box.addWidget(brand_logo)
+        brand_box.addWidget(brand_label)
+        brand_box.addWidget(app_badge)
+        header_layout.addLayout(brand_box)
 
-        mode_nav = QHBoxLayout()
+        # Segmented Mode Switcher
+        mode_nav_widget = QWidget()
+        mode_nav_widget.setObjectName("modeNavContainer")
+        mode_nav_layout = QHBoxLayout(mode_nav_widget)
+        mode_nav_layout.setContentsMargins(2, 2, 2, 2)
+        mode_nav_layout.setSpacing(2)
+
         self.path_a_mode_button = QPushButton("Path A: Video Extraction")
-        self.path_b_mode_button = QPushButton("Path B: Caption Normalizer")
+        self.path_a_mode_button.setObjectName("modeBtn")
         self.path_a_mode_button.setCheckable(True)
-        self.path_b_mode_button.setCheckable(True)
         self.path_a_mode_button.setChecked(True)
-        mode_nav.addWidget(self.path_a_mode_button)
-        mode_nav.addWidget(self.path_b_mode_button)
-        header_layout.addLayout(mode_nav)
+
+        self.path_b_mode_button = QPushButton("Path B: Caption Normalizer")
+        self.path_b_mode_button.setObjectName("modeBtn")
+        self.path_b_mode_button.setCheckable(True)
+        self.path_b_mode_button.setChecked(False)
+
+        mode_nav_layout.addWidget(self.path_a_mode_button)
+        mode_nav_layout.addWidget(self.path_b_mode_button)
+        header_layout.addWidget(mode_nav_widget)
 
         header_layout.addStretch(1)
 
         self.asset_status_label = QLabel("Ready · No source loaded")
-        self.asset_status_label.setStyleSheet(
-            f"color: {Color.TEXT_MUTED}; font-size: 11px;"
-        )
+        self.asset_status_label.setObjectName("assetStatusPill")
         header_layout.addWidget(self.asset_status_label)
 
         self.open_video_button = QPushButton("Open Video…")
@@ -101,6 +118,11 @@ class GlyphCueWorkbench(QMainWindow):
         )
         self.path_a_pane.qa.bind_to_host(self)
         self._stack.addWidget(self.path_a_pane.qa.central_widget)
+
+        # Set default balanced 3-pane splitter widths (Left ~320px, Center 1fr, Right ~450px)
+        splitter = self.path_a_pane.qa.window.findChild(QSplitter)
+        if splitter:
+            splitter.setSizes([320, 600, 450])
 
         # Container for main layout
         root_container = QWidget()
@@ -155,6 +177,9 @@ class GlyphCueWorkbench(QMainWindow):
                     [], {}, dummy_path, on_open_video=self.open_video
                 )
                 self._stack.addWidget(self.path_b_workspace.qa.central_widget)
+                splitter_b = self.path_b_workspace.qa.window.findChild(QSplitter)
+                if splitter_b:
+                    splitter_b.setSizes([320, 600, 450])
             self.path_b_workspace.qa.bind_to_host(self)
             self._stack.setCurrentIndex(1)
             if self.path_b_workspace and self.path_b_workspace._source_path.name != "untitled.srt":
@@ -169,6 +194,9 @@ class GlyphCueWorkbench(QMainWindow):
                 db_path=self._db_path, on_open_caption_file=self.open_caption_file
             )
             self._stack.insertWidget(0, self.path_a_pane.qa.central_widget)
+            splitter = self.path_a_pane.qa.window.findChild(QSplitter)
+            if splitter:
+                splitter.setSizes([320, 600, 450])
         self.path_a_pane.open_video(path)
         self.path_a_pane.qa.bind_to_host(self)
         self.switch_to_mode("path_a")
@@ -195,6 +223,9 @@ class GlyphCueWorkbench(QMainWindow):
             old_widget = self._stack.widget(1)
             self._stack.removeWidget(old_widget)
         self._stack.addWidget(workspace.qa.central_widget)
+        splitter = workspace.qa.window.findChild(QSplitter)
+        if splitter:
+            splitter.setSizes([320, 600, 450])
         self.switch_to_mode("path_b")
         self.asset_status_label.setText(f"Captions: {path.name} ({len(cues)} cues)")
         return workspace

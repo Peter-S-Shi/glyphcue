@@ -223,7 +223,10 @@ class ReconstructionQaWorkspace:
         self.filter_combo.addItems(list(filter_labels))
 
         self.queue = QListWidget()
+        self.queue.setObjectName("cueList")
         self.cue_identity_label = QLabel("")
+        self.cue_identity_label.setObjectName("cueIdentityLabel")
+        self.cue_identity_label.setStyleSheet(f"font-weight: 700; font-size: 13px; color: {Color.TEXT_PRIMARY};")
         self.review_state_label = QLabel("")
         self.review_state_label.setObjectName("reviewStateLabel")
         self.review_state_label.setStyleSheet(f"font-weight: 600; color: {Color.TEXT_PRIMARY};")
@@ -231,6 +234,7 @@ class ReconstructionQaWorkspace:
         self.priority_label.setObjectName("reviewPriorityLabel")
         self.priority_label.setStyleSheet(f"color: {Color.TEXT_SECONDARY};")
         self.diagnostics_view = QTextEdit()
+        self.diagnostics_view.setObjectName("diagnosticsCard")
         self.diagnostics_view.setReadOnly(True)
         self.language_layers_panel = LanguageLayersPanel(editable=True)
 
@@ -243,12 +247,19 @@ class ReconstructionQaWorkspace:
         self.split_time_spin.setDecimals(3)
         self.split_time_spin.setRange(0.0, 24.0 * 3600.0)
         self.split_button = QPushButton("Split")
+        self.split_button.setObjectName("secondaryBtn")
         self.merge_next_button = QPushButton("Merge with Next")
+        self.merge_next_button.setObjectName("secondaryBtn")
         self.discard_button = QPushButton("Discard")
-        self.approve_button = QPushButton("Approve")
-        self.previous_button = QPushButton("Previous")
-        self.next_button = QPushButton("Next")
-        self.replay_button = QPushButton("Replay")
+        self.discard_button.setObjectName("discardButton")
+        self.approve_button = QPushButton("Approve [Ctrl+Enter]")
+        self.approve_button.setObjectName("approveButton")
+        self.previous_button = QPushButton("Previous [")
+        self.previous_button.setObjectName("secondaryBtn")
+        self.next_button = QPushButton("Next ]")
+        self.next_button.setObjectName("secondaryBtn")
+        self.replay_button = QPushButton("Replay [R]")
+        self.replay_button.setObjectName("secondaryBtn")
 
         # DESIGN.md section 23's minimal QA action hierarchy: Approve is
         # the one dominant action; Split/Merge are secondary and look
@@ -293,11 +304,38 @@ class ReconstructionQaWorkspace:
         right_layout.setContentsMargins(
             Spacing.PANEL_MAJOR, Spacing.PANEL_MAJOR, Spacing.PANEL_MAJOR, Spacing.PANEL_MAJOR
         )
-        right_layout.addWidget(self.cue_identity_label)
-        right_layout.addWidget(self.review_state_label)
-        right_layout.addWidget(self.priority_label)
+
+        # 1. Header Card (Cue ID, State badge, Priority badge)
+        header_card = QWidget()
+        header_card.setObjectName("qaHeaderCard")
+        header_card_layout = QVBoxLayout(header_card)
+        header_card_layout.setContentsMargins(
+            Spacing.STANDARD, Spacing.STANDARD, Spacing.STANDARD, Spacing.STANDARD
+        )
+        header_card_layout.addWidget(self.cue_identity_label)
+        badges_row = QHBoxLayout()
+        badges_row.addWidget(self.review_state_label)
+        badges_row.addWidget(self.priority_label)
+        badges_row.addStretch(1)
+        header_card_layout.addLayout(badges_row)
+        right_layout.addWidget(header_card)
+
+        # 2. Diagnostics
         right_layout.addWidget(self.diagnostics_view)
+
+        # 3. Language Layers Editor
         right_layout.addWidget(self.language_layers_panel)
+
+        # 4. 50ms Precision Timing Card
+        timing_card = QWidget()
+        timing_card.setObjectName("timingCard")
+        timing_card_layout = QVBoxLayout(timing_card)
+        timing_card_layout.setContentsMargins(
+            Spacing.STANDARD, Spacing.STANDARD, Spacing.STANDARD, Spacing.STANDARD
+        )
+        timing_title = QLabel("TIMING PRECISION (50ms)")
+        timing_title.setObjectName("sectionHeaderLabel")
+        timing_card_layout.addWidget(timing_title)
         timing_row = QHBoxLayout()
         for button in (
             self.nudge_start_earlier_button,
@@ -305,24 +343,40 @@ class ReconstructionQaWorkspace:
             self.nudge_end_earlier_button,
             self.nudge_end_later_button,
         ):
+            button.setObjectName("secondaryBtn")
             timing_row.addWidget(button)
-        right_layout.addLayout(timing_row)
+        timing_card_layout.addLayout(timing_row)
+        right_layout.addWidget(timing_card)
+
+        # 5. Split & Merge Tools
         split_merge_row = QHBoxLayout()
         split_merge_row.addWidget(self.split_time_spin)
         split_merge_row.addWidget(self.split_button)
         split_merge_row.addWidget(self.merge_next_button)
         right_layout.addLayout(split_merge_row)
+
+        # 6. Primary QA Action Bar
         action_row = QHBoxLayout()
         action_row.addWidget(self.previous_button)
         action_row.addWidget(self.replay_button)
         action_row.addWidget(self.discard_button)
-        action_row.addWidget(self.approve_button)
+        action_row.addWidget(self.approve_button, stretch=1)
         action_row.addWidget(self.next_button)
         right_layout.addLayout(action_row)
-        right_layout.addWidget(self.evidence_header_label)
-        right_layout.addWidget(self.evidence_note_label)
-        right_layout.addWidget(self.show_full_evidence_checkbox)
-        right_layout.addWidget(self.evidence_view)
+
+        # 7. Raw Observations Evidence Card
+        evidence_card = QWidget()
+        evidence_card.setObjectName("evidenceCard")
+        evidence_layout = QVBoxLayout(evidence_card)
+        evidence_layout.setContentsMargins(
+            Spacing.STANDARD, Spacing.STANDARD, Spacing.STANDARD, Spacing.STANDARD
+        )
+        evidence_layout.addWidget(self.evidence_header_label)
+        evidence_layout.addWidget(self.evidence_note_label)
+        evidence_layout.addWidget(self.show_full_evidence_checkbox)
+        evidence_layout.addWidget(self.evidence_view)
+        right_layout.addWidget(evidence_card)
+
         self._right_layout = right_layout
 
         self.window = MainWindow(left_pane=left_pane, center_pane=center_widget, right_pane=right_pane)

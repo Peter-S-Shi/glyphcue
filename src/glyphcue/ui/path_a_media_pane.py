@@ -239,8 +239,15 @@ class PathAMediaPane:
 
         # Structure / ROI & Track Group setup container in Left Pane
         structure_container = QWidget()
+        structure_container.setObjectName("structureCard")
         structure_layout = QVBoxLayout(structure_container)
-        structure_layout.setContentsMargins(0, 0, 0, Spacing.STANDARD)
+        structure_layout.setContentsMargins(
+            Spacing.STANDARD, Spacing.STANDARD, Spacing.STANDARD, Spacing.STANDARD
+        )
+
+        structure_header = QLabel("STRUCTURE & REGION")
+        structure_header.setObjectName("sectionHeaderLabel")
+        structure_layout.addWidget(structure_header)
 
         roi_form = QFormLayout()
         roi_form.addRow("ROI x", self.roi_x_spin)
@@ -267,6 +274,7 @@ class PathAMediaPane:
         )
         center_layout.addWidget(self.open_button)
         center_layout.addWidget(self.metadata_label)
+        self.video_widget.setObjectName("videoViewport")
         center_layout.addWidget(self.video_widget, stretch=1)
 
         playback_controls = QHBoxLayout()
@@ -280,13 +288,29 @@ class PathAMediaPane:
         center_layout.addWidget(self.timeline)
 
         # OCR Action Pipeline Section in Center Pane (DOG-002 action hierarchy)
+        ocr_container = QWidget()
+        ocr_container.setObjectName("ocrActionBox")
+        ocr_box_layout = QVBoxLayout(ocr_container)
+        ocr_box_layout.setContentsMargins(
+            Spacing.STANDARD, Spacing.STANDARD, Spacing.STANDARD, Spacing.STANDARD
+        )
+
+        ocr_header = QLabel("OCR EVIDENCE PIPELINE")
+        ocr_header.setObjectName("sectionHeaderLabel")
+        ocr_box_layout.addWidget(ocr_header)
+
         ocr_controls = QHBoxLayout()
+        self.run_ocr_button.setObjectName("runOcrBtn")
+        self.cancel_ocr_button.setObjectName("secondaryBtn")
+        self.discard_latest_run_button.setObjectName("subtleDangerBtn")
         ocr_controls.addWidget(self.run_ocr_button)
         ocr_controls.addWidget(self.cancel_ocr_button)
         ocr_controls.addWidget(self.discard_latest_run_button)
-        center_layout.addLayout(ocr_controls)
-        center_layout.addWidget(self.ocr_progress_bar)
-        center_layout.addWidget(self.ocr_status_label)
+        ocr_box_layout.addLayout(ocr_controls)
+        ocr_box_layout.addWidget(self.ocr_progress_bar)
+        ocr_box_layout.addWidget(self.ocr_status_label)
+
+        center_layout.addWidget(ocr_container)
 
         # Milestone 7: Path A follows the same shared Reconstruction QA
         # seam Path B does (DESIGN.md section 6's frozen three-pane
