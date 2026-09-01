@@ -20,6 +20,7 @@ class TriggerDecisionRecord:
     timestamp: float
     trigger_reason: str
     difference_score: float | None
+    structural_score: float | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -28,6 +29,11 @@ class TriggerDecisionRecord:
             "difference_score": (
                 round(self.difference_score, 4)
                 if self.difference_score is not None
+                else None
+            ),
+            "structural_score": (
+                round(self.structural_score, 4)
+                if self.structural_score is not None
                 else None
             ),
         }
@@ -39,6 +45,7 @@ class TriggerReplayResult:
     decided_ocr_calls: int = 0
     candidate_transition_episodes: int = 0
     confirmed_transition_episodes: int = 0
+    rejected_transition_episodes: int = 0
     suppressed_candidate_triggers: int = 0
     media_duration_seconds: float = 0.0
     elapsed_wall_seconds: float = 0.0
@@ -57,6 +64,7 @@ class TriggerReplayResult:
                 "decided_ocr_calls": self.decided_ocr_calls,
                 "candidate_transition_episodes": self.candidate_transition_episodes,
                 "confirmed_transition_episodes": self.confirmed_transition_episodes,
+                "rejected_transition_episodes": self.rejected_transition_episodes,
                 "suppressed_candidate_triggers": self.suppressed_candidate_triggers,
                 "media_duration_seconds": round(self.media_duration_seconds, 3),
                 "elapsed_wall_seconds": round(self.elapsed_wall_seconds, 3),
@@ -77,6 +85,7 @@ class TriggerReplayResult:
             f"Decided OCR Calls:          {self.decided_ocr_calls}\n"
             f"Candidate Episodes:         {self.candidate_transition_episodes}\n"
             f"Confirmed Episodes:         {self.confirmed_transition_episodes}\n"
+            f"Rejected Episodes:          {self.rejected_transition_episodes}\n"
             f"Suppressed Triggers:        {self.suppressed_candidate_triggers}\n"
             f"Media Duration:             {self.media_duration_seconds:.2f}s\n"
             f"Dry Run Elapsed Time:       {self.elapsed_wall_seconds:.3f}s ({self.effective_fps:.1f} fps)\n\n"
@@ -111,11 +120,13 @@ def run_trigger_replay(
                 result.decided_ocr_calls += 1
                 reason = getattr(active_policy, "last_trigger_reason", "unspecified")
                 diff_score = getattr(active_policy, "last_difference_score", None)
+                struct_score = getattr(active_policy, "last_structural_score", None)
                 result.decisions.append(
                     TriggerDecisionRecord(
                         timestamp=timestamp,
                         trigger_reason=reason,
                         difference_score=diff_score,
+                        structural_score=struct_score,
                     )
                 )
     finally:
@@ -126,6 +137,9 @@ def run_trigger_replay(
         )
         result.confirmed_transition_episodes = getattr(
             active_policy, "confirmed_transition_episodes", 0
+        )
+        result.rejected_transition_episodes = getattr(
+            active_policy, "rejected_transition_episodes", 0
         )
         result.suppressed_candidate_triggers = getattr(
             active_policy, "suppressed_candidate_triggers", 0

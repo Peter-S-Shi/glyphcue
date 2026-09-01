@@ -4,7 +4,10 @@ from typing import Protocol, runtime_checkable
 
 import numpy as np
 
-from glyphcue.application.change_detection import frame_difference_score
+from glyphcue.application.change_detection import (
+    frame_difference_score,
+    subtitle_structural_difference,
+)
 
 
 @runtime_checkable
@@ -20,12 +23,13 @@ class OcrInvocationPolicy(Protocol):
 
 
 class ChangeTriggeredOcrPolicy:
-    """The production selective policy with Deferred OCR Confirmation & Temporal Transition Episode Detection:
+    """The production selective policy with Subtitle-Aware Change Confirmation & Temporal Episode Detection:
     - Holds the pre-episode confirmed OCR baseline fixed while temporal evidence accumulates.
     - Low `change_threshold` acts as a cheap candidate-onset signal only; it does NOT immediately invoke OCR.
     - Suppresses OCR throughout an unstable transition burst (e.g. cross-dissolves, scene cuts).
-    - When the episode settles, evaluates whether the settled state has a confirmed difference against the fixed baseline.
+    - When the episode settles, evaluates whether the settled state has a confirmed subtitle structural difference against the fixed baseline.
     - If confirmed, invokes OCR ONCE on the stable representative frame and updates the confirmed baseline.
+    - If rejected (e.g. moving background without subtitle structure change), adapts the visual reference without calling OCR.
     - Discards transient spikes and low-amplitude background noise without invoking OCR.
     - Forces periodic confirmation OCR every `max_gap_seconds` when no change occurs.
     """
@@ -33,7 +37,7 @@ class ChangeTriggeredOcrPolicy:
     def __init__(
         self,
         change_threshold: float = 0.02,
-        confirmation_threshold: float = 0.02,
+        confirmation_threshold: float = 0.012,
         stability_threshold: float = 0.015,
         min_stable_frames: int = 1,
         min_episode_duration: float = 0.033,
@@ -59,8 +63,11 @@ class ChangeTriggeredOcrPolicy:
 
         self.last_trigger_reason: str | None = None
         self.last_difference_score: float | None = None
+        self.last_structural_score: float | None = None
+        self.last_rejection_reason: str | None = None
         self.candidate_transition_episodes: int = 0
         self.confirmed_transition_episodes: int = 0
+        self.rejected_transition_episodes: int = 0
         self.suppressed_candidate_triggers: int = 0
 
     @property
@@ -76,6 +83,7 @@ class ChangeTriggeredOcrPolicy:
             self._prev_timestamp = timestamp
             self.last_trigger_reason = "first_frame"
             self.last_difference_score = None
+            self.last_structural_score = None
             return True
 
         if roi_frame.shape != self._confirmed_ocr_frame.shape:
@@ -86,6 +94,7 @@ class ChangeTriggeredOcrPolicy:
             self._candidate_episode_active = False
             self.last_trigger_reason = "change_detected"
             self.last_difference_score = None
+            self.last_structural_score = None
             self.confirmed_transition_episodes += 1
             return True
 
@@ -108,6 +117,7 @@ class ChangeTriggeredOcrPolicy:
                     self._confirmed_ocr_timestamp = timestamp
                     self.last_trigger_reason = reason
                     self.last_difference_score = diff_against_confirmed
+                    self.last_structural_score = 0.0
             else:
                 # Candidate onset: do NOT invoke OCR immediately; hold confirmed baseline fixed
                 self._candidate_episode_active = True
@@ -121,6 +131,8 @@ class ChangeTriggeredOcrPolicy:
                 # Reverted to confirmed baseline (transient spike / noise)
                 self._candidate_episode_active = False
                 self._stable_run_count = 0
+                self.rejected_transition_episodes += 1
+                self.last_rejection_reason = "reverted_to_baseline"
             else:
                 if consecutive_diff <= self._stability_threshold:
                     self._stable_run_count += 1
@@ -136,14 +148,27 @@ class ChangeTriggeredOcrPolicy:
                 if is_settled:
                     self._candidate_episode_active = False
                     self._stable_run_count = 0
-                    settled_diff = frame_difference_score(self._confirmed_ocr_frame, roi_frame)
-                    if settled_diff >= self._confirmation_threshold:
+                    settled_raw_diff = diff_against_confirmed
+                    settled_struct_diff = subtitle_structural_difference(
+                        self._confirmed_ocr_frame, roi_frame
+                    )
+
+                    if settled_struct_diff >= self._confirmation_threshold:
                         decision, reason = True, "change_detected"
                         self.confirmed_transition_episodes += 1
                         self._confirmed_ocr_frame = roi_frame
                         self._confirmed_ocr_timestamp = timestamp
                         self.last_trigger_reason = reason
-                        self.last_difference_score = settled_diff
+                        self.last_difference_score = settled_raw_diff
+                        self.last_structural_score = settled_struct_diff
+                    else:
+                        # Rejected as background drift / no subtitle structure change
+                        self.rejected_transition_episodes += 1
+                        self.last_rejection_reason = "below_structural_threshold"
+                        self.last_difference_score = settled_raw_diff
+                        self.last_structural_score = settled_struct_diff
+                        # Adapt visual reference to avoid repeated triggering on the same drifted background
+                        self._confirmed_ocr_frame = roi_frame
                 else:
                     self.suppressed_candidate_triggers += 1
 

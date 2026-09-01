@@ -128,8 +128,9 @@ def build_multilingual_ocr_evidence_job(
                 if active_policy.should_ocr(roi_frame, timestamp):
                     trigger_reason = getattr(active_policy, "last_trigger_reason", "unspecified")
                     diff_score = getattr(active_policy, "last_difference_score", None)
-                    frame_reference = f"{path}@{timestamp:.6f}s"
+                    struct_score = getattr(active_policy, "last_structural_score", None)
                     h, w = roi_frame.shape[:2]
+                    frame_reference = f"{path}@{timestamp:.6f}s"
 
                     for engine in ocr_engines.values():
                         t0 = time.monotonic()
@@ -142,6 +143,7 @@ def build_multilingual_ocr_evidence_job(
                             difference_score=diff_score,
                             dimensions=(w, h),
                             latency_seconds=call_latency,
+                            structural_score=struct_score,
                         )
                         runtime_info = engine.runtime_info()
                         detail = {
@@ -200,6 +202,7 @@ def build_multilingual_ocr_evidence_job(
                 metrics.elapsed_seconds = time.monotonic() - wall_start
                 metrics.candidate_transition_episodes = getattr(active_policy, "candidate_transition_episodes", 0)
                 metrics.confirmed_transition_episodes = getattr(active_policy, "confirmed_transition_episodes", 0)
+                metrics.rejected_transition_episodes = getattr(active_policy, "rejected_transition_episodes", 0)
                 metrics.transition_episodes = getattr(active_policy, "transition_episodes", 0)
                 metrics.suppressed_candidate_triggers = getattr(active_policy, "suppressed_candidate_triggers", 0)
                 context.report_progress("multilingual_ocr_evidence", processed_in_range, range_duration)
@@ -208,6 +211,7 @@ def build_multilingual_ocr_evidence_job(
             metrics.elapsed_seconds = time.monotonic() - wall_start
             metrics.candidate_transition_episodes = getattr(active_policy, "candidate_transition_episodes", 0)
             metrics.confirmed_transition_episodes = getattr(active_policy, "confirmed_transition_episodes", 0)
+            metrics.rejected_transition_episodes = getattr(active_policy, "rejected_transition_episodes", 0)
             metrics.transition_episodes = getattr(active_policy, "transition_episodes", 0)
             metrics.suppressed_candidate_triggers = getattr(active_policy, "suppressed_candidate_triggers", 0)
             context.report_progress("multilingual_ocr_evidence", range_duration, range_duration)

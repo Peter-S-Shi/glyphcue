@@ -15,6 +15,7 @@ class OcrInvocationRecord:
     difference_score: float | None
     dimensions: tuple[int, int]
     latency_seconds: float
+    structural_score: float | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -23,6 +24,11 @@ class OcrInvocationRecord:
             "difference_score": (
                 round(self.difference_score, 4)
                 if self.difference_score is not None
+                else None
+            ),
+            "structural_score": (
+                round(self.structural_score, 4)
+                if self.structural_score is not None
                 else None
             ),
             "dimensions": list(self.dimensions),
@@ -47,6 +53,7 @@ class PipelineMetrics:
     engine_initialization_seconds: float = 0.0
     candidate_transition_episodes: int = 0
     confirmed_transition_episodes: int = 0
+    rejected_transition_episodes: int = 0
     transition_episodes: int = 0
     suppressed_candidate_triggers: int = 0
     invocation_records: list[OcrInvocationRecord] = field(default_factory=list)
@@ -58,6 +65,7 @@ class PipelineMetrics:
         difference_score: float | None,
         dimensions: tuple[int, int],
         latency_seconds: float,
+        structural_score: float | None = None,
     ) -> None:
         self.invocation_records.append(
             OcrInvocationRecord(
@@ -66,6 +74,7 @@ class PipelineMetrics:
                 difference_score=difference_score,
                 dimensions=dimensions,
                 latency_seconds=latency_seconds,
+                structural_score=structural_score,
             )
         )
         self.ocr_calls = len(self.invocation_records)
@@ -137,6 +146,7 @@ class PipelineMetrics:
                 "engine_initialization_seconds": round(self.engine_initialization_seconds, 4),
                 "candidate_transition_episodes": self.candidate_transition_episodes,
                 "confirmed_transition_episodes": self.confirmed_transition_episodes,
+                "rejected_transition_episodes": self.rejected_transition_episodes,
                 "transition_episodes": self.transition_episodes or self.confirmed_transition_episodes,
                 "suppressed_candidate_triggers": self.suppressed_candidate_triggers,
                 "ocr_calls_per_media_minute": round(self.ocr_calls_per_media_minute, 2),
@@ -171,6 +181,7 @@ class PipelineMetrics:
             f"Observations Created:       {self.observations_created}\n"
             f"Candidate Episodes:         {self.candidate_transition_episodes}\n"
             f"Confirmed Episodes:         {self.confirmed_transition_episodes}\n"
+            f"Rejected Episodes:          {self.rejected_transition_episodes}\n"
             f"Transition Episodes:        {self.transition_episodes or self.confirmed_transition_episodes}\n"
             f"Suppressed Triggers:        {self.suppressed_candidate_triggers}\n"
             f"Media Duration Processed:   {self.media_seconds_processed:.2f}s\n"
