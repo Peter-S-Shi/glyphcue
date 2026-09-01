@@ -24,7 +24,7 @@ class PlaybackController(QObject):
         self._player.mediaStatusChanged.connect(self._on_media_status_changed)
 
     def _on_media_status_changed(self, status: QMediaPlayer.MediaStatus) -> None:
-        if status == QMediaPlayer.MediaStatus.LoadedMedia:
+        if status in (QMediaPlayer.MediaStatus.LoadedMedia, QMediaPlayer.MediaStatus.BufferedMedia):
             if self._player.playbackState() == QMediaPlayer.PlaybackState.StoppedState:
                 self._player.pause()
 
