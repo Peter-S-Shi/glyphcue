@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 from PySide6.QtCore import QEventLoop, QTimer
 from PySide6.QtMultimedia import QMediaPlayer
-from PySide6.QtMultimediaWidgets import QVideoWidget
+from PySide6.QtWidgets import QWidget
 
 from glyphcue.domain.roi import ROI
 from glyphcue.domain.track_group import TrackGroup
@@ -71,7 +71,7 @@ def repository(tmp_path):
 def test_pane_embeds_a_video_widget_in_the_frozen_shell(qapp_guard, repository):
     pane = PathAMediaPane(repository)
 
-    assert isinstance(pane.video_widget, QVideoWidget)
+    assert isinstance(pane.video_widget, QWidget)
     assert pane.window.centralWidget().count() == 3
 
 

@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from PySide6.QtCore import QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import QBrush, QColor, QPainter, QPen
-from PySide6.QtWidgets import QWidget
+from PySide6.QtMultimediaWidgets import QGraphicsVideoItem
+from PySide6.QtWidgets import QGraphicsRectItem, QGraphicsScene, QGraphicsView, QWidget
 
 from glyphcue.domain.roi import ROI
 from glyphcue.ui.design_tokens import Color
@@ -90,28 +91,44 @@ def map_normalized_roi_to_pixels(
     )
 
 
-class VideoRoiOverlay(QWidget):
-    """Interactive video ROI overlay (DESIGN.md section 10 / 10.1).
+class VideoRoiView(QGraphicsView):
+    """Interactive video ROI viewport & overlay (DESIGN.md section 10 / 10.1).
 
-    Sits directly on top of the video viewport, letting users drag a rectangular
-    box over the subtitle area. Automatically translates mouse coordinates to
-    normalized [0.0, 1.0] ROI coordinates against the real video aspect ratio,
-    accounting for letterboxing/pillarboxing.
+    Renders video via QGraphicsVideoItem inside a QGraphicsScene with a
+    QGraphicsRectItem ROI selection overlay composited directly over the video frames.
+    Users can click and drag directly on top of the video to frame-select subtitles.
+    Eliminates native Direct3D HWND airspace occlusion on Windows.
     """
 
     roiChanged = Signal(object)  # emits ROI
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, False)
-        self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, True)
-        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self.setMinimumHeight(240)
+        self.setStyleSheet("background-color: #000; border: none;")
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setCursor(Qt.CursorShape.CrossCursor)
 
+        self._scene = QGraphicsScene(self)
+        self.setScene(self._scene)
+
+        self.video_item = QGraphicsVideoItem()
+        self._scene.addItem(self.video_item)
+
+        self.roi_item = QGraphicsRectItem()
+        pen = QPen(QColor(Color.ACCENT), 2)
+        pen.setCosmetic(True)  # width stays 2px regardless of zoom/scale
+        self.roi_item.setPen(pen)
+        self.roi_item.setBrush(QBrush(QColor(0, 153, 255, 40)))
+        self.roi_item.setZValue(10)
+        self._scene.addItem(self.roi_item)
+
         self._roi = ROI(0.0, 0.0, 1.0, 1.0)
-        self._video_size = (0, 0)
-        self._drag_start: QPointF | None = None
-        self._drag_current: QPointF | None = None
+        self._video_size = (0.0, 0.0)
+        self._drag_start: tuple[float, float] | None = None
+
+        self.video_item.nativeSizeChanged.connect(self._on_native_size_changed)
 
     @property
     def roi(self) -> ROI:
@@ -119,7 +136,7 @@ class VideoRoiOverlay(QWidget):
 
     def set_roi(self, roi: ROI) -> None:
         self._roi = roi
-        self.update()
+        self._update_roi_rect()
 
     def reset_roi(self) -> None:
         """Resets ROI back to the full frame (0, 0, 1, 1)."""
@@ -127,66 +144,97 @@ class VideoRoiOverlay(QWidget):
         self.set_roi(full_frame)
         self.roiChanged.emit(full_frame)
 
-    def set_video_size(self, width: int, height: int) -> None:
-        self._video_size = (width, height)
-        self.update()
+    def set_video_size(self, width: float | int, height: float | int) -> None:
+        self._video_size = (float(width), float(height))
+        if width > 0 and height > 0:
+            self.video_item.setSize(QRectF(0, 0, width, height).size())
+            self._scene.setSceneRect(0, 0, width, height)
+            self._update_roi_rect()
+            self._fit_video()
+
+    def _on_native_size_changed(self, size) -> None:
+        if size.width() > 0 and size.height() > 0:
+            self.set_video_size(size.width(), size.height())
+
+    def resizeEvent(self, event) -> None:  # noqa: N802
+        super().resizeEvent(event)
+        self._fit_video()
+
+    def showEvent(self, event) -> None:  # noqa: N802
+        super().showEvent(event)
+        self._fit_video()
+
+    def _fit_video(self) -> None:
+        if self._video_size[0] > 0 and self._video_size[1] > 0:
+            self.fitInView(
+                QRectF(0, 0, self._video_size[0], self._video_size[1]),
+                Qt.AspectRatioMode.KeepAspectRatio,
+            )
+
+    def _update_roi_rect(self) -> None:
+        vw, vh = self._video_size
+        if vw > 0 and vh > 0:
+            self.roi_item.setRect(
+                self._roi.x * vw,
+                self._roi.y * vh,
+                self._roi.width * vw,
+                self._roi.height * vh,
+            )
+        else:
+            self.roi_item.setRect(0, 0, 0, 0)
 
     def frame_rect(self) -> tuple[float, float, float, float]:
         vw, vh = self._video_size
         return calculate_video_frame_rect(self.width(), self.height(), vw, vh)
 
     def mousePressEvent(self, event) -> None:  # noqa: N802
-        if event.button() == Qt.MouseButton.LeftButton:
-            self._drag_start = event.position()
-            self._drag_current = event.position()
-            self.update()
+        if (
+            event.button() == Qt.MouseButton.LeftButton
+            and self._video_size[0] > 0
+            and self._video_size[1] > 0
+        ):
+            pos = event.position()
+            self._drag_start = (pos.x(), pos.y())
+        super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event) -> None:  # noqa: N802
-        if self._drag_start is not None:
-            self._drag_current = event.position()
-            self.update()
+        if (
+            self._drag_start is not None
+            and event.buttons() & Qt.MouseButton.LeftButton
+            and self._video_size[0] > 0
+            and self._video_size[1] > 0
+        ):
+            pos = event.position()
+            p1 = self._drag_start
+            p2 = (pos.x(), pos.y())
+            frame = self.frame_rect()
+            self._roi = map_pixels_to_normalized_roi(p1, p2, frame)
+            self._update_roi_rect()
+            self.roiChanged.emit(self._roi)
+        super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event) -> None:  # noqa: N802
-        if event.button() == Qt.MouseButton.LeftButton and self._drag_start is not None:
-            p1 = (self._drag_start.x(), self._drag_start.y())
-            p2 = (event.position().x(), event.position().y())
+        if (
+            event.button() == Qt.MouseButton.LeftButton
+            and self._drag_start is not None
+            and self._video_size[0] > 0
+            and self._video_size[1] > 0
+        ):
+            pos = event.position()
+            p1 = self._drag_start
+            p2 = (pos.x(), pos.y())
             self._drag_start = None
-            self._drag_current = None
 
             frame = self.frame_rect()
             new_roi = map_pixels_to_normalized_roi(p1, p2, frame)
-
-            # Minimum drag threshold: if width and height are negligible (< 0.005),
-            # treat as an accidental click and do not replace the existing ROI.
             if new_roi.width >= 0.005 and new_roi.height >= 0.005:
                 self._roi = new_roi
-                self.roiChanged.emit(new_roi)
-            self.update()
+                self._update_roi_rect()
+                self.roiChanged.emit(self._roi)
+            else:
+                self._update_roi_rect()
+        super().mouseReleaseEvent(event)
 
-    def paintEvent(self, _event) -> None:  # noqa: N802
-        painter = QPainter(self)
-        frame = self.frame_rect()
-        offset_x, offset_y, frame_w, frame_h = frame
-        frame_qrect = QRectF(offset_x, offset_y, frame_w, frame_h)
 
-        if self._drag_start is not None and self._drag_current is not None:
-            p1 = self._drag_start
-            p2 = self._drag_current
-            raw_rect = QRectF(
-                min(p1.x(), p2.x()),
-                min(p1.y(), p2.y()),
-                abs(p2.x() - p1.x()),
-                abs(p2.y() - p1.y()),
-            )
-            rect = raw_rect.intersected(frame_qrect)
-        else:
-            px, py, pw, ph = map_normalized_roi_to_pixels(self._roi, frame)
-            rect = QRectF(px, py, pw, ph)
-
-        if not rect.isEmpty():
-            # Clear blue boundary (DESIGN.md 10.1) with semi-transparent highlight fill
-            pen = QPen(QColor(Color.ACCENT))
-            pen.setWidth(2)
-            painter.setPen(pen)
-            painter.setBrush(QBrush(QColor(0, 153, 255, 40)))
-            painter.drawRect(rect)
+# Alias for backward compatibility
+VideoRoiOverlay = VideoRoiView

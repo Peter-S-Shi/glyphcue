@@ -53,23 +53,9 @@ from glyphcue.ui.ocr_evidence_pane import OcrEvidencePane
 from glyphcue.ui.playback_controller import PlaybackController
 from glyphcue.ui.reconstruction_qa_workspace import ReconstructionQaWorkspace
 from glyphcue.ui.roi_visualization import RoiVisualization
-from glyphcue.ui.video_roi_overlay import VideoRoiOverlay
+from glyphcue.ui.video_roi_overlay import VideoRoiOverlay, VideoRoiView
 
 _DEFAULT_TRACK_GROUP_ID = "default"
-
-
-class _VideoOverlayResizeFilter(QObject):
-    """Keeps the video ROI overlay perfectly sized and positioned over the video widget."""
-
-    def __init__(self, overlay: QWidget, parent: QObject | None = None) -> None:
-        super().__init__(parent)
-        self._overlay = overlay
-
-    def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
-        if event.type() in (QEvent.Type.Resize, QEvent.Type.Show):
-            self._overlay.setGeometry(watched.rect())
-            self._overlay.raise_()
-        return False
 
 
 def _roi_spin_box(maximum: float = 1.0) -> QDoubleSpinBox:
@@ -151,15 +137,13 @@ class PathAMediaPane:
         self.ocr_metrics = PipelineMetrics()
 
         self.controller = PlaybackController()
-        self.video_widget = QVideoWidget()
+        self.video_widget = VideoRoiView()
         self.video_widget.setMinimumHeight(240)
         self.video_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        self.controller.set_video_output(self.video_widget)
+        self.controller.set_video_output(self.video_widget.video_item)
 
-        self.video_overlay = VideoRoiOverlay(self.video_widget)
-        self._overlay_filter = _VideoOverlayResizeFilter(self.video_overlay)
-        self.video_widget.installEventFilter(self._overlay_filter)
-        self.video_overlay.roiChanged.connect(self.set_roi)
+        self.video_overlay = self.video_widget
+        self.video_widget.roiChanged.connect(self.set_roi)
 
         self.open_button = QPushButton("Open Video…")
         self.metadata_label = QLabel("No video loaded")
@@ -236,7 +220,6 @@ class PathAMediaPane:
         controls_container = QWidget()
         controls_layout = QVBoxLayout(controls_container)
         controls_layout.setContentsMargins(0, Spacing.STANDARD, 0, 0)
-        controls_layout.addWidget(self.roi_visualization)
 
         roi_form = QFormLayout()
         roi_form.addRow("ROI x", self.roi_x_spin)
