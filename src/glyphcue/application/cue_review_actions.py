@@ -73,8 +73,8 @@ def nudge_cue_timing(
     cue = result[index]
     result[index] = replace(
         cue,
-        start_time=cue.start_time + start_delta,
-        end_time=cue.end_time + end_delta,
+        start_time=round(cue.start_time + start_delta, 3),
+        end_time=round(cue.end_time + end_delta, 3),
         review_state=ReviewState.NEEDS_REVIEW,
     )
     return result

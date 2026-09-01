@@ -134,6 +134,18 @@ class _CloseEventFilter(QObject):
         return super().eventFilter(watched, event)
 
 
+def review_state_badge(state: ReviewState) -> str:
+    """Clear text + graphic status marker for ReviewState (not color-only)."""
+    if state is ReviewState.APPROVED:
+        return "✓ Approved"
+    elif state == ReviewState.REJECTED:
+        return "✕ Discarded"
+    elif state == ReviewState.NEEDS_REVIEW:
+        return "⚠ Needs Review"
+    else:  # PENDING
+        return "○ Pending"
+
+
 def _priority_label(priority: ReviewPriority) -> str:
     # DESIGN.md section 21's own accepted vocabulary: level word plus
     # the raw heuristic score -- never phrased as a probability/percent.
@@ -210,7 +222,12 @@ class ReconstructionQaWorkspace:
 
         self.queue = QListWidget()
         self.cue_identity_label = QLabel("")
+        self.review_state_label = QLabel("")
+        self.review_state_label.setObjectName("reviewStateLabel")
+        self.review_state_label.setStyleSheet(f"font-weight: 600; color: {Color.TEXT_PRIMARY};")
         self.priority_label = QLabel("")
+        self.priority_label.setObjectName("reviewPriorityLabel")
+        self.priority_label.setStyleSheet(f"color: {Color.TEXT_SECONDARY};")
         self.diagnostics_view = QTextEdit()
         self.diagnostics_view.setReadOnly(True)
         self.language_layers_panel = LanguageLayersPanel(editable=True)
@@ -246,6 +263,15 @@ class ReconstructionQaWorkspace:
         replay_wired = replay_callback is not None
         self.replay_button.setEnabled(replay_wired)
 
+        self.evidence_header_label = QLabel("Raw OCR Evidence / Original Machine Observations")
+        self.evidence_header_label.setObjectName("evidenceHeaderLabel")
+        self.evidence_header_label.setStyleSheet(f"font-weight: 600; color: {Color.TEXT_SECONDARY};")
+        self.evidence_note_label = QLabel(
+            "Original machine OCR observations are preserved for reference and audit, and remain unchanged when cue text is edited."
+        )
+        self.evidence_note_label.setObjectName("evidenceNoteLabel")
+        self.evidence_note_label.setStyleSheet(f"color: {Color.TEXT_MUTED}; font-size: 11px;")
+        self.evidence_note_label.setWordWrap(True)
         self.show_full_evidence_checkbox = QCheckBox("Show full evidence")
         self.evidence_view = QTextEdit()
         self.evidence_view.setReadOnly(True)
@@ -266,6 +292,7 @@ class ReconstructionQaWorkspace:
             Spacing.PANEL_MAJOR, Spacing.PANEL_MAJOR, Spacing.PANEL_MAJOR, Spacing.PANEL_MAJOR
         )
         right_layout.addWidget(self.cue_identity_label)
+        right_layout.addWidget(self.review_state_label)
         right_layout.addWidget(self.priority_label)
         right_layout.addWidget(self.diagnostics_view)
         right_layout.addWidget(self.language_layers_panel)
@@ -290,6 +317,8 @@ class ReconstructionQaWorkspace:
         action_row.addWidget(self.approve_button)
         action_row.addWidget(self.next_button)
         right_layout.addLayout(action_row)
+        right_layout.addWidget(self.evidence_header_label)
+        right_layout.addWidget(self.evidence_note_label)
         right_layout.addWidget(self.show_full_evidence_checkbox)
         right_layout.addWidget(self.evidence_view)
         self._right_layout = right_layout
@@ -452,6 +481,19 @@ class ReconstructionQaWorkspace:
         self._commit_displayed_edits()
         self._rebuild_queue(select_cue_id=self._displayed_cue_id)
 
+    def _refresh_queue_labels(self) -> None:
+        for row in range(self.queue.count()):
+            item = self.queue.item(row)
+            if item is None:
+                continue
+            cue_id = item.data(Qt.ItemDataRole.UserRole)
+            cue = next((c for c in self._cues if c.id == cue_id), None)
+            if cue is not None:
+                priority = self._priority_for(cue.id)
+                item.setText(
+                    f"[{priority.level}] [{review_state_badge(cue.review_state)}] {queue_label_for_cue(cue)}"
+                )
+
     def _rebuild_queue(self, *, select_cue_id: str | None) -> None:
         ordered = sorted(
             self._cues, key=lambda cue: self._priority_for(cue.id).score, reverse=True
@@ -462,7 +504,9 @@ class ReconstructionQaWorkspace:
         select_row = 0
         for row, cue in enumerate(ordered):
             priority = self._priority_for(cue.id)
-            item = QListWidgetItem(f"[{priority.level}] {queue_label_for_cue(cue)}")
+            item = QListWidgetItem(
+                f"[{priority.level}] [{review_state_badge(cue.review_state)}] {queue_label_for_cue(cue)}"
+            )
             item.setData(Qt.ItemDataRole.UserRole, cue.id)
             self.queue.addItem(item)
             if cue.id == select_cue_id:
@@ -470,6 +514,7 @@ class ReconstructionQaWorkspace:
         self.queue.blockSignals(False)
         if self.queue.count():
             self.queue.setCurrentRow(select_row)
+            self._refresh_active_pane()
         else:
             self._on_row_changed(-1)
 
@@ -517,6 +562,7 @@ class ReconstructionQaWorkspace:
                 self._cues = edit_cue_language_text(self._cues, cue.id, language, text)
                 modified = True
         if modified:
+            self._refresh_queue_labels()
             self._notify_cues_changed()
 
     def _refresh_active_pane(self) -> None:
@@ -524,6 +570,7 @@ class ReconstructionQaWorkspace:
         if cue is None:
             self._displayed_cue_id = None
             self.cue_identity_label.setText("")
+            self.review_state_label.setText("")
             self.priority_label.setText("")
             self.diagnostics_view.clear()
             self.language_layers_panel.set_cue(None)
@@ -532,6 +579,7 @@ class ReconstructionQaWorkspace:
 
         priority = self._priority_for(cue.id)
         self.cue_identity_label.setText(f"{cue.id}   {cue.start_time:.3f}s – {cue.end_time:.3f}s")
+        self.review_state_label.setText(f"Review State: {review_state_badge(cue.review_state)}")
         self.priority_label.setText(_priority_label(priority))
         self.diagnostics_view.setPlainText(_diagnostics_text(priority))
         self.language_layers_panel.set_cue(cue)
@@ -583,8 +631,12 @@ class ReconstructionQaWorkspace:
         if cue is None:
             return
         self._cues = approve_cue(self._cues, cue.id)
+        self._refresh_queue_labels()
         self._notify_cues_changed()
-        self.go_to_next()
+        if self.queue.currentRow() + 1 < self.queue.count():
+            self.go_to_next()
+        else:
+            self._refresh_active_pane()
 
     def discard_active_cue(self) -> None:
         self._commit_displayed_edits()
@@ -592,6 +644,7 @@ class ReconstructionQaWorkspace:
         if cue is None:
             return
         self._cues = discard_cue(self._cues, cue.id)
+        self._refresh_queue_labels()
         self._notify_cues_changed()
         self._rebuild_queue(select_cue_id=cue.id)
 
@@ -604,7 +657,9 @@ class ReconstructionQaWorkspace:
             self._cues = nudge_cue_timing(self._cues, cue.id, start_delta=start_delta, end_delta=end_delta)
         except ValueError:
             return  # invalid nudge (e.g. would invert the range) -- silently refused, not applied
+        self._refresh_queue_labels()
         self._notify_cues_changed()
+        self._refresh_active_pane()
         self._rebuild_queue(select_cue_id=cue.id)
 
     def split_active_cue(self) -> None:
