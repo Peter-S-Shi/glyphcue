@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 import uuid
 from pathlib import Path
 from typing import Callable
@@ -14,6 +15,7 @@ from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
+    QProgressBar,
     QPushButton,
     QScrollArea,
     QSizePolicy,
@@ -206,8 +208,18 @@ class PathAMediaPane:
 
         self.run_ocr_button = QPushButton("Run OCR Evidence")
         self.cancel_ocr_button = QPushButton("Cancel")
+        self.discard_latest_run_button = QPushButton("Discard Latest OCR Run")
+        self.discard_latest_run_button.setEnabled(False)
+        self.ocr_progress_bar = QProgressBar()
+        self.ocr_progress_bar.setRange(0, 100)
+        self.ocr_progress_bar.setValue(0)
+        self.ocr_progress_bar.setTextVisible(True)
+        self.ocr_progress_bar.setVisible(False)
         self.ocr_status_label = QLabel("OCR evidence not run yet")
         self.evidence_pane = OcrEvidencePane([])
+        self._last_pre_run_cues: list[Cue] | None = None
+        self._ocr_start_time: float = 0.0
+        self._video_duration_seconds: float = 0.0
         self._update_ocr_button_enabled()
 
         self.open_button.clicked.connect(self._on_open_clicked)
@@ -217,6 +229,7 @@ class PathAMediaPane:
         self.save_roi_button.clicked.connect(self._on_save_roi_clicked)
         self.run_ocr_button.clicked.connect(self._on_run_ocr_clicked)
         self.cancel_ocr_button.clicked.connect(self._on_cancel_ocr_clicked)
+        self.discard_latest_run_button.clicked.connect(self._on_discard_latest_run_clicked)
 
         self.context_label = QLabel()
         self.context_label.setWordWrap(True)
@@ -250,7 +263,9 @@ class PathAMediaPane:
         ocr_controls = QHBoxLayout()
         ocr_controls.addWidget(self.run_ocr_button)
         ocr_controls.addWidget(self.cancel_ocr_button)
+        ocr_controls.addWidget(self.discard_latest_run_button)
         controls_layout.addLayout(ocr_controls)
+        controls_layout.addWidget(self.ocr_progress_bar)
         controls_layout.addWidget(self.ocr_status_label)
         controls_layout.addWidget(self.evidence_pane)
 
@@ -402,6 +417,10 @@ class PathAMediaPane:
 
         self._restore_roi()
         self._restore_languages()
+        self._last_pre_run_cues = None
+        self.discard_latest_run_button.setEnabled(False)
+        self.ocr_progress_bar.setVisible(False)
+        self.ocr_progress_bar.setValue(0)
 
         if self._cue_repository is not None and self._source_id:
             persisted_cues = self._cue_repository.list_for_source(self._source_id)
@@ -670,6 +689,14 @@ class PathAMediaPane:
 
         self.current_ocr_job.progress.connect(self._on_ocr_progress)
         self.current_ocr_job.finished.connect(self._on_ocr_finished)
+        if self._source_id and self._cue_repository is not None:
+            self._last_pre_run_cues = list(self._cue_repository.list_for_source(self._source_id))
+        else:
+            self._last_pre_run_cues = list(self.qa.cues)
+        self._ocr_start_time = time.monotonic()
+        self.ocr_progress_bar.setVisible(True)
+        self.ocr_progress_bar.setValue(0)
+        self.discard_latest_run_button.setEnabled(False)
         self.run_ocr_button.setEnabled(False)
         self.cancel_ocr_button.setEnabled(True)
         self.ocr_status_label.setText("Running OCR evidence extraction…")
@@ -680,9 +707,12 @@ class PathAMediaPane:
             self.current_ocr_job.request_cancel()
 
     def _on_ocr_progress(self, phase: str, processed_seconds: float, total_seconds: float) -> None:
+        elapsed = time.monotonic() - self._ocr_start_time
+        pct = int(processed_seconds / total_seconds * 100) if total_seconds > 0 else 0
+        self.ocr_progress_bar.setValue(min(100, max(0, pct)))
         self.ocr_status_label.setText(
-            f"{phase}: {processed_seconds:.1f}s / {total_seconds:.1f}s · "
-            f"{self.ocr_metrics.ocr_calls} OCR calls"
+            f"Running OCR ({phase}): {processed_seconds:.1f}s / {total_seconds:.1f}s · "
+            f"{self.ocr_metrics.ocr_calls} OCR calls · Elapsed: {elapsed:.1f}s"
         )
 
     def _on_ocr_finished(self) -> None:
@@ -690,6 +720,7 @@ class PathAMediaPane:
         self.cancel_ocr_button.setEnabled(False)
 
         state = self.current_ocr_job.state if self.current_ocr_job is not None else None
+        elapsed = max(0.001, time.monotonic() - self._ocr_start_time)
         observations_for_run: list = []
         if self._observation_repository is not None and self.current_evidence_run_id is not None:
             # Only this run's own evidence -- never database history
@@ -704,6 +735,7 @@ class PathAMediaPane:
         # seams unchanged) and hand them to the shared QA workspace with
         # a real, explainable Review Priority per Cue -- not just a
         # language-layer preview (that was M6's thinner wiring).
+        new_cues_count = 0
         if state is JobState.SUCCEEDED and self._current_track_group is not None:
             observations_by_id = {observation.id: observation for observation in observations_for_run}
             new_cues: list[Cue] = []
@@ -733,6 +765,7 @@ class PathAMediaPane:
                     priorities[cue.id] = compute_review_priority(
                         signal_builder(diagnostics, cue_observations)
                     )
+            new_cues_count = len(new_cues)
 
             if self._source_id and self._cue_repository is not None:
                 existing_cues = self._cue_repository.list_for_source(self._source_id)
@@ -771,23 +804,66 @@ class PathAMediaPane:
 
             self.qa.set_cues_and_priorities(cues, observations_by_id, priorities)
             self._refresh_timeline()
+            self.discard_latest_run_button.setEnabled(self._last_pre_run_cues is not None)
 
         frames = self.ocr_metrics.frames_analyzed
         calls = self.ocr_metrics.ocr_calls
         observations = self.ocr_metrics.observations_created
         if state is JobState.SUCCEEDED:
+            self.ocr_progress_bar.setValue(100)
+            range_start = self._processing_range.start_time or 0.0
+            range_end = self._current_processing_end_time or (
+                self._processing_range.end_time or self._video_duration_seconds or 0.0
+            )
+            media_duration = max(0.0, range_end - range_start)
+            if media_duration == 0.0 and self._video_duration_seconds:
+                media_duration = self._video_duration_seconds
+            speed_ratio = media_duration / elapsed if elapsed > 0 else 0.0
             self.ocr_status_label.setText(
-                f"Done: {frames} frames analyzed, {calls} OCR calls, {observations} observations"
+                f"Done: {media_duration:.2f}s media in {elapsed:.2f}s ({speed_ratio:.2f}x realtime) · "
+                f"{frames} frames analyzed · {calls} OCR calls · {observations} observations · "
+                f"{new_cues_count} new cues"
             )
         elif state is JobState.CANCELLED:
+            self.discard_latest_run_button.setEnabled(False)
             self.ocr_status_label.setText(
                 f"Cancelled: kept {observations} observations from {frames} frames analyzed "
-                f"before cancellation, {calls} OCR calls (partial)"
+                f"before cancellation ({calls} OCR calls) in {elapsed:.2f}s"
             )
         elif state is JobState.FAILED:
+            self.discard_latest_run_button.setEnabled(False)
             self.ocr_status_label.setText(
-                f"Failed: OCR evidence job failed after {frames} frames analyzed, "
-                f"{calls} OCR calls, {observations} observations kept (partial)"
+                f"Failed: OCR evidence job failed after {elapsed:.2f}s ({frames} frames analyzed, "
+                f"{calls} OCR calls, {observations} observations kept)"
             )
         else:  # pragma: no cover - defensive, Job always reaches a terminal state
+            self.discard_latest_run_button.setEnabled(False)
             self.ocr_status_label.setText("OCR evidence job ended in an unexpected state")
+
+    def _on_discard_latest_run_clicked(self) -> None:
+        if self._last_pre_run_cues is None or not self._source_id:
+            return
+        restored_cues = list(self._last_pre_run_cues)
+        if self._cue_repository is not None:
+            self._cue_repository.save_cues_for_source(self._source_id, restored_cues)
+
+        obs_ids = [
+            obs_id
+            for c in restored_cues
+            for layer in c.language_layers
+            for obs_id in layer.observation_ids
+        ]
+        obs_map = (
+            self._observation_repository.get_by_ids(obs_ids)
+            if self._observation_repository is not None
+            else {}
+        )
+        priorities = {
+            c.id: ReviewPriority(cue_id=c.id, score=0.0, level="None", components=())
+            for c in restored_cues
+        }
+        self.qa.set_cues_and_priorities(restored_cues, obs_map, priorities)
+        self._refresh_timeline()
+        self._last_pre_run_cues = None
+        self.discard_latest_run_button.setEnabled(False)
+        self.ocr_status_label.setText("Latest OCR run discarded; workspace restored.")

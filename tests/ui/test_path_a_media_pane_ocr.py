@@ -889,4 +889,95 @@ def test_resumed_cues_have_neutral_review_priority(
         assert priority.score == 0.0
 
 
+def test_discard_latest_ocr_run_restores_pre_run_workspace_and_persisted_db(
+    qapp_guard, track_group_repository, db_path, test_video
+):
+    from glyphcue.domain.review_state import ReviewState
+
+    engine = FakeOcrEngine([
+        OcrTextRegion(text="First run line", confidence=0.9, geometry=((0, 0), (10, 0), (10, 10), (0, 10)), language="en")
+    ])
+    pane = PathAMediaPane(track_group_repository, ocr_engine=engine, db_path=db_path)
+    pane.open_video(test_video)
+
+    assert pane.discard_latest_run_button.isEnabled() is False
+
+    # Run 1: 0.0 - 0.2s
+    pane.limit_processing_range_checkbox.setChecked(True)
+    pane.processing_range_start_spin.setValue(0.0)
+    pane.processing_range_end_spin.setValue(0.2)
+    pane.run_ocr_button.click()
+    _wait_for(pane.current_ocr_job)
+    assert len(pane.qa.cues) >= 1
+    pane.qa.approve_and_advance()
+    assert pane.qa.cues[0].review_state == ReviewState.APPROVED
+    first_cue_id = pane.qa.cues[0].id
+    assert pane.discard_latest_run_button.isEnabled() is True
+
+    # Run 2: 0.3 - 0.5s with different text
+    engine2 = FakeOcrEngine([
+        OcrTextRegion(text="Second bad run line", confidence=0.9, geometry=((0, 0), (10, 0), (10, 10), (0, 10)), language="en")
+    ])
+    pane._ocr_engine = engine2
+    pane.processing_range_start_spin.setValue(0.3)
+    pane.processing_range_end_spin.setValue(0.5)
+    pane.run_ocr_button.click()
+    _wait_for(pane.current_ocr_job)
+
+    # Workspace now has cues from both runs
+    assert len(pane.qa.cues) >= 2
+    assert any(c.id == first_cue_id for c in pane.qa.cues)
+    assert any("Second bad run line" in l.text for c in pane.qa.cues for l in c.language_layers)
+
+    # Click Discard Latest OCR Run
+    pane.discard_latest_run_button.click()
+
+    # Workspace is restored to the state before Run 2 (only first cue, which is APPROVED)
+    assert len(pane.qa.cues) == 1
+    assert pane.qa.cues[0].id == first_cue_id
+    assert pane.qa.cues[0].review_state == ReviewState.APPROVED
+    assert not any("Second bad run line" in l.text for c in pane.qa.cues for l in c.language_layers)
+    assert pane.discard_latest_run_button.isEnabled() is False
+    assert "discarded" in pane.ocr_status_label.text().lower()
+
+    # Reopening video verifies persistence matches restored snapshot
+    pane_fresh = PathAMediaPane(track_group_repository, db_path=db_path)
+    pane_fresh.open_video(test_video)
+    assert len(pane_fresh.qa.cues) == 1
+    assert pane_fresh.qa.cues[0].id == first_cue_id
+
+
+def test_ocr_job_progress_and_completion_metrics_ui(
+    qapp_guard, track_group_repository, db_path, test_video
+):
+    engine = FakeOcrEngine([
+        OcrTextRegion(text="Performance Test", confidence=0.9, geometry=((0, 0), (10, 0), (10, 10), (0, 10)), language="en")
+    ])
+    pane = PathAMediaPane(track_group_repository, ocr_engine=engine, db_path=db_path)
+    pane.open_video(test_video)
+
+    assert hasattr(pane, "ocr_progress_bar")
+
+    pane._ocr_start_time = 1000.0
+    pane._on_ocr_progress("reading", 0.25, 0.5)
+    assert pane.ocr_progress_bar.value() == 50
+    assert "0.2s" in pane.ocr_status_label.text() or "0.3s" in pane.ocr_status_label.text()
+    assert "Elapsed:" in pane.ocr_status_label.text()
+
+    pane.run_ocr_button.click()
+    _wait_for(pane.current_ocr_job)
+
+    assert pane.current_ocr_job.state is JobState.SUCCEEDED
+    assert pane.ocr_progress_bar.value() == 100
+    status_text = pane.ocr_status_label.text()
+    assert "Done:" in status_text
+    assert "media in" in status_text
+    assert "realtime" in status_text
+    assert "frames analyzed" in status_text
+    assert "OCR calls" in status_text
+    assert "observations" in status_text
+    assert "cues" in status_text
+
+
+
 

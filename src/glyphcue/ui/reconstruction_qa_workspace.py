@@ -36,7 +36,7 @@ from glyphcue.ui.design_tokens import Color, Spacing
 from glyphcue.ui.language_layer_presentation import LanguageLayersPanel, queue_label_for_cue
 from glyphcue.ui.main_window import MainWindow
 
-_TIMING_NUDGE_STEP_SECONDS = 0.1
+_TIMING_NUDGE_STEP_SECONDS = 0.05
 _QUEUE_ITEM_ROLE_CUE_ID = "cue_id"
 
 _APPROVE_BUTTON_STYLE = f"""
@@ -232,10 +232,10 @@ class ReconstructionQaWorkspace:
         self.diagnostics_view.setReadOnly(True)
         self.language_layers_panel = LanguageLayersPanel(editable=True)
 
-        self.nudge_start_earlier_button = QPushButton("Start −0.1s")
-        self.nudge_start_later_button = QPushButton("Start +0.1s")
-        self.nudge_end_earlier_button = QPushButton("End −0.1s")
-        self.nudge_end_later_button = QPushButton("End +0.1s")
+        self.nudge_start_earlier_button = QPushButton("Start −0.05s")
+        self.nudge_start_later_button = QPushButton("Start +0.05s")
+        self.nudge_end_earlier_button = QPushButton("End −0.05s")
+        self.nudge_end_later_button = QPushButton("End +0.05s")
 
         self.split_time_spin = QDoubleSpinBox()
         self.split_time_spin.setDecimals(3)

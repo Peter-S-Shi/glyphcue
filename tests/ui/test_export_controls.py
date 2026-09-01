@@ -80,6 +80,7 @@ def test_export_button_click_refuses_overwrite_without_crashing_and_shows_status
         get_cues=lambda: [_cue("c1", "line one")],
         commit_pending_edits=lambda: None,
         source_path=source,
+        file_dialog_fn=lambda _w, _t, d, _f: (str(source), ""),
     )
     monkeypatch.setattr(controls, "_destination", lambda: source)
 
@@ -87,3 +88,40 @@ def test_export_button_click_refuses_overwrite_without_crashing_and_shows_status
 
     assert source.read_text(encoding="utf-8") == "original"
     assert "refus" in controls.status_label.text().lower()
+
+
+def test_export_button_opens_save_as_dialog_and_writes_to_chosen_path(qapp_guard, tmp_path):
+    source = tmp_path / "video.mp4"
+    chosen = tmp_path / "custom_folder" / "my_custom_subtitles.srt"
+    chosen.parent.mkdir(parents=True, exist_ok=True)
+
+    controls = ExportControls(
+        get_cues=lambda: [_cue("c1", "line one")],
+        commit_pending_edits=lambda: None,
+        source_path=source,
+        file_dialog_fn=lambda _w, _t, _d, _f: (str(chosen), "SubRip Subtitle (*.srt)"),
+    )
+
+    controls.export_button.click()
+
+    assert chosen.exists()
+    assert "line one" in chosen.read_text(encoding="utf-8")
+    assert "Exported to" in controls.status_label.text()
+
+
+def test_export_button_cancelled_dialog_does_not_write_file(qapp_guard, tmp_path):
+    source = tmp_path / "video.mp4"
+    suggested = tmp_path / "video.reconstructed.srt"
+
+    controls = ExportControls(
+        get_cues=lambda: [_cue("c1", "line one")],
+        commit_pending_edits=lambda: None,
+        source_path=source,
+        file_dialog_fn=lambda _w, _t, _d, _f: ("", ""),
+    )
+
+    controls.export_button.click()
+
+    assert not suggested.exists()
+    assert "cancelled" in controls.status_label.text().lower()
+

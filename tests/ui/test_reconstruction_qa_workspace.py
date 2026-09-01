@@ -696,30 +696,36 @@ def test_raw_ocr_evidence_header_and_explanatory_note_are_present(qapp_guard):
     assert len(workspace.evidence_note_label.text()) > 0
 
 
-def test_timing_nudge_exact_point_one_second_steps_and_refreshes_ui(qapp_guard):
+def test_timing_nudge_exact_50ms_steps_and_refreshes_ui(qapp_guard):
     cues = [_cue("c1", 1.0, 2.0, texts={"en": "Test Cue"})]
     priorities = {"c1": _none_priority("c1")}
     workspace = ReconstructionQaWorkspace(cues, {}, priorities, QWidget())
 
-    # 1. Start earlier by 0.1s -> 0.9s
+    # Verify button labels are 50ms
+    assert workspace.nudge_start_earlier_button.text() == "Start −0.05s"
+    assert workspace.nudge_start_later_button.text() == "Start +0.05s"
+    assert workspace.nudge_end_earlier_button.text() == "End −0.05s"
+    assert workspace.nudge_end_later_button.text() == "End +0.05s"
+
+    # 1. Start earlier by 0.05s -> 0.95s
     workspace.nudge_start_earlier_button.click()
-    assert workspace.cues[0].start_time == 0.9
+    assert workspace.cues[0].start_time == 0.95
     assert workspace.cues[0].end_time == 2.0
-    assert "0.900s" in workspace.cue_identity_label.text()
+    assert "0.950s" in workspace.cue_identity_label.text()
     assert "⚠ Needs Review" in workspace.review_state_label.text()
     assert "[⚠ Needs Review]" in workspace.queue.item(0).text()
 
-    # 2. Start later by 0.1s -> 1.0s
+    # 2. Start later by 0.05s -> 1.0s
     workspace.nudge_start_later_button.click()
     assert workspace.cues[0].start_time == 1.0
     assert "1.000s" in workspace.cue_identity_label.text()
 
-    # 3. End later by 0.1s -> 2.1s
+    # 3. End later by 0.05s -> 2.05s
     workspace.nudge_end_later_button.click()
-    assert workspace.cues[0].end_time == 2.1
-    assert "2.100s" in workspace.cue_identity_label.text()
+    assert workspace.cues[0].end_time == 2.05
+    assert "2.050s" in workspace.cue_identity_label.text()
 
-    # 4. End earlier by 0.1s -> 2.0s
+    # 4. End earlier by 0.05s -> 2.0s
     workspace.nudge_end_earlier_button.click()
     assert workspace.cues[0].end_time == 2.0
     assert "2.000s" in workspace.cue_identity_label.text()
