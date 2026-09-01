@@ -180,3 +180,52 @@ def test_saving_the_roi_again_updates_it_rather_than_erroring(qapp_guard, reposi
 
     assert repository.get("tg-1").roi == ROI(x=0.2, y=0.1, width=0.5, height=0.5)
     assert len(repository.list_all()) == 1
+
+
+def test_reset_roi_button_resets_roi_to_full_frame(qapp_guard, repository):
+    pane = PathAMediaPane(repository)
+    pane.roi_x_spin.setValue(0.1)
+    pane.roi_y_spin.setValue(0.2)
+    pane.roi_width_spin.setValue(0.5)
+    pane.roi_height_spin.setValue(0.4)
+
+    pane.reset_roi_button.click()
+
+    assert pane.current_roi() == ROI(0.0, 0.0, 1.0, 1.0)
+    assert pane.video_overlay.roi == ROI(0.0, 0.0, 1.0, 1.0)
+    assert pane.roi_x_spin.value() == 0.0
+    assert pane.roi_y_spin.value() == 0.0
+    assert pane.roi_width_spin.value() == 1.0
+    assert pane.roi_height_spin.value() == 1.0
+
+
+def test_video_overlay_drag_updates_spinboxes_and_current_roi(qapp_guard, repository):
+    pane = PathAMediaPane(repository)
+    new_roi = ROI(0.15, 0.25, 0.6, 0.35)
+
+    pane.video_overlay.roiChanged.emit(new_roi)
+
+    assert pane.current_roi() == new_roi
+    assert pane.roi_x_spin.value() == 0.15
+    assert pane.roi_y_spin.value() == 0.25
+    assert pane.roi_width_spin.value() == 0.6
+    assert pane.roi_height_spin.value() == 0.35
+
+
+def test_spinbox_edits_update_video_overlay_roi(qapp_guard, repository):
+    pane = PathAMediaPane(repository)
+
+    pane.roi_x_spin.setValue(0.3)
+    pane.roi_y_spin.setValue(0.4)
+
+    assert pane.video_overlay.roi.x == 0.3
+    assert pane.video_overlay.roi.y == 0.4
+
+
+def test_open_video_sets_video_size_on_overlay(qapp_guard, repository, test_video):
+    pane = PathAMediaPane(repository)
+
+    pane.open_video(test_video)
+
+    assert pane.video_overlay._video_size == (32, 32)
+

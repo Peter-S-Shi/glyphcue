@@ -4,7 +4,7 @@ import uuid
 from pathlib import Path
 from typing import Callable
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QEvent, QObject, Qt
 from PySide6.QtMultimediaWidgets import QVideoWidget
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -53,8 +53,23 @@ from glyphcue.ui.ocr_evidence_pane import OcrEvidencePane
 from glyphcue.ui.playback_controller import PlaybackController
 from glyphcue.ui.reconstruction_qa_workspace import ReconstructionQaWorkspace
 from glyphcue.ui.roi_visualization import RoiVisualization
+from glyphcue.ui.video_roi_overlay import VideoRoiOverlay
 
 _DEFAULT_TRACK_GROUP_ID = "default"
+
+
+class _VideoOverlayResizeFilter(QObject):
+    """Keeps the video ROI overlay perfectly sized and positioned over the video widget."""
+
+    def __init__(self, overlay: QWidget, parent: QObject | None = None) -> None:
+        super().__init__(parent)
+        self._overlay = overlay
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
+        if event.type() in (QEvent.Type.Resize, QEvent.Type.Show):
+            self._overlay.setGeometry(watched.rect())
+            self._overlay.raise_()
+        return False
 
 
 def _roi_spin_box(maximum: float = 1.0) -> QDoubleSpinBox:
@@ -141,6 +156,11 @@ class PathAMediaPane:
         self.video_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.controller.set_video_output(self.video_widget)
 
+        self.video_overlay = VideoRoiOverlay(self.video_widget)
+        self._overlay_filter = _VideoOverlayResizeFilter(self.video_overlay)
+        self.video_widget.installEventFilter(self._overlay_filter)
+        self.video_overlay.roiChanged.connect(self.set_roi)
+
         self.open_button = QPushButton("Open Video…")
         self.metadata_label = QLabel("No video loaded")
         self.play_button = QPushButton("Play")
@@ -171,6 +191,7 @@ class PathAMediaPane:
         self.roi_y_spin = _roi_spin_box()
         self.roi_width_spin = _roi_spin_box()
         self.roi_height_spin = _roi_spin_box()
+        self.reset_roi_button = QPushButton("Reset to Full Frame")
         self.language_selection_panel = LanguageSelectionPanel(available_languages)
         self.save_roi_button = QPushButton("Save Track Group")
 
@@ -199,9 +220,13 @@ class PathAMediaPane:
         self.open_button.clicked.connect(self._on_open_clicked)
         self.play_button.clicked.connect(self.controller.play)
         self.pause_button.clicked.connect(self.controller.pause)
+        self.reset_roi_button.clicked.connect(self.reset_roi)
         self.save_roi_button.clicked.connect(self._on_save_roi_clicked)
         self.run_ocr_button.clicked.connect(self._on_run_ocr_clicked)
         self.cancel_ocr_button.clicked.connect(self._on_cancel_ocr_clicked)
+
+        self.context_label = QLabel()
+        self.context_label.setWordWrap(True)
 
         self._restore_roi()
         self._restore_languages()
@@ -219,6 +244,7 @@ class PathAMediaPane:
         roi_form.addRow("ROI width", self.roi_width_spin)
         roi_form.addRow("ROI height", self.roi_height_spin)
         controls_layout.addLayout(roi_form)
+        controls_layout.addWidget(self.reset_roi_button)
 
         processing_range_form = QFormLayout()
         processing_range_form.addRow(self.limit_processing_range_checkbox)
@@ -283,7 +309,7 @@ class PathAMediaPane:
         for spin in (
             self.roi_x_spin, self.roi_y_spin, self.roi_width_spin, self.roi_height_spin,
         ):
-            spin.valueChanged.connect(lambda _value: self.roi_visualization.set_roi(self.current_roi()))
+            spin.valueChanged.connect(lambda _value: self._on_spin_roi_changed())
         self.roi_visualization.set_roi(self.current_roi())
         self._refresh_current_cue_relationship(0.0)
 
@@ -292,12 +318,9 @@ class PathAMediaPane:
         # read-only and minimal (no project manager); live-refreshed
         # from the same live ROI/language/range controls the actual
         # OCR run itself reads ("what you see is what runs").
-        self.context_label = QLabel()
-        self.context_label.setWordWrap(True)
         self.qa.add_left_pane_widget(self.context_label)
         self._refresh_context_label()
         for spin in (
-            self.roi_x_spin, self.roi_y_spin, self.roi_width_spin, self.roi_height_spin,
             self.processing_range_start_spin, self.processing_range_end_spin,
         ):
             spin.valueChanged.connect(lambda _value: self._refresh_context_label())
@@ -360,6 +383,7 @@ class PathAMediaPane:
             f"{metadata.width}x{metadata.height} · "
             f"{metadata.duration_seconds:.2f}s · {metadata.codec_name}"
         )
+        self.video_overlay.set_video_size(metadata.width, metadata.height)
         self.export_controls.set_source_path(path)
         # DESIGN.md section 84: the range controls must offer a
         # reasonable bound from the real, just-opened media -- not an
@@ -380,12 +404,40 @@ class PathAMediaPane:
         self._refresh_current_cue_relationship(0.0)
 
     def current_roi(self) -> ROI:
+        x = min(1.0, max(0.0, self.roi_x_spin.value()))
+        y = min(1.0, max(0.0, self.roi_y_spin.value()))
+        width = min(1.0 - x, max(0.001, self.roi_width_spin.value()))
+        height = min(1.0 - y, max(0.001, self.roi_height_spin.value()))
         return ROI(
-            x=self.roi_x_spin.value(),
-            y=self.roi_y_spin.value(),
-            width=self.roi_width_spin.value(),
-            height=self.roi_height_spin.value(),
+            x=round(x, 4),
+            y=round(y, 4),
+            width=round(width, 4),
+            height=round(height, 4),
         )
+
+    def set_roi(self, roi: ROI) -> None:
+        """Sets the active ROI across all inputs: spinboxes, video overlay, and diagram."""
+        for spin in (self.roi_x_spin, self.roi_y_spin, self.roi_width_spin, self.roi_height_spin):
+            spin.blockSignals(True)
+        self.roi_x_spin.setValue(roi.x)
+        self.roi_y_spin.setValue(roi.y)
+        self.roi_width_spin.setValue(roi.width)
+        self.roi_height_spin.setValue(roi.height)
+        for spin in (self.roi_x_spin, self.roi_y_spin, self.roi_width_spin, self.roi_height_spin):
+            spin.blockSignals(False)
+        self.video_overlay.set_roi(roi)
+        self.roi_visualization.set_roi(roi)
+        self._refresh_context_label()
+
+    def reset_roi(self) -> None:
+        """Resets the active ROI back to the full frame (0, 0, 1, 1)."""
+        self.set_roi(ROI(0.0, 0.0, 1.0, 1.0))
+
+    def _on_spin_roi_changed(self) -> None:
+        roi = self.current_roi()
+        self.video_overlay.set_roi(roi)
+        self.roi_visualization.set_roi(roi)
+        self._refresh_context_label()
 
     def _on_playback_position_changed(self, position_ms: int) -> None:
         position_seconds = position_ms / 1000.0
@@ -474,10 +526,7 @@ class PathAMediaPane:
     def _restore_roi(self) -> None:
         track_group = self._repository.get(self._track_group_id)
         roi = track_group.roi if track_group is not None else ROI(0.0, 0.0, 1.0, 1.0)
-        self.roi_x_spin.setValue(roi.x)
-        self.roi_y_spin.setValue(roi.y)
-        self.roi_width_spin.setValue(roi.width)
-        self.roi_height_spin.setValue(roi.height)
+        self.set_roi(roi)
 
     def _restore_languages(self) -> None:
         track_group = self._repository.get(self._track_group_id)
