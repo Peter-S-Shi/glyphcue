@@ -101,8 +101,8 @@ input to it.
 
 Real gaps (net-new work), in the order the M10 prompt itself implies:
 
-1. **Evaluation corpus manifest + ground-truth schema** — nothing like this exists; every prior benchmark invented its own ad hoc fixture format. *(User-confirmed next step.)*
-2. **Representative-video corpus** (3–5 videos × 2–5 min) — does not exist; largest scope item, may need private-sample handling per ROADMAP's privacy allowance.
+1. ~~Evaluation corpus manifest + ground-truth schema~~ — **done**, `glyphcue.evaluation.corpus`.
+2. **Representative-video corpus** (3–5 videos × 2–5 min) — **attempted against a real private corpus, crashed on a harness bug; deferred.** See `docs/m10_private_corpus_incident.md` (what happened, real evidence recovered, harness bug fixed) and `docs/m10_performance_diagnosis.md` (isolated bottleneck analysis + ranked M11 candidates). M10 closes this item on the controlled/synthetic corpus in `benchmarks/m10_controlled_video_corpus/` instead — clearly labeled as controlled/synthetic, not equivalent to the deferred realistic corpus.
 3. **Shared metrics module** (WER; Cue precision/recall; timing start/end error; multilingual missing/wrong-assignment rate; Review Priority failure-class breakdown) — some of this promotes/extends existing per-benchmark code (CER, span-exact-match, missing_languages), some is entirely new (WER, precision/recall, wrong-assignment rate).
 4. ~~Two missing ADRs: media architecture, multilingual timing simplification~~ — **done**, `docs/adr/0004-media-architecture.md` / `docs/adr/0005-multilingual-timing-simplification.md`.
 5. ~~Two ADRs promoted from existing narrative docs: selective OCR strategy, consensus/reconstruction approach~~ — **done**, `docs/adr/0002-selective-ocr-strategy.md` / `docs/adr/0003-consensus-reconstruction-approach.md`.
