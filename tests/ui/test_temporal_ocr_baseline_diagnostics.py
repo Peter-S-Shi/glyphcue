@@ -100,7 +100,12 @@ def test_slow_run_speed_and_wall_media_slowdown_ratio():
 
 
 def test_change_triggered_policy_exposes_difference_score():
-    policy = ChangeTriggeredOcrPolicy(change_threshold=0.05, max_gap_seconds=2.0)
+    policy = ChangeTriggeredOcrPolicy(
+        change_threshold=0.05,
+        confirmation_threshold=0.05,
+        min_episode_duration=0.033,
+        max_gap_seconds=2.0,
+    )
     frame1 = np.zeros((40, 100, 3), dtype=np.uint8)
     frame2 = np.ones((40, 100, 3), dtype=np.uint8) * 200
 
@@ -108,7 +113,10 @@ def test_change_triggered_policy_exposes_difference_score():
     assert policy.last_trigger_reason == "first_frame"
     assert policy.last_difference_score is None
 
-    assert policy.should_ocr(frame2, 0.1) is True
+    # Candidate onset (deferred)
+    assert policy.should_ocr(frame2, 0.1) is False
+    # Settled frame confirmed
+    assert policy.should_ocr(frame2, 0.14) is True
     assert policy.last_trigger_reason == "change_detected"
     assert policy.last_difference_score is not None
     assert policy.last_difference_score > 0.05
@@ -137,7 +145,7 @@ def _write_test_video(path: Path, frames: list[tuple[int, int]]) -> None:
 
 def test_ocr_job_records_invocation_metadata_faithfully(qapp_guard, tmp_path):
     video_path = tmp_path / "test.mp4"
-    _write_test_video(video_path, [(0, 0), (100, 0), (500, 200)])
+    _write_test_video(video_path, [(0, 0), (100, 0), (500, 200), (600, 200)])
     db_path = tmp_path / "ocr.sqlite3"
     engine = FakeOcrEngine(regions=[])
     metrics = PipelineMetrics()
@@ -163,7 +171,7 @@ def test_ocr_job_records_invocation_metadata_faithfully(qapp_guard, tmp_path):
     loop.exec()
     job.wait(timeout=1.0)
 
-    assert metrics.frames_analyzed == 3
+    assert metrics.frames_analyzed == 4
     assert metrics.ocr_calls == 2
     assert len(metrics.invocation_records) == 2
     assert metrics.engine_initialization_seconds >= 0.0

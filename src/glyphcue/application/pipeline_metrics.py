@@ -45,6 +45,8 @@ class PipelineMetrics:
     elapsed_seconds: float = 0.0
     media_seconds_processed: float = 0.0
     engine_initialization_seconds: float = 0.0
+    candidate_transition_episodes: int = 0
+    confirmed_transition_episodes: int = 0
     transition_episodes: int = 0
     suppressed_candidate_triggers: int = 0
     invocation_records: list[OcrInvocationRecord] = field(default_factory=list)
@@ -133,7 +135,9 @@ class PipelineMetrics:
                 "media_seconds_processed": round(self.media_seconds_processed, 3),
                 "elapsed_seconds": round(self.elapsed_seconds, 3),
                 "engine_initialization_seconds": round(self.engine_initialization_seconds, 4),
-                "transition_episodes": self.transition_episodes,
+                "candidate_transition_episodes": self.candidate_transition_episodes,
+                "confirmed_transition_episodes": self.confirmed_transition_episodes,
+                "transition_episodes": self.transition_episodes or self.confirmed_transition_episodes,
                 "suppressed_candidate_triggers": self.suppressed_candidate_triggers,
                 "ocr_calls_per_media_minute": round(self.ocr_calls_per_media_minute, 2),
                 "effective_processing_speed": round(self.effective_processing_speed, 3),
@@ -165,7 +169,9 @@ class PipelineMetrics:
             f"Frames Analyzed:            {self.frames_analyzed}\n"
             f"OCR Calls:                  {self.ocr_calls}\n"
             f"Observations Created:       {self.observations_created}\n"
-            f"Transition Episodes:        {self.transition_episodes}\n"
+            f"Candidate Episodes:         {self.candidate_transition_episodes}\n"
+            f"Confirmed Episodes:         {self.confirmed_transition_episodes}\n"
+            f"Transition Episodes:        {self.transition_episodes or self.confirmed_transition_episodes}\n"
             f"Suppressed Triggers:        {self.suppressed_candidate_triggers}\n"
             f"Media Duration Processed:   {self.media_seconds_processed:.2f}s\n"
             f"Wall-Clock Elapsed Time:    {self.elapsed_seconds:.2f}s\n"

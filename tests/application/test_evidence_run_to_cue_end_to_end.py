@@ -209,22 +209,18 @@ def test_two_region_single_language_frame_becomes_one_cue_not_two(qapp_guard, tm
 
 def test_subtitle_blank_subtitle_produces_two_cues_not_three(qapp_guard, tmp_path):
     video_path = tmp_path / "blank_gap.mp4"
-    _write_test_video(video_path, [(0, 50), (2000, 50), (4000, 200), (6000, 200), (8000, 50)])
+    _write_test_video(
+        video_path,
+        [(0, 50), (2000, 50), (4000, 200), (6000, 200), (8000, 50), (10000, 50)],
+    )
 
     db_path = tmp_path / "glyphcue.sqlite3"
-    # 5 OCR calls expected (first_frame, then a real pixel change at
-    # each subsequent gray-value transition): a clean subtitle line
-    # while gray=50, blank while gray=200, a CLEARLY DIFFERENT subtitle
-    # line once gray=50 returns -- deliberately dissimilar text (not
-    # just "A"/"B") so the blank-confirmation check (which compares the
-    # reading after the blank against the reading before it) isn't
-    # accidentally fooled by two texts that merely look alike.
+    # 4 OCR calls: 0.0s (first_frame), 2.0s (periodic), 6.0s (settled blank), 10.0s (settled second subtitle)
     engine = _ScriptedOcrEngine(
         regions_by_call=[
             [OcrTextRegion(text="The quick brown fox", confidence=0.9, language="en")],
             [OcrTextRegion(text="The quick brown fox", confidence=0.9, language="en")],
             [],  # blank candidate
-            [],  # blank candidate (periodic confirmation) -- 2 in a row confirms the gap
             [OcrTextRegion(text="Bright orange sunsets glow", confidence=0.9, language="en")],
         ]
     )
@@ -239,7 +235,10 @@ def test_subtitle_blank_subtitle_produces_two_cues_not_three(qapp_guard, tmp_pat
     assert job.state is JobState.SUCCEEDED
 
     observation_repository = ObservationRepository(connect(db_path))
-    cues, _diagnostics = reconstruct_cues_for_evidence_run(observation_repository, evidence_run_id)
+    metadata = probe_media(video_path)
+    cues, _diagnostics = reconstruct_cues_for_evidence_run(
+        observation_repository, evidence_run_id, processing_end_time=metadata.duration_seconds
+    )
 
     assert [cue.language_layers[0].text for cue in cues] == [
         "The quick brown fox",
@@ -253,13 +252,18 @@ def test_subtitle_blank_subtitle_produces_two_cues_not_three(qapp_guard, tmp_pat
 def test_final_single_observation_uses_real_processing_end_not_a_1ms_cue(qapp_guard, tmp_path):
     video_path = tmp_path / "single.mp4"
     # A second, identical-content frame at 1.5s (under max_gap_seconds,
-    # so no second OCR call) gives the video a real ~1.5s duration.
+    # so no second OCR call happens) guarantees the video has a real
+    # multi-second duration.
     _write_test_video(video_path, [(0, 50), (1500, 50)])
 
     db_path = tmp_path / "glyphcue.sqlite3"
-    engine = _ScriptedOcrEngine(texts_by_call=["Only subtitle"])
+    engine = _ScriptedOcrEngine(
+        regions_by_call=[
+            [OcrTextRegion(text="Lone final subtitle line", confidence=0.9, language="en")],
+        ]
+    )
     metrics = PipelineMetrics()
-    evidence_run_id = "run-final-single"
+    evidence_run_id = "run-single"
     job = build_ocr_evidence_job(
         video_path, ProcessingRange(), _FULL_FRAME_ROI, engine, db_path, metrics, evidence_run_id
     )
@@ -267,6 +271,7 @@ def test_final_single_observation_uses_real_processing_end_not_a_1ms_cue(qapp_gu
     job.start()
     waiter.wait()
     assert job.state is JobState.SUCCEEDED
+    assert metrics.ocr_calls == 1  # only first_frame
 
     observation_repository = ObservationRepository(connect(db_path))
     metadata = probe_media(video_path)
@@ -275,8 +280,11 @@ def test_final_single_observation_uses_real_processing_end_not_a_1ms_cue(qapp_gu
     )
 
     assert len(cues) == 1
-    assert cues[0].end_time == metadata.duration_seconds
-    assert cues[0].end_time - cues[0].start_time > 0.01  # not a ~1ms instant marker
+    cue = cues[0]
+    assert cue.language_layers[0].text == "Lone final subtitle line"
+    # Milestone 5 final-boundary fix: a single observation's Cue extends
+    # to the processing range's real end (1.5s), NOT to start_time + 1ms.
+    assert cue.end_time == pytest.approx(1.5, abs=0.05)
 
 
 def test_visual_false_positive_change_detection_does_not_over_split(qapp_guard, tmp_path):
@@ -294,7 +302,21 @@ def test_visual_false_positive_change_detection_does_not_over_split(qapp_guard, 
     module docstring)."""
     video_path = tmp_path / "flicker.mp4"
     _write_test_video(
-        video_path, [(0, 50), (200, 200), (400, 50), (600, 200), (800, 50), (1000, 200)]
+        video_path,
+        [
+            (0, 50),
+            (100, 50),
+            (200, 200),
+            (300, 200),
+            (400, 50),
+            (500, 50),
+            (600, 200),
+            (700, 200),
+            (800, 50),
+            (900, 50),
+            (1000, 200),
+            (1100, 200),
+        ],
     )
 
     db_path = tmp_path / "glyphcue.sqlite3"
@@ -302,9 +324,13 @@ def test_visual_false_positive_change_detection_does_not_over_split(qapp_guard, 
     metrics = PipelineMetrics()
     evidence_run_id = "run-flicker"
     # A sensitive change_threshold guarantees the real oscillating gray
-    # value (50 <-> 200) crosses it every single frame -- real,
+    # value (50 <-> 200) crosses it every change -- real,
     # repeated change_detected evidence, not a rare edge case.
-    policy = ChangeTriggeredOcrPolicy(change_threshold=0.01, max_gap_seconds=100.0)
+    policy = ChangeTriggeredOcrPolicy(
+        change_threshold=0.01,
+        min_episode_duration=0.033,
+        max_gap_seconds=100.0,
+    )
     job = build_ocr_evidence_job(
         video_path,
         ProcessingRange(),

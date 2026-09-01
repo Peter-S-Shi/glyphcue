@@ -48,6 +48,7 @@ from glyphcue.application.review_priority import (
     compute_review_priority,
 )
 from glyphcue.application.source_identity import normalize_source_id
+from glyphcue.application.trigger_replay import TriggerReplayResult, run_trigger_replay
 from glyphcue.domain.review_state import ReviewState
 from glyphcue.domain.roi import ROI
 from glyphcue.domain.track_group import TrackGroup
@@ -212,6 +213,7 @@ class PathAMediaPane:
         )
 
         self.run_ocr_button = QPushButton("Run OCR Evidence")
+        self.dry_run_policy_button = QPushButton("Dry Run Policy")
         self.cancel_ocr_button = QPushButton("Cancel")
         self.discard_latest_run_button = QPushButton("Discard Latest OCR Run")
         self.discard_latest_run_button.setEnabled(False)
@@ -223,6 +225,7 @@ class PathAMediaPane:
         self.ocr_status_label = QLabel("OCR evidence not run yet")
         self.evidence_pane = OcrEvidencePane([])
         self._last_pre_run_cues: list[Cue] | None = None
+        self._last_dry_run_result: TriggerReplayResult | None = None
         self._ocr_start_time: float = 0.0
         self._video_duration_seconds: float = 0.0
         self._update_ocr_button_enabled()
@@ -233,6 +236,7 @@ class PathAMediaPane:
         self.reset_roi_button.clicked.connect(self.reset_roi)
         self.save_roi_button.clicked.connect(self._on_save_roi_clicked)
         self.run_ocr_button.clicked.connect(self._on_run_ocr_clicked)
+        self.dry_run_policy_button.clicked.connect(self._on_dry_run_policy_clicked)
         self.cancel_ocr_button.clicked.connect(self._on_cancel_ocr_clicked)
         self.discard_latest_run_button.clicked.connect(self._on_discard_latest_run_clicked)
 
@@ -316,9 +320,11 @@ class PathAMediaPane:
 
         ocr_controls = QHBoxLayout()
         self.run_ocr_button.setObjectName("runOcrBtn")
+        self.dry_run_policy_button.setObjectName("secondaryBtn")
         self.cancel_ocr_button.setObjectName("secondaryBtn")
         self.discard_latest_run_button.setObjectName("subtleDangerBtn")
         ocr_controls.addWidget(self.run_ocr_button)
+        ocr_controls.addWidget(self.dry_run_policy_button)
         ocr_controls.addWidget(self.cancel_ocr_button)
         ocr_controls.addWidget(self.discard_latest_run_button)
         ocr_box_layout.addLayout(ocr_controls)
@@ -695,6 +701,7 @@ class PathAMediaPane:
             self._ocr_engine is not None or self._ocr_engine_factory is not None
         ) and self._db_path is not None
         self.run_ocr_button.setEnabled(wired)
+        self.dry_run_policy_button.setEnabled(self._video_path is not None)
         self.cancel_ocr_button.setEnabled(False)
 
     def _on_run_ocr_clicked(self) -> None:
@@ -784,6 +791,7 @@ class PathAMediaPane:
         self.ocr_progress_bar.setValue(0)
         self.discard_latest_run_button.setEnabled(False)
         self.run_ocr_button.setEnabled(False)
+        self.dry_run_policy_button.setEnabled(False)
         self.cancel_ocr_button.setEnabled(True)
         self.ocr_status_label.setText("Running OCR evidence extraction…")
         self.current_ocr_job.start()
@@ -803,6 +811,7 @@ class PathAMediaPane:
 
     def _on_ocr_finished(self) -> None:
         self.run_ocr_button.setEnabled(True)
+        self.dry_run_policy_button.setEnabled(self._video_path is not None)
         self.cancel_ocr_button.setEnabled(False)
 
         state = self.current_ocr_job.state if self.current_ocr_job is not None else None
@@ -978,12 +987,28 @@ class PathAMediaPane:
         self.discard_latest_run_button.setEnabled(False)
         self.ocr_status_label.setText("Latest OCR run discarded; workspace restored.")
 
+    def _on_dry_run_policy_clicked(self) -> None:
+        if self._video_path is None:
+            return
+        roi = self.current_roi()
+        processing_range = self.current_processing_range()
+        result = run_trigger_replay(self._video_path, processing_range, roi)
+        self._last_dry_run_result = result
+        self.diagnostics_summary_label.setText(
+            f"Dry Run: {result.decided_ocr_calls} OCR calls ({result.confirmed_transition_episodes} confirmed, {result.candidate_transition_episodes} candidate) · {result.suppressed_candidate_triggers} suppressed · {result.frames_analyzed} frames in {result.elapsed_wall_seconds:.3f}s ({result.effective_fps:.0f} fps)"
+        )
+        self.view_diagnostic_report_button.setEnabled(True)
+        self.save_diagnostic_json_button.setEnabled(True)
+        self.copy_diagnostic_summary_button.setEnabled(True)
+
     def _update_diagnostics_ui(self) -> None:
         has_data = self.ocr_metrics.frames_analyzed > 0 or self.ocr_metrics.ocr_calls > 0
+        if not has_data and self._last_dry_run_result is not None:
+            has_data = True
         self.view_diagnostic_report_button.setEnabled(has_data)
         self.save_diagnostic_json_button.setEnabled(has_data)
         self.copy_diagnostic_summary_button.setEnabled(has_data)
-        if has_data:
+        if self.ocr_metrics.frames_analyzed > 0 or self.ocr_metrics.ocr_calls > 0:
             mean_ms = self.ocr_metrics.latency_mean_seconds * 1000.0
             p95_ms = self.ocr_metrics.latency_p95_seconds * 1000.0
             if self.ocr_metrics.wall_media_ratio > 1.0:
@@ -996,11 +1021,19 @@ class PathAMediaPane:
             self.diagnostics_summary_label.setText(
                 f"Diagnostics: Calls: {self.ocr_metrics.ocr_calls} · Mean: {mean_ms:.1f}ms (p95: {p95_ms:.1f}ms) · {speed_str}"
             )
+        elif self._last_dry_run_result is not None:
+            r = self._last_dry_run_result
+            self.diagnostics_summary_label.setText(
+                f"Dry Run: {r.decided_ocr_calls} OCR calls ({r.confirmed_transition_episodes} confirmed, {r.candidate_transition_episodes} candidate) · {r.suppressed_candidate_triggers} suppressed · {r.frames_analyzed} frames in {r.elapsed_wall_seconds:.3f}s ({r.effective_fps:.0f} fps)"
+            )
         else:
             self.diagnostics_summary_label.setText("")
 
     def _on_view_diagnostic_report_clicked(self) -> None:
-        report_text = self.ocr_metrics.format_summary_report()
+        if self.ocr_metrics.ocr_calls == 0 and self._last_dry_run_result is not None:
+            report_text = self._last_dry_run_result.format_report()
+        else:
+            report_text = self.ocr_metrics.format_summary_report()
         dialog = QDialog(self.window)
         dialog.setObjectName("diagnosticReportDialog")
         dialog.setWindowTitle("Temporal OCR Baseline Diagnostic Report")
@@ -1037,9 +1070,15 @@ class PathAMediaPane:
         )
         if not file_path:
             return
-        data = self.ocr_metrics.to_dict(include_invocations=True)
+        if self.ocr_metrics.ocr_calls == 0 and self._last_dry_run_result is not None:
+            data = self._last_dry_run_result.to_dict()
+        else:
+            data = self.ocr_metrics.to_dict(include_invocations=True)
         Path(file_path).write_text(json.dumps(data, indent=2), encoding="utf-8")
 
     def _on_copy_diagnostic_summary_clicked(self) -> None:
-        report_text = self.ocr_metrics.format_summary_report()
+        if self.ocr_metrics.ocr_calls == 0 and self._last_dry_run_result is not None:
+            report_text = self._last_dry_run_result.format_report()
+        else:
+            report_text = self.ocr_metrics.format_summary_report()
         QGuiApplication.clipboard().setText(report_text)

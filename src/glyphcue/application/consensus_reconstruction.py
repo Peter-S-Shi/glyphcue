@@ -391,6 +391,66 @@ def _reconstruct_one_cue(
     return cue, diagnostics
 
 
+def _consolidate_adjacent_same_text_cues(
+    cues: list[Cue],
+    diagnostics: list[ConsensusDiagnostics],
+) -> tuple[list[Cue], list[ConsensusDiagnostics]]:
+    """Merges adjacent reconstructed Cues with identical normalized
+    subtitle text across editing cuts/transitions when no credible blank gap exists between them.
+    """
+    if not cues:
+        return [], []
+
+    merged_cues: list[Cue] = [cues[0]]
+    merged_diag: list[ConsensusDiagnostics] = [diagnostics[0]]
+
+    for cue, diag in zip(cues[1:], diagnostics[1:]):
+        prev_cue = merged_cues[-1]
+        prev_diag = merged_diag[-1]
+
+        prev_text = prev_cue.language_layers[0].text if prev_cue.language_layers else ""
+        curr_text = cue.language_layers[0].text if cue.language_layers else ""
+
+        # Check if adjacent (within 0.15s tolerance) and identical text
+        is_adjacent = cue.start_time <= prev_cue.end_time + 0.15
+        same_text = prev_text.strip() == curr_text.strip() and bool(prev_text.strip())
+
+        if is_adjacent and same_text:
+            new_end_time = max(prev_cue.end_time, cue.end_time)
+            combined_obs_ids = prev_cue.language_layers[0].observation_ids + cue.language_layers[0].observation_ids
+            dedup_obs_ids = tuple(dict.fromkeys(combined_obs_ids))
+
+            merged_layer = LanguageLayer(
+                language=prev_cue.language_layers[0].language or (cue.language_layers[0].language if cue.language_layers else None),
+                text=prev_text,
+                observation_ids=dedup_obs_ids,
+            )
+            merged_cues[-1] = Cue(
+                id=prev_cue.id,
+                start_time=prev_cue.start_time,
+                end_time=new_end_time,
+                language_layers=(merged_layer,),
+                review_state=prev_cue.review_state,
+            )
+            combined_votes = list(prev_diag.votes) + list(diag.votes)
+            merged_diag[-1] = ConsensusDiagnostics(
+                consensus_text=prev_diag.consensus_text,
+                consensus_language=prev_diag.consensus_language,
+                votes=tuple(combined_votes),
+                winning_vote_count=prev_diag.winning_vote_count + diag.winning_vote_count,
+                total_vote_count=prev_diag.total_vote_count + diag.total_vote_count,
+                majority_ratio=(
+                    (prev_diag.winning_vote_count + diag.winning_vote_count)
+                    / max(1, prev_diag.total_vote_count + diag.total_vote_count)
+                ),
+            )
+        else:
+            merged_cues.append(cue)
+            merged_diag.append(diag)
+
+    return merged_cues, merged_diag
+
+
 def reconstruct_cues_with_consensus(
     observations: list[Observation],
     *,
@@ -399,54 +459,6 @@ def reconstruct_cues_with_consensus(
 ) -> tuple[list[Cue], list[ConsensusDiagnostics]]:
     """Path A multi-frame consensus reconstruction: noisy OCR Observations
     -> stable, single-language Cues (ROADMAP.md Milestone 5).
-
-    A deliberately independent seam from Path B's `reconstruct_cues`
-    (application/reconstruction.py) -- that algorithm groups Observations
-    by rolling character-overlap continuation (built for subtitle-file
-    import, where every line is already clean and complete); this one
-    groups temporally-adjacent OCR Observations by textual *similarity*
-    (backstopped by M4's own state-change evidence) and resolves each
-    group to one consensus reading by majority vote, because repeated
-    OCR samples of the same real subtitle can each be slightly wrong in
-    different ways.
-
-    Algorithm (see docs/consensus/multi_frame_consensus.md for the full
-    write-up: why this baseline, alternatives considered, failure modes,
-    evidence):
-    0. Aggregate same-frame regions (see `aggregate_same_frame_observations`):
-       one OCR call can return multiple text regions (e.g. a two-line
-       subtitle) sharing one frame_reference; these are combined into
-       one reading, in reading order, before anything below runs -- they
-       are never treated as sequential time states.
-    1. Sort the aggregated readings by source-correct start_time (caller
-       must have already scoped them to one evidence_run_id -- see
-       `reconstruct_cues_for_evidence_run`).
-    2. Group consecutive readings into "state runs" (see
-       `group_into_state_runs`): a run only splits on real M4
-       state-change evidence when available (never guessed from text
-       alone), with character-level similarity (CJK-safe) as the
-       fallback signal when no such evidence exists. Blank-text readings
-       (M4's OCR-empty candidate evidence) close the current run without
-       becoming a Cue themselves.
-    3. Within each run, pick the majority-vote text (and language) as
-       the stable reading, keeping every supporting observation's id
-       (expanded through same-frame aggregation, if any) in
-       `LanguageLayer.observation_ids` for full provenance -- not just
-       the winning one.
-    4. Cue timing comes from state-transition semantics, not frame
-       index/FPS: a Cue's end_time is the moment real evidence says this
-       state stopped -- the next kept state's first reading, or an
-       intervening blank marker, whichever is real evidence that
-       actually closed this run. Only a run with no such evidence in
-       this evidence run (typically the last one) uses
-       `processing_end_time` if the caller supplied it (e.g. the
-       analyzed range's real end), or otherwise honestly falls back to
-       its own last reading's `end_time` -- documented as a
-       known-imprecise fallback, not a duration claim.
-
-    `similarity_threshold` is the one explainable, tunable knob (default
-    0.5) -- see `group_into_state_runs`. Deterministic: same input
-    (any order) always produces the same output.
     """
     ordered = sorted(observations, key=lambda observation: observation.start_time)
     aggregated = aggregate_same_frame_observations(ordered)
@@ -463,4 +475,5 @@ def reconstruct_cues_with_consensus(
         )
         cues.append(cue)
         diagnostics.append(cue_diagnostics)
-    return cues, diagnostics
+
+    return _consolidate_adjacent_same_text_cues(cues, diagnostics)

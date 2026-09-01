@@ -26,7 +26,10 @@ def test_change_triggered_policy_ocrs_when_the_frame_changes_enough():
     policy = ChangeTriggeredOcrPolicy(change_threshold=0.05)
     policy.should_ocr(_FRAME, timestamp=0.0)
 
-    assert policy.should_ocr(_CHANGED_FRAME, timestamp=0.1) is True
+    # Frame 1: candidate onset (deferred)
+    assert policy.should_ocr(_CHANGED_FRAME, timestamp=0.1) is False
+    # Frame 2: stable on _CHANGED_FRAME -> settled & confirmed!
+    assert policy.should_ocr(_CHANGED_FRAME, timestamp=0.14) is True
 
 
 def test_change_triggered_policy_forces_a_confirmation_ocr_after_the_max_gap():
@@ -65,6 +68,7 @@ def test_change_triggered_policy_reports_change_detected_as_the_trigger_reason()
     policy.should_ocr(_FRAME, timestamp=0.0)
 
     policy.should_ocr(_CHANGED_FRAME, timestamp=0.1)
+    policy.should_ocr(_CHANGED_FRAME, timestamp=0.14)
 
     assert policy.last_trigger_reason == "change_detected"
 

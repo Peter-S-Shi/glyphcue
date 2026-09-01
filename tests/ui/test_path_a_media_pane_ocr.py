@@ -1,10 +1,12 @@
 from fractions import Fraction
 from pathlib import Path
+from unittest.mock import patch
 
 import av
 import numpy as np
 import pytest
 from PySide6.QtCore import QEventLoop, QTimer
+from PySide6.QtWidgets import QMessageBox
 
 from glyphcue.adapters.ocr_types import OcrTextRegion
 from glyphcue.adapters.pyav_media_source import probe_media
@@ -932,8 +934,14 @@ def test_discard_latest_ocr_run_restores_pre_run_workspace_and_persisted_db(
     assert any(c.id == first_cue_id for c in pane.qa.cues)
     assert any("Second bad run line" in l.text for c in pane.qa.cues for l in c.language_layers)
 
-    # Click Discard Latest OCR Run
-    pane.discard_latest_run_button.click()
+    # Click Discard Latest OCR Run (confirm via safety dialog)
+    with patch.object(QMessageBox, "exec", return_value=None):
+        with patch.object(
+            QMessageBox,
+            "clickedButton",
+            lambda self: next((b for b in self.buttons() if "Discard" in b.text()), None),
+        ):
+            pane.discard_latest_run_button.click()
 
     # Workspace is restored to the state before Run 2 (only first cue, which is APPROVED)
     assert len(pane.qa.cues) == 1
@@ -1041,7 +1049,13 @@ def test_discard_latest_ocr_run_clears_evidence_pane_while_retaining_qa_raw_evid
     assert any("Second bad run obs" in obs.text for obs in pane.evidence_pane._observations)
 
     # Discard latest run
-    pane.discard_latest_run_button.click()
+    with patch.object(QMessageBox, "exec", return_value=None):
+        with patch.object(
+            QMessageBox,
+            "clickedButton",
+            lambda self: next((b for b in self.buttons() if "Discard" in b.text()), None),
+        ):
+            pane.discard_latest_run_button.click()
 
     # Evidence pane must no longer display discarded machine observations
     assert len(pane.evidence_pane._observations) == 0

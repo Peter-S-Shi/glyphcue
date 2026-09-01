@@ -44,16 +44,18 @@ def test_low_level_background_motion_below_threshold_does_not_trigger_ocr():
 def test_multi_frame_transition_burst_collapses_into_one_episode():
     policy = ChangeTriggeredOcrPolicy(
         change_threshold=0.05,
+        confirmation_threshold=0.05,
         stability_threshold=0.02,
-        min_transition_duration=0.1,
+        min_stable_frames=1,
+        min_episode_duration=0.033,
         max_transition_seconds=0.4,
         max_gap_seconds=2.0,
     )
     shot_a = _make_frame(50)
     assert policy.should_ocr(shot_a, 0.0) is True  # 1st call (first_frame)
 
-    # Frame 1 at 0.033s starts the transition episode -> 2nd call (captures initial transition state)
-    assert policy.should_ocr(_make_frame(70), 0.033) is True
+    # Frame 1 at 0.033s starts candidate onset -> deferred/suppressed!
+    assert policy.should_ocr(_make_frame(70), 0.033) is False
 
     # Multi-frame cross-dissolve/cut burst across frames 2-5: suppressed!
     burst_values = [90, 110, 140, 170]
@@ -61,10 +63,10 @@ def test_multi_frame_transition_burst_collapses_into_one_episode():
         t = idx * 0.033
         assert policy.should_ocr(_make_frame(val), t) is False
 
-    # Shot B arrives at 200: frame 6 at 0.200s is transition-to-200 (suppressed), frame 7 at 0.233s is stable at 200 (settled!)
+    # Shot B arrives at 200: frame 6 at 0.200s is transition-to-200 (suppressed), frame 7 at 0.233s is stable at 200 (settled & confirmed!)
     shot_b = _make_frame(200)
     assert policy.should_ocr(shot_b, 0.200) is False  # arriving frame of shot B
-    assert policy.should_ocr(shot_b, 0.233) is True   # settled! captures post-cut state
+    assert policy.should_ocr(shot_b, 0.233) is True   # settled! 2nd call (post-cut state)
 
     # Subsequent identical frames of shot B -> no further OCR
     assert policy.should_ocr(shot_b, 0.266) is False
@@ -72,26 +74,29 @@ def test_multi_frame_transition_burst_collapses_into_one_episode():
 
     assert policy.last_trigger_reason == "change_detected"
     assert policy.transition_episodes == 1
-    assert policy.suppressed_candidate_triggers >= 4
+    assert policy.suppressed_candidate_triggers >= 5
 
 
 def test_genuine_subtitle_change_triggers_one_ocr_call_and_settles():
     policy = ChangeTriggeredOcrPolicy(
         change_threshold=0.05,
+        confirmation_threshold=0.05,
         stability_threshold=0.02,
-        min_transition_duration=0.1,
+        min_stable_frames=1,
+        min_episode_duration=0.033,
         max_gap_seconds=2.0,
     )
     sub_1 = _make_frame(0)
-    assert policy.should_ocr(sub_1, 0.0) is True
+    assert policy.should_ocr(sub_1, 0.0) is True  # call 1
 
-    # Subtitle changes at t=1.0s to sub_2 -> 1 OCR call
+    # Subtitle changes at t=1.0s to sub_2: candidate onset (suppressed)
     sub_2 = _make_frame(100)
-    assert policy.should_ocr(sub_2, 1.000) is True
+    assert policy.should_ocr(sub_2, 1.000) is False
+    # Next frame at 1.033s is stable at sub_2 -> settled & confirmed! (call 2)
+    assert policy.should_ocr(sub_2, 1.033) is True
     assert policy.last_trigger_reason == "change_detected"
 
     # Subsequent identical frames of sub_2 -> no further OCR
-    assert policy.should_ocr(sub_2, 1.033) is False
     assert policy.should_ocr(sub_2, 1.066) is False
     assert policy.should_ocr(sub_2, 1.100) is False
     assert policy.should_ocr(sub_2, 1.133) is False
@@ -100,20 +105,19 @@ def test_genuine_subtitle_change_triggers_one_ocr_call_and_settles():
 def test_max_transition_duration_forces_settle_during_extended_motion():
     policy = ChangeTriggeredOcrPolicy(
         change_threshold=0.05,
+        confirmation_threshold=0.05,
         stability_threshold=0.02,
-        min_transition_duration=0.1,
+        min_stable_frames=1,
+        min_episode_duration=0.033,
         max_transition_seconds=0.2,
         max_gap_seconds=2.0,
     )
     baseline = _make_frame(0)
     assert policy.should_ocr(baseline, 0.0) is True  # first frame
 
-    # t=0.033s: transition begins -> 1 OCR call
-    assert policy.should_ocr(_make_frame(15), 0.033) is True
-
     # Continuous motion changing every frame by 15: suppressed while transition elapsed < 0.2s
-    for i in range(2, 6):
-        t = i * 0.033  # up to 0.165s (elapsed 0.132s)
+    for i in range(1, 6):
+        t = i * 0.033  # up to 0.165s
         assert policy.should_ocr(_make_frame(i * 15), t) is False
 
     # At t=0.250s (elapsed 0.217s >= max_transition_seconds 0.2s), forces settle and OCR
@@ -150,13 +154,18 @@ def test_pipeline_metrics_includes_transition_episodes_and_suppressed_triggers()
     metrics.ocr_calls = 12
     metrics.media_seconds_processed = 10.0
     metrics.elapsed_seconds = 30.0
+    metrics.candidate_transition_episodes = 10
+    metrics.confirmed_transition_episodes = 6
     metrics.transition_episodes = 6
     metrics.suppressed_candidate_triggers = 68
 
     diag = metrics.to_dict()
+    assert diag["summary"]["candidate_transition_episodes"] == 10
+    assert diag["summary"]["confirmed_transition_episodes"] == 6
     assert diag["summary"]["transition_episodes"] == 6
     assert diag["summary"]["suppressed_candidate_triggers"] == 68
 
     report = metrics.format_summary_report()
-    assert "Transition Episodes:" in report and "6" in report
+    assert "Candidate Episodes:" in report and "10" in report
+    assert "Confirmed Episodes:" in report and "6" in report
     assert "Suppressed Triggers:" in report and "68" in report
