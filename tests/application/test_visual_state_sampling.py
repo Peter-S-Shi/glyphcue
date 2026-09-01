@@ -136,3 +136,29 @@ def test_representative_timestamps_excludes_blank_groups():
     result = group_visual_states(frames)
 
     assert result.representative_timestamps == [1.0]
+
+
+def test_grouping_uses_the_plain_signature_distance_by_default():
+    # Pins the Alpha-family default: injecting a custom comparison is an
+    # additive option, never a change to existing grouping behavior.
+    frames = [_sampled(i, float(i), _text_frame(offset=0)) for i in range(3)]
+    frames += [_sampled(i, float(i), _text_frame(offset=30)) for i in range(3, 6)]
+
+    assert len(group_visual_states(frames).groups) == 2
+
+
+def test_an_injected_distance_that_sees_everything_as_identical_yields_one_group():
+    frames = [_sampled(i, float(i), _text_frame(offset=0)) for i in range(3)]
+    frames += [_sampled(i, float(i), _text_frame(offset=30)) for i in range(3, 6)]
+
+    result = group_visual_states(frames, distance=lambda a, b: 0.0)
+
+    assert len(result.groups) == 1
+
+
+def test_an_injected_distance_that_sees_everything_as_different_splits_every_frame():
+    frames = [_sampled(i, float(i), _text_frame()) for i in range(4)]
+
+    result = group_visual_states(frames, distance=lambda a, b: 1.0)
+
+    assert len(result.groups) == 4

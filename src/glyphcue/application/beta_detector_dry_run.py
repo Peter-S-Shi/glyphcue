@@ -15,6 +15,7 @@ from glyphcue.application.visual_state_sampling import (
     SampledFrame,
     VisualStateGroup,
     group_visual_states,
+    signature_distance,
 )
 from glyphcue.domain.roi import ROI
 
@@ -118,6 +119,8 @@ def run_beta_detector_dry_run(
     sampling_fps: float,
     detect: TextDetector,
     group_distance_threshold: float = BETA_GROUP_DISTANCE_THRESHOLD,
+    signature_fn: Callable[[np.ndarray, Any], np.ndarray] = detector_assisted_signature,
+    distance_fn: Callable[[np.ndarray, np.ndarray], float] = signature_distance,
 ) -> BetaDryRunResult:
     """Detector-Assisted Beta dry run (M11 Research Gate):
 
@@ -135,6 +138,13 @@ def run_beta_detector_dry_run(
     and stays testable, and CI-runnable, without the heavy `[ocr]`
     extra. Recognition is never called. Nothing here is imported by
     production Path A job wiring or the UI.
+
+    `signature_fn` / `distance_fn` default to the original Beta pairing
+    (hard binary canonical bands compared cell-wise). Beta-N supplies its
+    own pairing -- aspect-preserving soft coverage maps compared with a
+    shift-tolerant, mass-normalized distance -- so both variants run
+    through THIS identical decode/sample/detect/group path and the
+    before/after comparison isolates normalization alone.
     """
     if sampling_fps <= 0:
         raise ValueError("sampling_fps must be positive")
@@ -166,7 +176,7 @@ def run_beta_detector_dry_run(
 
             polygons = list(polygons) if polygons is not None else []
             result.detected_box_counts.append(len(polygons))
-            signature = detector_assisted_signature(roi_frame, polygons)
+            signature = signature_fn(roi_frame, polygons)
 
             sampled.append(
                 SampledFrame(
@@ -191,6 +201,10 @@ def run_beta_detector_dry_run(
     if len(detector_latencies) > 1:
         result.detector_warm_mean_latency_seconds = float(np.mean(detector_latencies[1:]))
 
-    grouping = group_visual_states(sampled, group_distance_threshold=group_distance_threshold)
+    grouping = group_visual_states(
+        sampled,
+        group_distance_threshold=group_distance_threshold,
+        distance=distance_fn,
+    )
     result.groups = grouping.groups
     return result

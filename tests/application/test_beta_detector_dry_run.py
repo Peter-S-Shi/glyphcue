@@ -145,3 +145,48 @@ def test_beta_dry_run_rejects_a_non_positive_sampling_fps(three_state_video):
             sampling_fps=0.0,
             detect=_FakeDetector(),
         )
+
+
+def test_beta_dry_run_uses_the_original_beta_signature_pairing_by_default(
+    three_state_video,
+):
+    # Pins the Beta baseline: Beta-N supplies its own signature/distance
+    # pairing explicitly, so the default path stays the 41e80f9 behavior
+    # and the before/after comparison is a real comparison.
+    result = run_beta_detector_dry_run(
+        three_state_video,
+        ProcessingRange(),
+        _FULL_FRAME_ROI,
+        sampling_fps=5.0,
+        detect=_FakeDetector(),
+    )
+
+    assert result.representative_count == 2
+
+
+def test_beta_dry_run_grouping_is_driven_by_the_injected_distance(three_state_video):
+    # An injected distance that calls every pair different must split
+    # each held text run frame by frame -- proving grouping really went
+    # through the injected comparison and not the baseline one. (A
+    # distance of 0.0 would NOT be a valid probe here: blank is a
+    # structural state, so the blank gap separates the two text runs
+    # regardless of any distance.)
+    baseline = run_beta_detector_dry_run(
+        three_state_video,
+        ProcessingRange(),
+        _FULL_FRAME_ROI,
+        sampling_fps=5.0,
+        detect=_FakeDetector(),
+    )
+    split_everything = run_beta_detector_dry_run(
+        three_state_video,
+        ProcessingRange(),
+        _FULL_FRAME_ROI,
+        sampling_fps=5.0,
+        detect=_FakeDetector(),
+        distance_fn=lambda a, b: 1.0,
+    )
+
+    assert baseline.representative_count == 2
+    assert split_everything.representative_count > baseline.representative_count
+    assert split_everything.blank_group_count == 1

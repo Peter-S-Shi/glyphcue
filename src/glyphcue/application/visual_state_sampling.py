@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Callable
 
 import numpy as np
 
@@ -145,6 +145,7 @@ def _close_group(state_kind: str, members: list[SampledFrame]) -> VisualStateGro
 def group_visual_states(
     sampled_frames: list[SampledFrame],
     group_distance_threshold: float = _DEFAULT_GROUP_DISTANCE_THRESHOLD,
+    distance: Callable[[np.ndarray, np.ndarray], float] = signature_distance,
 ) -> VisualStateGroupingResult:
     """Groups consecutive sampled frames into runs of one visual subtitle
     state, with blank treated as its own explicit state rather than "just
@@ -154,6 +155,12 @@ def group_visual_states(
     drift across a long stable run cannot silently accumulate into a
     false transition, one of the failure modes the frame-to-frame
     `ChangeTriggeredOcrPolicy` chain is prone to.
+
+    `distance` defaults to the plain cell-mismatch `signature_distance`
+    every Alpha round used; it is injectable so a later experiment can
+    supply a comparison matched to its own signature space (e.g. Beta-N's
+    shift-tolerant, mass-normalized distance over soft coverage maps)
+    without changing this harness or the grouping threshold.
     """
     if not sampled_frames:
         return VisualStateGroupingResult()
@@ -169,7 +176,7 @@ def group_visual_states(
         elif current_kind == "blank":
             belongs = False
         else:
-            belongs = signature_distance(frame.signature, current_anchor) <= group_distance_threshold
+            belongs = distance(frame.signature, current_anchor) <= group_distance_threshold
 
         if belongs:
             current_members.append(frame)
