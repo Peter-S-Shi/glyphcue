@@ -154,14 +154,12 @@ class ReconstructionQaWorkspace:
     only the CENTER evidence widget differs per path (video for Path A,
     timed-text evidence for Path B), passed in by the caller.
 
-    Operates on an in-memory `list[Cue]`, mirroring the existing
-    `PathBWorkspace` pattern rather than adding new Cue persistence:
-    neither path currently round-trips QA edits through `CueRepository`
-    (which is insert-only), and ROADMAP M7 explicitly asks to reuse
-    existing invariants rather than add speculative schema/migration.
-    QA state survives for the review session and flows to Export; it is
-    not yet durable across app restarts (a real, documented scope
-    boundary, not a silent gap).
+    Operates on an in-memory `list[Cue]` and remains persistence-agnostic:
+    notifies callers of any Cue modifications via `on_cues_changed`,
+    allowing host panes to persist changes according to their lifecycle
+    contracts. Path A connects this to atomic source-bound SQLite
+    persistence supporting full restart resume, while Path B maintains its
+    in-memory session/export lifecycle.
 
     `priorities_by_cue_id` is precomputed by the caller (via
     `review_signals_from_consensus_diagnostics` /
@@ -352,12 +350,12 @@ class ReconstructionQaWorkspace:
     def commit_pending_edits(self) -> None:
         """Commits whatever is currently typed into the displayed
         Cue's language-layer text edits into the in-memory Cue list --
-        the minimal public persistence seam a caller (e.g. Path B's
-        Export) uses to make sure a live, un-Approved hand-edit is not
-        silently lost. Never changes `review_state` and never Approves
-        -- committing an edit for export is not itself a review
-        decision. Safe to call at any time, including when nothing is
-        displayed (a no-op)."""
+        the minimal public persistence seam a caller (e.g. Path A/B
+        lifecycle hooks or Export) uses to make sure a live, un-committed
+        hand-edit is not silently lost. Never automatically Approves, but
+        real text modifications transition the Cue to `ReviewState.NEEDS_REVIEW`
+        and trigger `on_cues_changed` for persistence. Safe to call at any
+        time, including when nothing is displayed (a no-op)."""
         self._commit_displayed_edits()
 
     def set_cues_and_priorities(
