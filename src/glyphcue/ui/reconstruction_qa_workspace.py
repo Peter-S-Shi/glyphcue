@@ -248,6 +248,9 @@ class ReconstructionQaWorkspace:
         self.nudge_end_earlier_button = QPushButton("End −0.05s")
         self.nudge_end_later_button = QPushButton("End +0.05s")
 
+        self.split_label = QLabel("Split at (s):")
+        self.split_label.setObjectName("splitTimeLabel")
+        self.split_label.setStyleSheet(f"color: {Color.TEXT_SECONDARY}; font-size: 11px;")
         self.split_time_spin = QDoubleSpinBox()
         self.split_time_spin.setDecimals(3)
         self.split_time_spin.setRange(0.0, 24.0 * 3600.0)
@@ -401,6 +404,7 @@ class ReconstructionQaWorkspace:
 
         # 5. Split & Merge Tools
         split_merge_row = QHBoxLayout()
+        split_merge_row.addWidget(self.split_label)
         split_merge_row.addWidget(self.split_time_spin)
         split_merge_row.addWidget(self.split_button)
         split_merge_row.addWidget(self.merge_next_button)

@@ -52,7 +52,7 @@ from glyphcue.persistence.observation_repository import ObservationRepository
 from glyphcue.persistence.repository import CueRepository
 from glyphcue.persistence.track_group_repository import TrackGroupRepository
 from glyphcue.ui.compact_timeline import CompactTimeline
-from glyphcue.ui.design_tokens import Spacing
+from glyphcue.ui.design_tokens import Color, Spacing
 from glyphcue.ui.export_controls import ExportControls
 from glyphcue.ui.language_selection_panel import LanguageSelectionPanel
 from glyphcue.ui.ocr_evidence_pane import OcrEvidencePane
@@ -295,9 +295,19 @@ class PathAMediaPane:
             Spacing.STANDARD, Spacing.STANDARD, Spacing.STANDARD, Spacing.STANDARD
         )
 
+        ocr_header_row = QHBoxLayout()
         ocr_header = QLabel("OCR EVIDENCE PIPELINE")
         ocr_header.setObjectName("sectionHeaderLabel")
-        ocr_box_layout.addWidget(ocr_header)
+        ocr_header_row.addWidget(ocr_header)
+        ocr_header_row.addStretch(1)
+
+        self.ocr_range_summary_label = QLabel("Range: Whole media · 0.00s")
+        self.ocr_range_summary_label.setObjectName("ocrRangeSummaryLabel")
+        self.ocr_range_summary_label.setStyleSheet(
+            f"color: {Color.TEXT_SECONDARY}; font-family: 'JetBrains Mono', 'Cascadia Code', monospace; font-size: 11px; font-weight: 600;"
+        )
+        ocr_header_row.addWidget(self.ocr_range_summary_label)
+        ocr_box_layout.addLayout(ocr_header_row)
 
         ocr_controls = QHBoxLayout()
         self.run_ocr_button.setObjectName("runOcrBtn")
@@ -345,9 +355,14 @@ class PathAMediaPane:
             self.processing_range_start_spin, self.processing_range_end_spin,
         ):
             spin.valueChanged.connect(lambda _value: self._refresh_context_label())
+            spin.valueChanged.connect(lambda _value: self._refresh_ocr_range_summary())
         self.limit_processing_range_checkbox.toggled.connect(
             lambda _checked: self._refresh_context_label()
         )
+        self.limit_processing_range_checkbox.toggled.connect(
+            lambda _checked: self._refresh_ocr_range_summary()
+        )
+        self._refresh_ocr_range_summary()
         self.language_selection_panel.languagesChanged.connect(self._refresh_context_label)
 
         # Right Pane: Supporting Raw Evidence + Export Controls
@@ -464,6 +479,7 @@ class PathAMediaPane:
         self.position_slider.setRange(0, round(metadata.duration_seconds * 1000))
         self._refresh_timeline()
         self._refresh_current_cue_relationship(0.0)
+        self._refresh_ocr_range_summary()
 
     def current_roi(self) -> ROI:
         x = min(1.0, max(0.0, self.roi_x_spin.value()))
@@ -573,6 +589,20 @@ class PathAMediaPane:
             f"Languages: {', '.join(languages) if languages else '—'}\n"
             f"Processing range: {range_text}"
         )
+
+    def _refresh_ocr_range_summary(self) -> None:
+        duration = self._video_duration_seconds
+        if self.limit_processing_range_checkbox.isChecked():
+            start = self.processing_range_start_spin.value()
+            end = self.processing_range_end_spin.value()
+            selected = max(0.0, end - start)
+            self.ocr_range_summary_label.setText(
+                f"Range: {start:.2f}s–{end:.2f}s · {selected:.2f}s selected"
+            )
+        else:
+            self.ocr_range_summary_label.setText(
+                f"Range: Whole media · {duration:.2f}s"
+            )
 
     def current_processing_range(self) -> ProcessingRange:
         """The live processing-range selection -- "what you see is what
