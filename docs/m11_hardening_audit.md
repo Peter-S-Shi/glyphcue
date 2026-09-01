@@ -55,28 +55,55 @@ task below says otherwise.
    (`docs/m10_private_corpus_incident.md`, `docs/m10_performance_diagnosis.md`).
    Confirmed by partial real evidence, consistent with ADR 0002's own
    stated calibration limitation.
-3. **Repeated OCR engine construction on every "Run OCR" click — new
-   finding from this audit, not previously recorded.**
-   `PathAMediaPane._on_run_ocr_clicked` (`src/glyphcue/ui/path_a_media_pane.py:530-558`)
-   calls `self._ocr_engine_factory(languages[0])` (single-language) or
-   `{language: self._ocr_engine_factory(language) for language in languages}`
-   (multilingual) **unconditionally on every click** — there is no cache
-   or reuse of a previously-constructed engine for the same language.
-   `create_path_a_app` (`src/glyphcue/ui/app.py:172`) wires
-   `ocr_engine_factory=PaddleOcrEngine` — the bare class constructor,
-   with no memoization layer at all. Each job's own `try`/`finally`
-   correctly calls `ocr_engine.shutdown()` when that job ends (see
-   "Confirmed defects" above), so this is not a leak — but it does mean
-   a user re-running OCR twice on the same video, or on two videos in
-   the same language within one app session, pays PaddleOCR's full
-   construction cost (ADR 0001: 4.57s import+construction, warm-up
-   excluded) again from scratch every time, multiplied by the number of
-   configured languages for a multilingual Track Group. This is exactly
-   the "repeated OCR initialization" item ROADMAP §18 already names, and
-   directly overlaps `docs/m10_performance_diagnosis.md`'s ranked
-   candidate #3 ("runtime/model reuse across languages") — this audit
-   extends that finding from "across languages within one run" to "across
-   repeated runs within one app session."
+3. **OCR runtime/model lifetime ownership — the production job
+   lifecycle re-initializes the real Paddle model on every "Run OCR"
+   click, not just a lightweight Python object — new finding from this
+   audit, not previously recorded.**
+   `PaddleOcrEngine.__init__()` (`src/glyphcue/adapters/paddleocr_engine.py:76-83`)
+   is cheap — it only validates the language code and sets
+   `self._engine = None`. The expensive work is `initialize()`
+   (`paddleocr_engine.py:85-91`), which actually constructs the Paddle
+   model/runtime (`_construct_paddleocr`), and `shutdown()`
+   (`paddleocr_engine.py:132-133`) simply drops that reference. Both
+   `build_ocr_evidence_job` and `build_multilingual_ocr_evidence_job`
+   (`src/glyphcue/application/ocr_evidence_job.py:100-211`,
+   `multilingual_ocr_evidence_job.py`) **own the engine's full
+   `initialize()`/`shutdown()` lifecycle themselves, inside each job's own
+   `try`/`finally`** — so every job run re-initializes the real model from
+   scratch and tears it down again when that job ends, regardless of
+   whether `PathAMediaPane._on_run_ocr_clicked`
+   (`src/glyphcue/ui/path_a_media_pane.py:530-558`) constructs a fresh
+   `PaddleOcrEngine` Python object or reuses one. **A caller-side
+   memoization of the `PaddleOcrEngine` instance would not by itself
+   eliminate repeated model initialization**, because the object's own
+   lifecycle contract (own it, initialize it, shut it down) is exercised
+   fresh by the job on every run either way. `create_path_a_app`
+   (`src/glyphcue/ui/app.py:172`) wires `ocr_engine_factory=PaddleOcrEngine`
+   with no reuse layer at all, so a user re-running OCR twice on the same
+   video, or on two videos in the same language within one app session,
+   pays PaddleOCR's full construction cost (ADR 0001: 4.57s
+   import+construction, warm-up excluded) again from scratch every time,
+   multiplied by the number of configured languages for a multilingual
+   Track Group. This is exactly the "repeated OCR initialization" item
+   ROADMAP §18 already names, and directly overlaps
+   `docs/m10_performance_diagnosis.md`'s ranked candidate #3
+   ("runtime/model reuse across languages") — this audit extends that
+   finding from "across languages within one run" to "across repeated
+   runs within one app session," and reframes the fix as an **OCR
+   runtime/model lifetime *ownership* change** (who initializes/shuts
+   down the engine and when — the job, or a longer-lived session-level
+   owner), not a simple object-cache. Any such redesign must preserve:
+   failure/cancel cleanup (an engine must still be torn down correctly on
+   a failed or cancelled run), correct behavior on app shutdown (no
+   orphaned Paddle runtime left alive after the app closes), correct
+   behavior when the user switches languages (a session-level engine for
+   a no-longer-selected language must not be silently kept alive
+   indefinitely, nor torn down and rebuilt on every incidental
+   re-selection), and safety against unsafe simultaneous use of one
+   engine instance (no two jobs may call `recognize()` on the same shared
+   engine concurrently). Not implemented in this corrective — this entry
+   only reframes the finding accurately; Phase 1 item 1 below is updated
+   to match.
 
 ## Reliability risks
 
@@ -97,11 +124,18 @@ task below says otherwise.
    "made almost no real progress at all" while competing with an earlier
    orphaned thread). Any future bounded-parallelism design must be
    evaluated against this precedent specifically, not a hypothetical one.
-3. **Progress/ETA observability is already adequate in production** — not
-   a gap. `Job.progress` is wired end-to-end in the real UI
-   (`PathAMediaPane._on_ocr_progress`, `src/glyphcue/ui/path_a_media_pane.py:580`),
-   unlike the evaluation harness's now-fixed gap
-   (`benchmarks/_job_harness.py`). No work identified here.
+3. **Progress observability is already adequate in production; ETA is
+   not implemented.** `Job.progress` is wired end-to-end in the real UI
+   (`PathAMediaPane._on_ocr_progress`, `src/glyphcue/ui/path_a_media_pane.py:580-584`),
+   showing real `processed_seconds` / `total_seconds` and a running OCR-call
+   count — unlike the evaluation harness's now-fixed gap
+   (`benchmarks/_job_harness.py`), production was never silently blind to
+   a long-running job's progress. But nothing computes or displays an
+   estimated time remaining from that progress stream today — no gap
+   requiring urgent hardening, since raw processed/total seconds already
+   let a user judge how far a job has gotten, but a real, low-risk M11
+   observability candidate (see Phase 2 below), not something to claim as
+   already fully closed.
 4. **Cancellation contract is already correct in production `Job`**
    (`src/glyphcue/jobs/job.py`) — the bug the M10 incident found and fixed
    was confined to the evaluation harness's own re-implementation of a
@@ -150,9 +184,20 @@ time if sequenced too late.
 `performance_diagnosis_results.json` baseline (before/after), never
 against reconstruction correctness in isolation:
 
-1. OCR-engine reuse/caching across repeated "Run OCR" invocations within
-   one app session (this audit's new finding) — lowest risk, no
-   algorithm change, no reconstruction-correctness exposure.
+1. **OCR runtime/model lifetime ownership hardening** — redesign who owns
+   the `PaddleOcrEngine.initialize()`/`shutdown()` lifecycle (currently
+   each job, fully, every run) so a session-level owner can reuse an
+   already-initialized model across repeated "Run OCR" invocations in one
+   app session, instead of a simple instance cache (an object cache alone
+   would not eliminate repeated model initialization — see "Confirmed
+   performance bottlenecks" #3 above). The design must preserve
+   failure/cancel cleanup, correct app-shutdown teardown, correct
+   behavior across language switches, and safety against unsafe
+   simultaneous use of one engine instance across jobs. Lowest risk of
+   the three Phase 1 items in the sense that it changes no reconstruction
+   algorithm at all, but it does change job/engine ownership, so it needs
+   its own dedicated cancellation/lifecycle regression coverage, not just
+   a performance measurement.
 2. `ChangeTriggeredOcrPolicy` trigger-rate calibration review against
    less-static controlled fixtures (M10 diagnosis candidate #1).
 3. ROI size/downscale cost reduction (M10 diagnosis candidate #2),
@@ -167,6 +212,14 @@ against reconstruction correctness in isolation:
 5. Re-verify job cleanup / cancellation integrity and export/reopen via
    the M11 full regression suite; no new implementation is anticipated
    here unless the suite surfaces something this audit missed.
+6. **ETA estimation from the existing `Job.progress` stream** — a real,
+   low-risk observability candidate (see "Reliability risks" #3 above):
+   progress data (`processed_seconds` / `total_seconds`) already exists
+   in production, so this is a display/derivation addition on top of an
+   existing signal, not a new instrumentation seam. Not required for M11
+   to pass; included here because it is genuinely low-risk and directly
+   improves the "representative long jobs" experience Phase 3's decision
+   partly depends on.
 
 **Phase 3 — Conditional performance path (only if Phase 1–2 still leave
 representative long jobs operationally unacceptable):** adaptive logical
