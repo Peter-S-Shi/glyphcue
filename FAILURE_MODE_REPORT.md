@@ -1,0 +1,382 @@
+# Failure Mode Report
+
+Required by ROADMAP.md §17 acceptance gate 5: "failure taxonomy is
+grounded in observed evidence." Every entry below points to a real,
+already-committed artifact (a benchmark result, a QA/ADR doc, an
+incident report) that actually produced the number or behavior cited.
+No category was added to make this taxonomy look complete: a category
+with no real observed instance is stated as such, not filled with a
+plausible-sounding invented example.
+
+Categories follow the split established in `BUILD_VS_INTEGRATE.md`:
+
+- **A — Dependency/runtime limitations**: cost or behavior inherent to an
+  integrated mature dependency (PaddleOCR, Qt, pysubs2), not fixable by
+  changing GlyphCue's own code.
+- **B — GlyphCue orchestration/reconstruction limitations**: GlyphCue's
+  own code (job scheduling, OCR-trigger policy, consensus voting,
+  multilingual layer separation, Path B normalization, Review Priority)
+  not meeting a goal on some observed input.
+- **C — Evaluation-harness failures**: bugs in `benchmarks/` scripts
+  themselves — not shipped product code — that corrupted or prevented an
+  evaluation run.
+- **D — Evidence/corpus limitations**: gaps in what has actually been
+  tested (synthetic-only corpora, non-held-out hand-authored fixtures, a
+  real-data run that crashed before producing results, a negative
+  reproduction attempt, an un-benchmarked ADR claim) — a coverage gap,
+  not a code defect.
+
+---
+
+## 1. Review Priority: `low_confidence_only` failure class never beats random review
+
+**Category: B — GlyphCue reconstruction/ranking limitation.**
+
+Splitting the M7 Review Priority evaluation's 40 real wrong Cues (out of
+213 reconstructed, from noisy Observations run through the real,
+unmodified `reconstruct_cues_with_consensus`) by which real
+`ReviewPriority` component fired:
+
+| Failure class | Count | Top-10% | Top-20% | Top-30% |
+|---|---|---|---|---|
+| `low_confidence_and_other_signal` | 34/40 | 8.8% vs 9.6% random — No | 23.5% vs 19.7% — **Yes** | 35.3% vs 32.4% — **Yes** |
+| `low_confidence_only` | 6/40 | 0% vs 10.8% — No | 0% vs 20.0% — No | 0% vs 28.3% — No |
+
+The majority class (34/40) genuinely beats random at 2 of 3 cuts. The
+`low_confidence_only` class (6/40) never beats random at any cut — when
+6 identically-noisy-but-non-disagreeing readings still land on the wrong
+answer, `ocr_confidence` is Review Priority's only remaining signal, and
+in this corpus it never ranks those Cues above chance.
+
+**Root cause, already diagnosed, not re-litigated here**: `had_disagreement`
+is a coarse boolean that fires on ANY noise at all, so it cannot
+distinguish "harmless minority noise the vote correctly resisted" from
+"the vote genuinely failed." `ConsensusDiagnostics.agreement_ratio` (a
+real, already-computed diagnostic) would likely discriminate this better,
+but wiring a new signal into `compute_review_priority` was explicitly out
+of the M7 corrective pass's mandate and remains unimplemented.
+
+**Evidence**: `docs/qa/reconstruction_qa_review_priority.md` ("Milestone
+10 addendum"), `benchmarks/review_priority/evaluation_results.json`
+(`top_fraction_recall_by_failure_class`, `missed_failure_classes`).
+
+**Disposition**: not fixed in M10 (would require wiring a new signal —
+scope change). Candidate for a future pass; not routed to M11 performance
+hardening since it is a ranking-quality question, not a scalability one.
+
+---
+
+## 2. Review Priority: overall ranking is roughly at parity with random review
+
+**Category: B — GlyphCue reconstruction/ranking limitation.**
+
+Before the failure-class split above, the aggregate result across all 40
+wrong Cues: top-10% recall 7.5% vs. 9.75% random (no), top-20% 20.0% vs.
+19.75% (yes, barely), top-30% 30.0% vs. 31.75% (no). `actual_error_rate`
+in this run: 18.8% (40/213).
+
+**Evidence**: `docs/qa/reconstruction_qa_review_priority.md`
+("Evaluation" section), `benchmarks/review_priority/evaluation_results.json`.
+
+**Disposition**: reported as an honest mixed/negative result at the time
+of the M7 corrective pass, not tuned away. Superseded in interpretation
+(but not in the underlying numbers, which are unchanged) by finding #1
+above, which shows the aggregate parity result is not uniform across
+failure classes.
+
+---
+
+## 3. Path B: genuinely ambiguous captions are never resolved — by design, not by omission
+
+**Category: B — GlyphCue reconstruction limitation (a stated, evaluated design boundary, not a bug).**
+
+`_classify_transition` deliberately refuses to merge two Observations
+when it cannot find genuine temporal evidence for a rolling relationship,
+even when their text coincidentally overlaps. Two named diagnostics exist
+specifically for the cases GlyphCue will not guess at:
+
+- `timing_collision` — real temporal overlap, no textual relationship.
+- `segmentation_ambiguous` — a coincidental single-character text match
+  that is not a full-prefix match.
+
+Both are surfaced as `ReviewSignals.had_disagreement` (routed to human
+review) rather than silently resolved either way. This is evaluated,
+adversarial-by-design behavior (the "over-merge guard" category: 4/4
+English + 1/1 CJK cases pass — i.e., these cases are correctly *not*
+merged), not an unmeasured gap. The real limitation is structural: Path B
+has no mechanism that can ever confidently resolve these cases on its
+own — every genuinely ambiguous caption transition permanently requires a
+human reviewer, by design.
+
+**Evidence**: `docs/qa/path_b_cjk_rolling_normalization.md` ("The most
+important fix: temporal eligibility", "Six named diagnostics"),
+`benchmarks/path_b_normalization/evaluation_results.json`
+(`over_merge_guard` category).
+
+**Disposition**: correct, intentional, frozen behavior — not something
+M10 proposes to change. Recorded here because "GlyphCue cannot resolve
+this class of input" is itself a real, evidence-backed limitation of the
+product's capability, distinct from a defect.
+
+---
+
+## 4. Path B evaluation corpus is hand-authored and exact-match, not held-out
+
+**Category: D — Evidence/corpus limitation.**
+
+The 17-case Path B corpus (100% pass rate; 0.0s timing error on the 3
+timing-tagged cases) is the same corpus the implementation was built and
+corrected against via TDD — not a held-out validation set. The 0.0s
+timing error is expected on hand-authored, exact-match fixtures, not a
+generalization claim about real captions.
+
+**Evidence**: `docs/qa/path_b_cjk_rolling_normalization.md`
+("Evaluation" section's own stated `scope_note`),
+`benchmarks/path_b_normalization/evaluation_results.json`.
+
+**Disposition**: stated as a scope boundary in the M8/M10 docs already;
+repeated here because the failure taxonomy must not let a 100%-pass
+number stand uncontextualized in `EVALUATION_REPORT.md`'s eventual
+summary.
+
+---
+
+## 5. Multilingual missing/wrong-layer assignment: no real-world failure has ever been observed — because no real-world data has ever run to completion
+
+**Category: D — Evidence/corpus limitation (not a capability finding).**
+
+M6's `MultilingualDiagnostics.missing_languages` /
+`ambiguous_languages` mechanism exists specifically to flag layer
+mis-assignment, and is unit- and synthetic-integration-tested. But the
+only two real-PaddleOCR verification scenarios ever run
+(`benchmarks/multilingual_reconstruction/evaluation_results.json`:
+bilingual en+zh, trilingual en+zh+ja) both show `missing_languages: []`
+and CER 0.0 on every layer — clean, well-separated, single-frame,
+synthetic-rendered text. Neither scenario ever exercised a case that
+could actually trip the mechanism.
+
+The one evaluation designed to observe this against real, messy material
+— the private representative-video corpus's `_evaluate_entry`, which
+explicitly computes `multilingual_missing_layer_count` and
+`multilingual_wrong_assignment_count` per entry — crashed (see #6 below)
+before any entry finished, so those fields were never populated with a
+single real data point.
+
+The M6 doc itself already states two adjacent, honest gaps in the same
+direction: script detection covers only Han/Kana/Latin ("No claim about
+non-CJK/non-Latin scripts" — Cyrillic, Arabic, Devanagari are
+unsupported), and a cluster with zero decisive/eliminated evidence
+"falls through to nearest-geometry leftover merge... not yet measured
+against a real target sample exhibiting this."
+
+**Evidence**: `benchmarks/multilingual_reconstruction/evaluation_results.json`,
+`docs/multilingual/track_group_reconstruction.md` ("Failure modes / known
+limitations"), `benchmarks/private_video_corpus/run_evaluation.py`
+(`_evaluate_entry`'s unused-in-practice fields), `docs/m10_private_corpus_incident.md`.
+
+**Disposition**: not a defect — a real coverage gap. Multilingual
+layer-assignment correctness against real, non-synthetic material remains
+unverified in either direction (neither confirmed working nor confirmed
+failing) pending the deferred representative-video corpus (see the open
+item in `docs/m10_evidence_inventory.md` and `docs/m10_private_corpus_incident.md`).
+
+---
+
+## 6. Private-corpus evaluation-harness crash: unbounded concurrent job execution
+
+**Category: C — Evaluation-harness failure (not a product defect).**
+
+`benchmarks/private_video_corpus/run_evaluation.py`'s original `_run_job`
+helper quit only its local Qt event loop on timeout, never calling
+`job.request_cancel()`. Once one entry's job overran its wait, the
+script's sequential `for entry in entries:` loop started the *next*
+entry's job while the previous one kept running, orphaned, on its own
+background thread — turning an intended one-job-at-a-time run into
+unbounded concurrent execution. The run crashed after 2404.5s (40.07 min)
+wall clock with a `PermissionError` (an unclosed SQLite connection could
+not be deleted by `tempfile.TemporaryDirectory` cleanup while a
+still-running orphaned thread held it open).
+
+**This is a bug in the evaluation harness's own job-orchestration code,
+not in `glyphcue.jobs.Job`, `build_ocr_evidence_job`, or
+`build_multilingual_ocr_evidence_job`** — the production cooperative-
+cancellation contract works correctly when actually invoked (verified in
+the controlled-corpus diagnosis run, where the fixed harness cancels an
+overrunning job cleanly).
+
+**Evidence**: `docs/m10_private_corpus_incident.md` (full root-cause
+analysis, recovered per-entry evidence table).
+
+**Disposition**: fixed. The harness's job runner is now the shared,
+hardened `benchmarks/_job_harness.run_job_or_cancel`, which never returns
+while a job's worker thread may still be alive — if a job does not reach
+a terminal state within its cancellation grace period, it raises
+`EvaluationJobDidNotTerminateError` and the run aborts before starting
+the next entry (regression: `tests/benchmarks/test_job_harness.py`).
+Applied to both `benchmarks/private_video_corpus/run_evaluation.py` and
+`benchmarks/m10_controlled_video_corpus/run_performance_diagnosis.py`.
+
+---
+
+## 7. Real-world OCR-trigger rate far exceeds anything the selective-OCR policy was calibrated against
+
+**Category: B — GlyphCue orchestration limitation.**
+
+The one real (if crash-truncated) private-corpus entry,
+`private-a-clean-zh`, triggered `ChangeTriggeredOcrPolicy` 177 times over
+only ~17.5 real media-seconds of actual progress. The three controlled
+synthetic fixtures used for the M10 performance diagnosis — built
+specifically to be small and reproducible — trigger only 3–8 times over
+5.9s each. ADR 0002 already states, as an accepted known cost, that its
+verification "does not claim the change-detection threshold is optimal
+for... noisy compression artifacts... that would need a larger, more
+varied evidence set" — this partial real evidence is directly consistent
+with that stated gap, not a new discovery, but it is the first time real
+(non-synthetic) data has actually shown the gap firing.
+
+**Evidence**: `docs/m10_private_corpus_incident.md` ("Product-pipeline
+finding, kept distinct from the harness bug"), `docs/m10_performance_diagnosis.md`
+("Connecting this back to the private-corpus incident"), `docs/adr/0002-selective-ocr-strategy.md`
+("Known cost of the choice").
+
+**Disposition**: not fixed in M10 (production behavior change forbidden
+under Feature Freeze). Ranked candidate #1 for M11 in
+`docs/m10_performance_diagnosis.md`: "lower unnecessary OCR-call
+frequency without changing reconstruction quality" — recalibrate the
+threshold against real, non-static footage.
+
+---
+
+## 8. PaddleOCR per-call latency is the dominant, structural cost of the whole pipeline
+
+**Category: A — Dependency/runtime limitation.**
+
+Isolated measurement on controlled fixtures, real `PaddleOcrEngine`, real
+production seams throughout: a single `recognize()` call on a tiny
+480×160 crop costs a mean of 2.9–3.3s (median 2.2–3.6s, p95 3.7–6.4s)
+across all 3 fixtures — consistent with ADR 0001's original per-item
+latency numbers (2.3–3.3s). By contrast: pure frame decode runs at
+171–358 fps, persisting 1000 Observations takes ~7ms each, and harness
+event-loop overhead is sub-10-milliseconds in every measured run. None of
+those are the bottleneck. As a direct consequence, even the **selective**
+policy (production default) on small, mostly-static fixtures still ran
+1.92×–6.44× slower than realtime; the **dense** control policy hit
+40.6×–166.4× realtime before being cut off by its own timeout.
+
+**Evidence**: `docs/m10_performance_diagnosis.md` (full bottleneck table),
+`benchmarks/m10_controlled_video_corpus/performance_diagnosis_results.json`,
+`docs/adr/0001-ocr-runtime-selection.md`.
+
+**Disposition**: not fixed in M10 (no optimization implemented under
+Feature Freeze). Ranked candidates #2–#3 in `docs/m10_performance_diagnosis.md`
+(ROI size/downscale, runtime/model reuse across languages) target this
+cost directly; #1 above reduces how often it is paid, not its per-call
+cost.
+
+---
+
+## 9. Negative result: synthetic per-pixel noise does not reproduce the real corpus's elevated trigger rate
+
+**Category: D — Evidence/corpus limitation (an honest negative finding, not a defect).**
+
+The `difficult_noisy_background` controlled fixture (independent per-frame
+random pixel noise over an otherwise-static background) was built
+specifically to try to reproduce finding #7's elevated real-world trigger
+rate in a controlled, reproducible way. It did not: it triggered exactly
+3 times, identical to the clean fixture. Reasoned hypothesis, not
+verified further: `ChangeTriggeredOcrPolicy`'s gate is presumably
+mean-based (ADR 0002: "a commodity mean-absolute-pixel-difference
+technique"), and independent, zero-mean random noise across a whole ROI
+averages out to a small mean delta that does not cross the threshold —
+whereas real camera motion is spatially *correlated*, not independent
+per-pixel noise, and would plausibly produce a materially larger mean
+delta.
+
+**Evidence**: `docs/m10_performance_diagnosis.md` ("Negative result,
+reported honestly").
+
+**Disposition**: recorded as a genuine miss for this specific
+reproduction attempt, not silently reworked until the numbers matched. A
+fixture using structured motion (e.g. slow panning/drift) is the honest
+next step if closer reproduction is needed — not attempted here.
+
+---
+
+## 10. Multilingual timing simplification's evidentiary basis is a design-time claim, not a benchmark
+
+**Category: D — Evidence/corpus limitation.**
+
+Unlike ADR 0001/0002/0003 (each backed by a specific benchmark script and
+results file), ADR 0005's shared-Cue-level-timing simplification rests on
+ROADMAP.md §4's own stated observation about the target material profile
+— a product-scoping decision made before Milestone 0, not a benchmarked
+comparison of "with alignment graph" vs. "without."
+
+**Evidence**: `docs/adr/0005-multilingual-timing-simplification.md`
+("Known cost of the choice").
+
+**Disposition**: stated as an honest limitation in the ADR itself. If a
+future representative sample surfaces a genuinely independent-schedule
+case, that is new evidence against the simplification, not something
+already ruled out by existing data.
+
+---
+
+## 11. PaddleOCR: a real CPU-compatibility crash, and a rejected alternative's real disqualifying failure
+
+**Category: A — Dependency/runtime limitation.**
+
+Two distinct, real, already-resolved dependency-level failures surfaced
+during OCR runtime selection (M3), kept here because they are real
+observed failures, not because they remain open:
+
+- `PaddleOCR(...)` with its default `enable_mkldnn=True` raised
+  `NotImplementedError` on this CPU with `paddleocr==3.7.0` /
+  `paddlepaddle==3.3.1`. Worked around (`enable_mkldnn=False`, baked into
+  `PaddleOcrEngine`'s construction) — a real, version-pairing-specific
+  bug that must be re-verified on any future dependency upgrade.
+- The rejected alternative, RapidOCR, failed Japanese outright (CER
+  0.6429 — it dropped most of the hiragana) because its default
+  installable package ships no Japanese-specific recognition model. This
+  was disqualifying given GlyphCue's stated Japanese requirement, not a
+  minor accuracy gap.
+
+**Evidence**: `docs/adr/0001-ocr-runtime-selection.md` ("Known cost of
+the choice", "What was rejected"), `docs/benchmarks/ocr_runtime_selection.md`.
+
+**Disposition**: both resolved by the M3 runtime-selection decision
+itself (PaddleOCR chosen, mkldnn workaround shipped). Recorded for
+completeness since both are real, observed dependency failures that
+directly shaped a frozen architectural decision.
+
+---
+
+## Explicitly not populated
+
+No entry exists for a purely theoretical failure mode with no real
+evidence behind it. In particular:
+
+- No entry for "multilingual layer assignment silently produces wrong
+  text on real material" — see #5: this has never been *observed* to
+  happen OR not happen on real material; it is an evidence gap, not a
+  confirmed failure.
+- No entry for Path A OCR accuracy failures on real (non-benchmark)
+  video — no such run has ever completed (see #6); the representative-
+  video acceptance item is transferred to Milestone 11, not closed
+  (below).
+
+## Representative-video acceptance item: transferred to Milestone 11, not waived
+
+Per `docs/m10_evidence_inventory.md`, `docs/m10_private_corpus_incident.md`,
+and ROADMAP.md §17's gate audit disposition (2026-08-31), ROADMAP §17's
+3–5 representative videos × 2–5 minute segments target is **not closed**
+by any evidence in this report. The controlled/synthetic corpus
+underlying findings #7–#9 closes only the reproducible
+performance-diagnosis seam. M10's gate audit accepted M10 as complete
+while explicitly **transferring this target to Milestone 11 as a
+mandatory acceptance gate** (ROADMAP.md §18's acceptance gate 9) — it is
+not waived, silently downgraded to optional debt, or treated as
+satisfied by any finding above. Per that same disposition, Milestone 12
+must not begin until the transferred evaluation completes and its
+results are folded back into `EVALUATION_REPORT.md` and, where relevant,
+this report.

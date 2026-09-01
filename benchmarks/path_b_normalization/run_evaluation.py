@@ -26,6 +26,16 @@ names and measures both explicitly.
 All fixture text is hand-authored, synthetic, and copyright-safe -- no
 scraped subtitle/transcript data.
 
+Milestone 10 addition (same corpus, same `reconstruct_cues_with_diagnostics`,
+no algorithm change): each case is hand-tagged with which of ROADMAP.md
+section 17's three named Path B metrics (duplicate_removal / segmentation
+/ timing_normalization) it is real evidence for, reported independently
+under `roadmap_metrics` -- e.g. a case can be evidence for segmentation
+without being evidence for duplicate-removal correctness, instead of one
+blended per_category pass rate standing in for all three. Cases that are
+evidence for none of the three (e.g. malformed-import recovery) are left
+untagged rather than forced into an ill-fitting bucket.
+
 Run manually:
     python -m benchmarks.path_b_normalization.run_evaluation
 """
@@ -41,6 +51,7 @@ from glyphcue.adapters.pysubs2_subtitle_io import Pysubs2SubtitleFormatAdapter
 from glyphcue.application.reconstruction import reconstruct_cues_with_diagnostics
 from glyphcue.domain.observation import Observation
 from glyphcue.domain.provenance import Provenance, ProvenanceKind
+from glyphcue.evaluation.metrics import group_pass_fail_by_tag, timing_error
 
 _RESULTS_PATH = Path(__file__).parent / "evaluation_results.json"
 _PROVENANCE = Provenance(kind=ProvenanceKind.SUBTITLE_IMPORT, source="evaluation-fixture")
@@ -74,6 +85,14 @@ class Case:
     # latest end across all supporting evidence); this lets a case
     # assert the real span without requiring every case to.
     expected_spans: tuple[tuple[float, float], ...] | None = None
+    # Which of ROADMAP.md section 17's named Path B metrics
+    # (duplicate_removal / segmentation / timing_normalization) this
+    # case is real evidence for -- hand-assigned per case, not inferred
+    # from category/flags, so a case only counts toward a metric it
+    # actually exercises. A case with no applicable metric (e.g.
+    # malformed-import recovery, which is neither of the three) is
+    # simply not tagged, per M10's "don't force a number everywhere."
+    roadmap_metrics: tuple[str, ...] = ()
 
 
 _CASES: list[Case] = [
@@ -88,6 +107,7 @@ _CASES: list[Case] = [
         ],
         expected_texts=["First complete sentence.", "Second complete sentence."],
         expected_spans=((0.0, 2.0), (2.1, 4.0)),
+        roadmap_metrics=("segmentation", "timing_normalization"),
     ),
     Case(
         name="clean_cjk_two_cues",
@@ -99,6 +119,7 @@ _CASES: list[Case] = [
         ],
         expected_texts=["第一句話。", "第二句話。"],
         expected_spans=((0.0, 2.0), (2.1, 4.0)),
+        roadmap_metrics=("segmentation", "timing_normalization"),
     ),
     # -- Rolling reconstruction (real temporal evidence) -----------------------
     Case(
@@ -112,6 +133,7 @@ _CASES: list[Case] = [
         ],
         expected_texts=["Hello world, how are you"],
         required_flags=("rolling_growth",),
+        roadmap_metrics=("segmentation",),
     ),
     Case(
         name="cjk_growing_window",
@@ -124,6 +146,7 @@ _CASES: list[Case] = [
         ],
         expected_texts=["こんにちは世界、ようこそ"],
         required_flags=("rolling_growth",),
+        roadmap_metrics=("segmentation",),
     ),
     Case(
         name="cjk_single_character_whole_prefix_growth",
@@ -135,6 +158,7 @@ _CASES: list[Case] = [
         ],
         expected_texts=["你好，世界"],
         required_flags=("rolling_growth",),
+        roadmap_metrics=("segmentation",),
     ),
     Case(
         name="english_sliding_overlap",
@@ -147,6 +171,7 @@ _CASES: list[Case] = [
         ],
         expected_texts=["the quick brown fox jumps over the lazy dog"],
         required_flags=("sliding_overlap",),
+        roadmap_metrics=("segmentation",),
     ),
     Case(
         name="cjk_sliding_overlap",
@@ -158,6 +183,7 @@ _CASES: list[Case] = [
         ],
         expected_texts=["今日は天気が良いので散歩する"],
         required_flags=("sliding_overlap",),
+        roadmap_metrics=("segmentation",),
     ),
     Case(
         name="english_exact_duplicate_repetition_within_bounded_gap",
@@ -169,6 +195,7 @@ _CASES: list[Case] = [
         ],
         expected_texts=["Hello world"],
         required_flags=("repetition_collapsed",),
+        roadmap_metrics=("duplicate_removal",),
     ),
     Case(
         name="english_backtrack_pure_suffix_repetition_within_bounded_gap",
@@ -180,6 +207,7 @@ _CASES: list[Case] = [
         ],
         expected_texts=["Hello world, how are you"],
         required_flags=("repetition_collapsed",),
+        roadmap_metrics=("duplicate_removal",),
     ),
     Case(
         name="english_irregular_timing_span_covers_latest_end",
@@ -192,6 +220,7 @@ _CASES: list[Case] = [
         expected_texts=["Hello world"],
         required_flags=("rolling_growth",),
         expected_spans=((0.0, 5.0),),
+        roadmap_metrics=("segmentation", "timing_normalization"),
     ),
     # -- Over-merge guard: must NOT merge, no matter how strong the text match --
     Case(
@@ -205,6 +234,7 @@ _CASES: list[Case] = [
         expected_texts=["Thanks a lot", "totally different topic"],
         required_flags=("segmentation_ambiguous",),
         forbidden_flags=("rolling_growth", "sliding_overlap"),
+        roadmap_metrics=("segmentation",),
     ),
     Case(
         name="cjk_over_merge_guard_single_char_coincidence",
@@ -217,6 +247,7 @@ _CASES: list[Case] = [
         expected_texts=["今日は天気が良", "良かったね、また明日"],
         required_flags=("segmentation_ambiguous",),
         forbidden_flags=("rolling_growth", "sliding_overlap"),
+        roadmap_metrics=("segmentation",),
     ),
     Case(
         name="english_over_merge_guard_unrelated_overlapping_speakers",
@@ -229,6 +260,7 @@ _CASES: list[Case] = [
         expected_texts=["Speaker A says something long", "Speaker B interjects briefly"],
         required_flags=("timing_collision",),
         forbidden_flags=("rolling_growth", "sliding_overlap", "repetition_collapsed"),
+        roadmap_metrics=("segmentation",),
     ),
     Case(
         name="english_over_merge_guard_far_distant_identical_captions",
@@ -240,6 +272,7 @@ _CASES: list[Case] = [
         ],
         expected_texts=["Thank you for watching", "Thank you for watching"],
         forbidden_flags=("rolling_growth", "sliding_overlap", "repetition_collapsed"),
+        roadmap_metrics=("segmentation",),
     ),
     Case(
         name="english_over_merge_guard_non_overlapping_coincidental_boundary",
@@ -251,6 +284,7 @@ _CASES: list[Case] = [
         ],
         expected_texts=["It was a bright cold day", "day after day it rained"],
         forbidden_flags=("rolling_growth", "sliding_overlap", "repetition_collapsed"),
+        roadmap_metrics=("segmentation",),
     ),
     # -- Out-of-order source: diagnose, don't silently discard -----------------
     Case(
@@ -263,14 +297,23 @@ _CASES: list[Case] = [
         ],
         expected_texts=["First complete sentence.", "Second complete sentence."],
         required_flags=("source_order_issue",),
+        roadmap_metrics=("segmentation",),
     ),
 ]
 
 
-def _evaluate_reconstruction_cases() -> tuple[dict, dict, list[dict]]:
+def _evaluate_reconstruction_cases() -> tuple[dict, dict, list[dict], list[tuple[str, bool]], list[tuple[tuple[float, float], tuple[float, float]]]]:
     per_category: dict[str, dict[str, int]] = {}
     per_language: dict[str, dict[str, int]] = {}
     failures: list[dict] = []
+    # Milestone 10: ROADMAP.md section 17 names three independent Path B
+    # metrics (duplicate-removal / segmentation / timing normalization).
+    # Each case's hand-assigned `roadmap_metrics` tags contribute the
+    # SAME overall `passed` verdict already computed above to whichever
+    # metric(s) it is real evidence for -- no separate, looser pass
+    # criterion invented per metric.
+    roadmap_metric_results: list[tuple[str, bool]] = []
+    timing_span_pairs: list[tuple[tuple[float, float], tuple[float, float]]] = []
 
     for case in _CASES:
         cues, diagnostics = reconstruct_cues_with_diagnostics(case.observations)
@@ -293,6 +336,11 @@ def _evaluate_reconstruction_cases() -> tuple[dict, dict, list[dict]]:
         per_language.setdefault(case.language, {"pass": 0, "fail": 0})
         per_language[case.language]["pass" if passed else "fail"] += 1
 
+        for metric in case.roadmap_metrics:
+            roadmap_metric_results.append((metric, passed))
+        if "timing_normalization" in case.roadmap_metrics and case.expected_spans is not None:
+            timing_span_pairs.extend(zip(actual_spans, case.expected_spans))
+
         if not passed:
             failures.append(
                 {
@@ -309,7 +357,7 @@ def _evaluate_reconstruction_cases() -> tuple[dict, dict, list[dict]]:
                 }
             )
 
-    return per_category, per_language, failures
+    return per_category, per_language, failures, roadmap_metric_results, timing_span_pairs
 
 
 _MALFORMED_IMPORT_SRT = """1
@@ -355,7 +403,9 @@ def _evaluate_malformed_recoverable_import() -> dict:
 
 
 def run() -> dict:
-    per_category, per_language, failures = _evaluate_reconstruction_cases()
+    per_category, per_language, failures, roadmap_metric_results, timing_span_pairs = (
+        _evaluate_reconstruction_cases()
+    )
     malformed_import_result = _evaluate_malformed_recoverable_import()
 
     per_category["malformed_recoverable_import"] = {
@@ -368,6 +418,16 @@ def run() -> dict:
     total = len(_CASES) + 1
     total_pass = sum(bucket["pass"] for bucket in per_category.values())
 
+    roadmap_metrics = group_pass_fail_by_tag(roadmap_metric_results)
+    if timing_span_pairs:
+        actual_spans, expected_spans = zip(*timing_span_pairs)
+        mean_start_error, mean_end_error = timing_error(list(actual_spans), list(expected_spans))
+        roadmap_metrics["timing_normalization"] = {
+            **roadmap_metrics.get("timing_normalization", {"pass": 0, "fail": 0}),
+            "mean_start_error_seconds": mean_start_error,
+            "mean_end_error_seconds": mean_end_error,
+        }
+
     return {
         "total_cases": total,
         "total_pass": total_pass,
@@ -376,6 +436,7 @@ def run() -> dict:
         "per_language": per_language,
         "malformed_recoverable_import_detail": malformed_import_result,
         "failures": failures,
+        "roadmap_metrics": roadmap_metrics,
         "scope_note": (
             "This corpus is the same hand-authored, ground-truth fixture "
             "matrix the implementation was built against via TDD (a "
@@ -386,6 +447,16 @@ def run() -> dict:
             "coincidence, malformed per-event import recovery) are each "
             "individually verified, not a claim of generalization beyond "
             "this fixture corpus."
+        ),
+        "roadmap_metrics_scope_note": (
+            "duplicate_removal / segmentation / timing_normalization "
+            "(ROADMAP.md section 17) are hand-assigned per case above -- "
+            "only cases that are real evidence for a given metric "
+            "contribute to it (e.g. malformed-import recovery is neither "
+            "of the three and is not tagged). Each metric's pass/fail "
+            "reuses the SAME overall per-case verdict already computed "
+            "for per_category/per_language, not a separately invented, "
+            "possibly looser criterion."
         ),
     }
 

@@ -3,7 +3,7 @@
 **Document type:** Authoritative V1 milestone roadmap  
 **Project:** GlyphCue  
 **Repository:** `Peter-S-Shi/glyphcue`  
-**Lifecycle phase:** Production Development in progress → Milestone 9 complete, Feature Freeze ACTIVE, Milestone 10 next  
+**Lifecycle phase:** Production Development in progress → Milestone 10 complete (evidence/evaluation closure accepted; representative-video gate transferred to Milestone 11, not waived — see §17's gate audit disposition), Feature Freeze ACTIVE, Milestone 11 (Product Hardening & Full Regression) next  
 **Status:** Current V1 execution roadmap  
 **Last updated:** 2026-08-31
 
@@ -1399,6 +1399,46 @@ M10 passes only when:
 8. Explainability Ceiling is satisfied;
 9. Must-Have Portfolio Evidence items 2–5 are substantially complete.
 
+## Gate audit disposition (2026-08-31)
+
+**M10 is accepted as complete, with one target explicitly transferred, not
+waived.**
+
+Gates 1, 2, 3, 4, 5 (in the failure-taxonomy sense established by
+`FAILURE_MODE_REPORT.md`), 6, 7, 8, and 9 above pass on the evidence
+assembled in `EVALUATION_REPORT.md`, `FAILURE_MODE_REPORT.md`, and
+`BUILD_VS_INTEGRATE.md`.
+
+**This section's original evaluation-corpus target — "3–5 representative
+videos × 2–5 minute segments" — was NOT completed.** The one real attempt
+against the repo owner's realistic private corpus crashed on an
+evaluation-harness bug before any entry finished scoring
+(`docs/m10_private_corpus_incident.md`); the controlled/synthetic corpus
+built afterward (`benchmarks/m10_controlled_video_corpus/`) satisfies
+reproducible performance diagnosis only, not this target. This is a
+real, unmet requirement — it is **not silently waived, downgraded to
+optional debt, or claimed satisfied by any other M10 evidence**.
+
+**Lifecycle gate transfer.** Completing this evaluation on real material
+turned out to require exactly the kind of work Milestone 11 (Product
+Hardening & Full Regression) already exists to do: the crashed attempt
+exposed both a real evaluation-harness defect (now fixed) and a real,
+partially-confirmed production performance/calibration gap
+(`ChangeTriggeredOcrPolicy`'s trigger rate on real, non-static material —
+`docs/m10_performance_diagnosis.md`) that M10's own Feature Freeze
+explicitly forbids fixing. Rather than leave the representative-video
+target as unowned, indefinitely-deferred debt, **it is transferred to
+Milestone 11 as a mandatory acceptance gate** (see §18's acceptance gate
+below) — M11 is the milestone actually responsible for the Path A
+performance hardening this evaluation needs to be safely re-attempted,
+so it is also the milestone responsible for completing it.
+
+**M12 (Release Candidate & Signed Release) must not begin until this
+transferred evaluation has actually completed and its results — whatever
+they are, including any further negative findings — have been folded
+back into `EVALUATION_REPORT.md` and, where relevant,
+`FAILURE_MODE_REPORT.md`.**
+
 ---
 
 # 18. Milestone 11 — Product Hardening & Full Regression
@@ -1410,6 +1450,29 @@ Converge the frozen V1 product toward release quality.
 No feature expansion.
 
 ## Scope
+
+### Transferred M10 evaluation gate (mandatory, not optional debt)
+
+**Complete the representative-video evaluation M10 attempted but did not
+finish.** Per ROADMAP §17's gate audit disposition, this is a mandatory
+M11 acceptance condition, not a nice-to-have:
+
+- Address the real, partially-confirmed production performance gap
+  `docs/m10_performance_diagnosis.md` identified (`ChangeTriggeredOcrPolicy`'s
+  real-world trigger rate) to the extent needed to safely run the
+  repo owner's realistic private corpus (`private_samples/m10_video_corpus/`)
+  to completion without repeating the M10 crash.
+- Re-attempt the realistic representative-video evaluation (ROADMAP §17's
+  original "3–5 representative videos × 2–5 minute segments" target)
+  using the now-hardened evaluation harness (`benchmarks/_job_harness.py`).
+- Fold the results — whatever they are, including any further negative
+  or partial findings — back into `EVALUATION_REPORT.md` and, where
+  relevant, `FAILURE_MODE_REPORT.md`. A negative or partial result must
+  be reported honestly, exactly as M10's own evidence was; this gate is
+  about the evaluation actually completing and being reported, not about
+  achieving a specific score.
+- M12 must not begin until this item is closed (§17's gate audit
+  disposition).
 
 ### Automated regression
 
@@ -1484,7 +1547,12 @@ M11 passes only when:
 5. package runs on clean test environment;
 6. source/data integrity is verified under failure/cancel;
 7. performance is acceptable against documented baseline;
-8. unresolved non-blocking issues are documented.
+8. unresolved non-blocking issues are documented;
+9. **the transferred M10 representative-video evaluation (3–5 videos ×
+   2–5 minute segments, ROADMAP §17) has actually completed, with
+   results folded back into `EVALUATION_REPORT.md` and, where relevant,
+   `FAILURE_MODE_REPORT.md` — mandatory, not optional debt; M11 does not
+   pass without it.**
 
 ---
 
@@ -1909,6 +1977,7 @@ Milestone 6 — Multilingual Track Group Reconstruction ✓ complete
 Milestone 7 — Reconstruction QA & Review Priority ✓ complete
 Milestone 8 — Path B Deepening: CJK / Rolling Normalization ✓ complete
 Milestone 9 — V1 Product Completion & Feature Freeze ✓ complete
+Milestone 10 — Evaluation & Career Evidence Closure ✓ complete (gate audit accepted 2026-08-31; representative-video target transferred to Milestone 11 as a mandatory gate, not waived — see §17)
 
 Production Development                 IN PROGRESS
 Feature Freeze                          ACTIVE
@@ -1920,21 +1989,27 @@ Feature Freeze                          ACTIVE
 
 The next engineering action is:
 
-> **Milestone 10 — Evaluation & Career Evidence Closure**
+> **Milestone 11 — Product Hardening & Full Regression**
 
 Do not ask AG2.0 to implement the whole roadmap.
 
 Advance one milestone at a time.
 
-Feature Freeze is now ACTIVE (Milestone 9's gate 7): any new feature proposed from here forward must be justified against the Stop-Building Rule before it is accepted, not built by default.
+Feature Freeze remains ACTIVE (Milestone 9's gate 7): any new feature proposed from here forward must be justified against the Stop-Building Rule before it is accepted, not built by default.
 
-After M10 is pushed:
+M11 carries one mandatory item beyond its own original scope: the M10
+representative-video evaluation transferred to it by §17's gate audit
+disposition (§18's acceptance gate 9). This is not optional debt — M11
+does not pass without it.
+
+After M11 is pushed:
 
 1. inspect the remote repository;
-2. verify the milestone against its acceptance gate;
+2. verify the milestone against its acceptance gate, including the
+   transferred M10 item;
 3. correct deficiencies;
 4. merge only when the milestone is genuinely accepted;
-5. then issue the M11 prompt.
+5. then issue the M12 prompt.
 
 ---
 

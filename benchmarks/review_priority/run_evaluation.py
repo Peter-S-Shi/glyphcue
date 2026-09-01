@@ -39,6 +39,19 @@ If ranking does not outperform the random baseline here, that is
 reported honestly in the output -- this script does not tune itself
 until the numbers look good.
 
+Milestone 10 failure-class closure (added without touching the corpus,
+ground truth, or `compute_review_priority` itself): each wrong Cue is
+additionally classified by `classify_review_priority_failure` into
+which real `ReviewPriority` component(s), if any, actually fired for
+it -- "no_signal" (the heuristic had nothing to flag; structurally
+uncatchable at any ranking cutoff), "low_confidence_only",
+"other_signal_only" (here, always cross-frame disagreement -- this
+corpus never exercises the multilingual signals), or both. Top-fraction
+recall and the same multi-trial random baseline are then reported PER
+CLASS, not just overall, to answer what this heuristic is actually good
+at catching and what it structurally cannot see -- not to make the
+overall number look better.
+
 Run manually:
     python -m benchmarks.review_priority.run_evaluation
 """
@@ -56,6 +69,8 @@ from glyphcue.application.review_priority import (
 )
 from glyphcue.domain.observation import Observation
 from glyphcue.domain.provenance import Provenance, ProvenanceKind
+from glyphcue.evaluation.metrics import recall_at_top_fraction
+from glyphcue.evaluation.review_priority_evidence import classify_review_priority_failure
 
 _RESULTS_PATH = Path(__file__).parent / "evaluation_results.json"
 _CUE_COUNT = 200
@@ -153,15 +168,6 @@ def _make_observations_for_cue(
     return observations
 
 
-def _recall_at_fraction(ranked_ids: list[str], wrong_ids: set[str], fraction: float) -> float:
-    if not wrong_ids:
-        return 0.0
-    top_n = max(1, round(len(ranked_ids) * fraction))
-    reviewed = set(ranked_ids[:top_n])
-    captured = len(reviewed & wrong_ids)
-    return captured / len(wrong_ids)
-
-
 def run() -> dict:
     generation_rng = random.Random(_SEED)
 
@@ -204,27 +210,45 @@ def run() -> dict:
     all_ids = [cue.id for cue in reconstructed_cues]
     ranked_by_priority = sorted(all_ids, key=lambda cue_id: priorities[cue_id].score, reverse=True)
 
+    # Milestone 10: classify each WRONG Cue by which real ReviewPriority
+    # component(s), if any, fired for it. This groups wrong_ids into
+    # failure classes without touching wrong_ids, priorities, or the
+    # production scoring itself.
+    wrong_ids_by_class: dict[str, set[str]] = {}
+    for cue_id in wrong_ids:
+        failure_class = classify_review_priority_failure(priorities[cue_id])
+        wrong_ids_by_class.setdefault(failure_class, set()).add(cue_id)
+
     random_baseline_rng = random.Random(_SEED + 1)
-    random_recalls: dict[str, list[float]] = {
-        f"top_{int(fraction * 100)}pct": [] for fraction in _TOP_FRACTIONS
+    fraction_keys = [f"top_{int(fraction * 100)}pct" for fraction in _TOP_FRACTIONS]
+    random_recalls: dict[str, list[float]] = {key: [] for key in fraction_keys}
+    random_recalls_by_class: dict[str, dict[str, list[float]]] = {
+        failure_class: {key: [] for key in fraction_keys} for failure_class in wrong_ids_by_class
     }
     for _trial in range(_RANDOM_BASELINE_TRIAL_COUNT):
         shuffled = list(all_ids)
         random_baseline_rng.shuffle(shuffled)
-        for fraction in _TOP_FRACTIONS:
-            key = f"top_{int(fraction * 100)}pct"
-            random_recalls[key].append(_recall_at_fraction(shuffled, wrong_ids, fraction))
+        for fraction, key in zip(_TOP_FRACTIONS, fraction_keys):
+            random_recalls[key].append(recall_at_top_fraction(shuffled, wrong_ids, fraction))
+            for failure_class, class_wrong_ids in wrong_ids_by_class.items():
+                random_recalls_by_class[failure_class][key].append(
+                    recall_at_top_fraction(shuffled, class_wrong_ids, fraction)
+                )
 
     results: dict = {
         "cue_count": len(reconstructed_cues),
         "actual_error_count": len(wrong_ids),
         "actual_error_rate": len(wrong_ids) / len(reconstructed_cues) if reconstructed_cues else 0.0,
         "random_baseline_trial_count": _RANDOM_BASELINE_TRIAL_COUNT,
+        "failure_class_counts": {
+            failure_class: len(class_wrong_ids)
+            for failure_class, class_wrong_ids in wrong_ids_by_class.items()
+        },
         "top_fraction_recall": {},
+        "top_fraction_recall_by_failure_class": {},
     }
-    for fraction in _TOP_FRACTIONS:
-        key = f"top_{int(fraction * 100)}pct"
-        priority_recall = _recall_at_fraction(ranked_by_priority, wrong_ids, fraction)
+    for fraction, key in zip(_TOP_FRACTIONS, fraction_keys):
+        priority_recall = recall_at_top_fraction(ranked_by_priority, wrong_ids, fraction)
         mean_random_recall = sum(random_recalls[key]) / len(random_recalls[key])
         results["top_fraction_recall"][key] = {
             "review_priority_recall": priority_recall,
@@ -232,9 +256,30 @@ def run() -> dict:
             "beats_random": priority_recall > mean_random_recall,
         }
 
+        for failure_class, class_wrong_ids in wrong_ids_by_class.items():
+            class_priority_recall = recall_at_top_fraction(ranked_by_priority, class_wrong_ids, fraction)
+            class_random_recalls = random_recalls_by_class[failure_class][key]
+            class_mean_random_recall = sum(class_random_recalls) / len(class_random_recalls)
+            results["top_fraction_recall_by_failure_class"].setdefault(failure_class, {})[key] = {
+                "review_priority_recall": class_priority_recall,
+                "mean_random_baseline_recall": class_mean_random_recall,
+                "beats_random": class_priority_recall > class_mean_random_recall,
+            }
+
     results["negative_result"] = not all(
         entry["beats_random"] for entry in results["top_fraction_recall"].values()
     )
+
+    # A failure class is "missed" if, even at the widest reviewed slice
+    # this evaluation checks, Review Priority never surfaces any of its
+    # members above the random baseline -- the honest answer to "what
+    # does this heuristic structurally fail to catch."
+    widest_key = fraction_keys[-1]
+    results["missed_failure_classes"] = [
+        failure_class
+        for failure_class, by_fraction in results["top_fraction_recall_by_failure_class"].items()
+        if not by_fraction[widest_key]["beats_random"]
+    ]
     return results
 
 
@@ -247,4 +292,12 @@ if __name__ == "__main__":
             "\nNEGATIVE RESULT: Review Priority did not beat the random baseline on "
             "at least one top-fraction cut in this synthetic evaluation. Reported "
             "honestly, not tuned away."
+        )
+    if results["missed_failure_classes"]:
+        print(
+            "\nMISSED FAILURE CLASSES (never beat random even at the widest "
+            f"reviewed slice): {results['missed_failure_classes']}. Note "
+            "'no_signal' Cues all score 0.0 and are tied at the bottom of the "
+            "ranking -- any apparent recall for that class is an artifact of "
+            "Python's stable sort on tied scores, not a real ranking signal."
         )

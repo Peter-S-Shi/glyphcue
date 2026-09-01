@@ -1,0 +1,145 @@
+{
+  "fixtures": [
+    {
+      "id": "clean_single_language",
+      "media_duration_seconds": 6.0,
+      "engine_construction_seconds": 3.4197,
+      "pure_decode": {
+        "frames_decoded": 60,
+        "elapsed_seconds": 0.1675,
+        "frames_per_second": 358.17
+      },
+      "ocr_call_latency": {
+        "call_count": 60,
+        "mean_seconds": 2.9221,
+        "median_seconds": 3.6402,
+        "p95_seconds": 3.7976,
+        "min_seconds": 0.6511,
+        "max_seconds": 3.8592
+      },
+      "persistence_1000_observations": {
+        "observation_count": 1000,
+        "elapsed_seconds": 7.0132,
+        "observations_per_second": 142.6
+      },
+      "selective_run": {
+        "job_final_state": "succeeded",
+        "frames_analyzed": 60,
+        "ocr_calls": 3,
+        "observations_created": 3,
+        "cue_count": 1,
+        "media_duration_seconds": 5.901,
+        "wall_clock_processing_seconds": 11.719,
+        "processing_time_to_media_duration_ratio": 1.986,
+        "outer_script_wall_clock_seconds": 11.722,
+        "harness_waiting_overhead_seconds": 0.003
+      },
+      "dense_run": {
+        "job_final_state": "cancelled",
+        "frames_analyzed": 16,
+        "ocr_calls": 16,
+        "observations_created": 16,
+        "cue_count": 1,
+        "media_duration_seconds": 1.5,
+        "wall_clock_processing_seconds": 60.938,
+        "processing_time_to_media_duration_ratio": 40.625,
+        "outer_script_wall_clock_seconds": 60.935,
+        "harness_waiting_overhead_seconds": -0.003
+      }
+    },
+    {
+      "id": "bilingual_typical",
+      "media_duration_seconds": 6.0,
+      "engine_construction_seconds": 1.7443,
+      "pure_decode": {
+        "frames_decoded": 60,
+        "elapsed_seconds": 0.3271,
+        "frames_per_second": 183.45
+      },
+      "ocr_call_latency": {
+        "call_count": 60,
+        "mean_seconds": 3.2959,
+        "median_seconds": 2.1628,
+        "p95_seconds": 6.3661,
+        "min_seconds": 1.8997,
+        "max_seconds": 6.7198
+      },
+      "persistence_1000_observations": {
+        "observation_count": 1000,
+        "elapsed_seconds": 6.9217,
+        "observations_per_second": 144.5
+      },
+      "selective_run": {
+        "job_final_state": "succeeded",
+        "frames_analyzed": 60,
+        "ocr_calls": 8,
+        "observations_created": 12,
+        "cue_count": 1,
+        "media_duration_seconds": 5.901,
+        "wall_clock_processing_seconds": 38.016,
+        "processing_time_to_media_duration_ratio": 6.442,
+        "outer_script_wall_clock_seconds": 38.008,
+        "harness_waiting_overhead_seconds": -0.008
+      },
+      "dense_run": {
+        "job_final_state": "cancelled",
+        "frames_analyzed": 5,
+        "ocr_calls": 10,
+        "observations_created": 20,
+        "cue_count": 1,
+        "media_duration_seconds": 0.4,
+        "wall_clock_processing_seconds": 66.578,
+        "processing_time_to_media_duration_ratio": 166.445,
+        "outer_script_wall_clock_seconds": 66.579,
+        "harness_waiting_overhead_seconds": 0.001
+      }
+    },
+    {
+      "id": "difficult_noisy_background",
+      "media_duration_seconds": 6.0,
+      "engine_construction_seconds": 1.5866,
+      "pure_decode": {
+        "frames_decoded": 60,
+        "elapsed_seconds": 0.3506,
+        "frames_per_second": 171.16
+      },
+      "ocr_call_latency": {
+        "call_count": 60,
+        "mean_seconds": 3.1457,
+        "median_seconds": 3.6251,
+        "p95_seconds": 3.6834,
+        "min_seconds": 2.1241,
+        "max_seconds": 3.743
+      },
+      "persistence_1000_observations": {
+        "observation_count": 1000,
+        "elapsed_seconds": 6.7988,
+        "observations_per_second": 147.1
+      },
+      "selective_run": {
+        "job_final_state": "succeeded",
+        "frames_analyzed": 60,
+        "ocr_calls": 3,
+        "observations_created": 3,
+        "cue_count": 1,
+        "media_duration_seconds": 5.901,
+        "wall_clock_processing_seconds": 11.343,
+        "processing_time_to_media_duration_ratio": 1.922,
+        "outer_script_wall_clock_seconds": 11.353,
+        "harness_waiting_overhead_seconds": 0.01
+      },
+      "dense_run": {
+        "job_final_state": "cancelled",
+        "frames_analyzed": 16,
+        "ocr_calls": 16,
+        "observations_created": 16,
+        "cue_count": 1,
+        "media_duration_seconds": 1.5,
+        "wall_clock_processing_seconds": 61.156,
+        "processing_time_to_media_duration_ratio": 40.771,
+        "outer_script_wall_clock_seconds": 61.159,
+        "harness_waiting_overhead_seconds": 0.003
+      }
+    }
+  ]
+}

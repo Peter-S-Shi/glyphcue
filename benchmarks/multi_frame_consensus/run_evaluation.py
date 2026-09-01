@@ -39,7 +39,7 @@ synthetic pixel content, not real OCR), by
 test_visual_false_positive_change_detection_does_not_over_split`.
 
 CER (Character Error Rate) is the real formula from
-`benchmarks/ocr_runtime_selection/cer.py`: Levenshtein distance /
+`glyphcue.evaluation.metrics.character_error_rate`: Levenshtein distance /
 len(reference) -- NOT `text_similarity.character_similarity` (a
 different, symmetric, max-length-normalized formula used for
 consensus's own internal grouping/voting, not for scoring against
@@ -58,9 +58,6 @@ sys.path.insert(0, str(Path(__file__).parent))
 from fixture import ITEMS, generate_all_noisy_variants, generate_mixed_variants  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
-sys.path.insert(0, str(Path(__file__).parent.parent / "ocr_runtime_selection"))
-
-from cer import character_error_rate  # noqa: E402
 
 from glyphcue.adapters.paddleocr_engine import PaddleOcrEngine  # noqa: E402
 from glyphcue.application.consensus_reconstruction import (  # noqa: E402
@@ -69,6 +66,7 @@ from glyphcue.application.consensus_reconstruction import (  # noqa: E402
 from glyphcue.application.frame_reading_aggregation import (  # noqa: E402
     aggregate_same_frame_observations,
 )
+from glyphcue.evaluation.metrics import character_error_rate  # noqa: E402
 from glyphcue.domain.observation import Observation  # noqa: E402
 from glyphcue.domain.provenance import Provenance, ProvenanceKind  # noqa: E402
 

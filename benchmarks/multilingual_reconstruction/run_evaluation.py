@@ -29,7 +29,6 @@ import json
 from pathlib import Path
 
 from benchmarks.multilingual_reconstruction.fixture import BLOCKS, render_block
-from benchmarks.ocr_runtime_selection.cer import character_error_rate
 from glyphcue.adapters.paddleocr_engine import PaddleOcrEngine
 from glyphcue.application.multilingual_reconstruction import (
     reconstruct_multilingual_cues_for_track_group,
@@ -38,6 +37,7 @@ from glyphcue.domain.observation import Observation
 from glyphcue.domain.provenance import Provenance, ProvenanceKind
 from glyphcue.domain.roi import ROI
 from glyphcue.domain.track_group import TrackGroup
+from glyphcue.evaluation.metrics import character_error_rate
 
 _ROI = ROI(x=0.0, y=0.0, width=1.0, height=1.0)
 _RESULTS_PATH = Path(__file__).parent / "evaluation_results.json"
