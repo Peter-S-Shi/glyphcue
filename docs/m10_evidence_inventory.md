@@ -106,7 +106,7 @@ Real gaps (net-new work), in the order the M10 prompt itself implies:
 3. **Shared metrics module** (WER; Cue precision/recall; timing start/end error; multilingual missing/wrong-assignment rate; Review Priority failure-class breakdown) — some of this promotes/extends existing per-benchmark code (CER, span-exact-match, missing_languages), some is entirely new (WER, precision/recall, wrong-assignment rate).
 4. ~~Two missing ADRs: media architecture, multilingual timing simplification~~ — **done**, `docs/adr/0004-media-architecture.md` / `docs/adr/0005-multilingual-timing-simplification.md`.
 5. ~~Two ADRs promoted from existing narrative docs: selective OCR strategy, consensus/reconstruction approach~~ — **done**, `docs/adr/0002-selective-ocr-strategy.md` / `docs/adr/0003-consensus-reconstruction-approach.md`.
-6. ~~Build-vs-Integrate table, `FAILURE_MODE_REPORT.md`~~ — **done**, `BUILD_VS_INTEGRATE.md` / `FAILURE_MODE_REPORT.md` (repo root). `EVALUATION_REPORT.md` remains outstanding — should assemble already-real evidence from this inventory rather than regenerate it.
+6. ~~Build-vs-Integrate table, `FAILURE_MODE_REPORT.md`, `EVALUATION_REPORT.md`~~ — **done**, all three at repo root (`BUILD_VS_INTEGRATE.md`, `FAILURE_MODE_REPORT.md`, `EVALUATION_REPORT.md`), assembled from already-committed evidence, no new benchmarks run.
 
 ## 11. Status update (this session)
 

@@ -6,9 +6,10 @@ a failure rooted in an integrated mature dependency (PaddleOCR, Qt,
 pysubs2, PyAV) is a different kind of finding than a failure in
 GlyphCue's own orchestration glue, and both differ again from a failure
 in GlyphCue's own custom reconstruction/ranking algorithms. This table
-states, for each real capability actually shipped, which of those three
-buckets it falls in and what real evidence backs that split — it does
-not re-derive anything not already established by an existing ADR or
+states, for each major technical capability relevant to M10's
+Build-vs-Integrate / career-evidence story, which of those three buckets
+it falls in and what real evidence backs that split — it does not
+re-derive anything not already established by an existing ADR or
 milestone doc; it only assembles the split explicitly.
 
 | Capability | Mature dependency (integrated as-is) | GlyphCue orchestration (glue code that invokes/schedules the dependency) | GlyphCue custom contribution (novel algorithm/logic, not from the dependency) | Evidence / rationale |
