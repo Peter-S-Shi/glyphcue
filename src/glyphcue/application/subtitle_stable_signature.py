@@ -187,9 +187,74 @@ def subtitle_stable_signature(
 ) -> np.ndarray:
     """Combines the three cues into one boolean signature: edge AND
     temporally-persistent AND not part of an oversized connected blob."""
-    persistence = stability_buffer.persistence_ratio()
-    if persistence is None:
+    return combine_signature(
+        edge_mask,
+        stability_buffer.persistence_ratio(),
+        persistence_threshold=persistence_threshold,
+        max_component_fraction=max_component_fraction,
+    )
+
+
+def combine_signature(
+    edge_mask: np.ndarray,
+    persistence_ratio: np.ndarray | None,
+    persistence_threshold: float = _DEFAULT_PERSISTENCE_THRESHOLD,
+    max_component_fraction: float = _DEFAULT_MAX_COMPONENT_FRACTION,
+) -> np.ndarray:
+    """The shared edge-AND-persistent-AND-small-component combination
+    step, factored out so both the causal (`EdgeStabilityBuffer`) and
+    non-causal (`CenteredEdgeStabilityIndex`) persistence sources produce
+    a signature the exact same way -- only WHERE `persistence_ratio`
+    came from differs between Alpha-D and Alpha-D2."""
+    if persistence_ratio is None:
         stable = edge_mask
     else:
-        stable = edge_mask & (persistence >= persistence_threshold)
+        stable = edge_mask & (persistence_ratio >= persistence_threshold)
     return filter_large_components(stable, max_component_fraction)
+
+
+class CenteredEdgeStabilityIndex:
+    """Non-causal counterpart to `EdgeStabilityBuffer`: for a target
+    timestamp, looks both BACKWARD and FORWARD within a fixed total time
+    horizon to compute per-pixel persistence, instead of only backward.
+
+    Valid only because GlyphCue Path A OCR is offline batch processing
+    over an already fully-decodable video file -- never a live/real-time
+    stream where "future" frames don't exist yet at decision time. This
+    directly targets the one structural failure mode Alpha-D (commit
+    389fad0) identified: a purely causal trailing window has, by
+    construction, no evidence yet from the new state at the exact moment
+    a real subtitle state begins, so the first sample(s) after a real
+    transition can score as "unstable" even though the state they belong
+    to is genuinely about to hold steady -- producing a short-lived,
+    spurious extra group right at onset. Centering the SAME total
+    evidence horizon (`window_seconds`, unchanged from Alpha-D) around
+    each sample instead of trailing it fixes exactly that: a frame right
+    at onset now also sees its own state's near-future frames.
+
+    Takes the full list of (timestamp, edge_mask) pairs decoded for the
+    whole processing range up front (two-pass: decode-then-sample,
+    rather than Alpha-D's streaming single pass) -- affordable because a
+    Research Gate dry run over a bounded clip is small, and this is
+    explicitly experimental tooling, never a production hot path.
+    """
+
+    def __init__(
+        self, entries: list[tuple[float, np.ndarray]], window_seconds: float
+    ) -> None:
+        self._entries = entries
+        self._timestamps = np.array([t for t, _ in entries], dtype=np.float64)
+        self._half_window = window_seconds / 2.0
+
+    def persistence_ratio(self, center_timestamp: float) -> np.ndarray | None:
+        if len(self._entries) == 0:
+            return None
+        lo = center_timestamp - self._half_window
+        hi = center_timestamp + self._half_window
+        left = int(np.searchsorted(self._timestamps, lo, side="left"))
+        right = int(np.searchsorted(self._timestamps, hi, side="right"))
+        window = self._entries[left:right]
+        if not window:
+            return None
+        stack = np.stack([mask for _, mask in window], axis=0)
+        return stack.mean(axis=0)

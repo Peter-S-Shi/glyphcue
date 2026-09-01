@@ -1,6 +1,7 @@
 import numpy as np
 
 from glyphcue.application.subtitle_stable_signature import (
+    CenteredEdgeStabilityIndex,
     EdgeStabilityBuffer,
     downsampled_edge_mask,
     filter_large_components,
@@ -132,3 +133,58 @@ def test_subtitle_stable_signature_drops_an_edge_that_never_persisted():
     combined = subtitle_stable_signature(text_mask, buffer, persistence_threshold=0.6)
 
     assert not combined.any()
+
+
+def test_centered_index_sees_a_symmetric_window_around_the_target_timestamp():
+    text_mask = downsampled_edge_mask(_text_frame())
+    entries = [(t, text_mask) for t in (0.0, 0.1, 0.2, 0.3, 0.4)]
+    index = CenteredEdgeStabilityIndex(entries, window_seconds=0.4)
+
+    ratio = index.persistence_ratio(center_timestamp=0.2)
+
+    assert ratio is not None
+    np.testing.assert_array_equal(ratio[text_mask], np.ones(text_mask.sum()))
+
+
+def test_centered_index_fixes_the_onset_artifact_a_causal_buffer_cannot():
+    # The exact failure mode Alpha-D2 targets: a real subtitle state
+    # begins at t=0.2 and holds steady afterwards, but a purely causal
+    # buffer at t=0.2 only has OLD-state history behind it, so it scores
+    # the brand-new state's own edge as unstable. A centered index at
+    # the SAME t=0.2 also sees the state's own near-future frames and
+    # correctly scores it as stable.
+    old_state_mask = downsampled_edge_mask(_text_frame(offset=0))
+    new_state_mask = downsampled_edge_mask(_text_frame(offset=30))
+
+    causal_buffer = EdgeStabilityBuffer(window_seconds=0.4)
+    for t in (-0.3, -0.2, -0.1, 0.0):
+        causal_buffer.push(t, old_state_mask)
+    causal_buffer.push(0.2, new_state_mask)
+    causal_signature = subtitle_stable_signature(new_state_mask, causal_buffer)
+
+    entries = [(-0.3, old_state_mask), (-0.2, old_state_mask), (-0.1, old_state_mask), (0.0, old_state_mask)]
+    entries += [(t, new_state_mask) for t in (0.2, 0.3, 0.4, 0.5)]
+    centered_index = CenteredEdgeStabilityIndex(entries, window_seconds=0.4)
+    centered_ratio = centered_index.persistence_ratio(center_timestamp=0.2)
+    from glyphcue.application.subtitle_stable_signature import combine_signature
+
+    centered_signature = combine_signature(new_state_mask, centered_ratio)
+
+    assert not causal_signature.any()  # causal: onset artifact -- signature wiped out
+    assert centered_signature.any()  # centered: correctly recognizes the held state
+
+
+def test_centered_index_handles_a_short_history_near_the_start_of_the_clip():
+    text_mask = downsampled_edge_mask(_text_frame())
+    entries = [(0.0, text_mask)]
+    index = CenteredEdgeStabilityIndex(entries, window_seconds=0.4)
+
+    ratio = index.persistence_ratio(center_timestamp=0.0)
+
+    assert ratio is not None
+
+
+def test_centered_index_reports_no_persistence_outside_any_entry_window():
+    index = CenteredEdgeStabilityIndex([], window_seconds=0.4)
+
+    assert index.persistence_ratio(0.0) is None
