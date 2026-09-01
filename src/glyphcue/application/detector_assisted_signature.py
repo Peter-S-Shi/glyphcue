@@ -30,6 +30,8 @@ ROI resolutions -- an ink map, not a resolution-dependent edge count.
 
 from __future__ import annotations
 
+from typing import Callable
+
 import numpy as np
 
 # Declared a priori for the whole Beta round and used unchanged for every
@@ -133,7 +135,11 @@ def _resize_nearest(mask: np.ndarray, height: int, width: int) -> np.ndarray:
     return mask[np.ix_(rows, cols)]
 
 
-def canonical_line_band(frame: np.ndarray, box: LineBox) -> np.ndarray:
+def canonical_line_band(
+    frame: np.ndarray,
+    box: LineBox,
+    ink_fn: Callable[[np.ndarray], np.ndarray] = _binarize_ink,
+) -> np.ndarray:
     """One detected caption line reduced to a fixed-size ink map.
 
     Crop -> binarize -> tighten to the ink's OWN extent -> rescale to the
@@ -141,6 +147,11 @@ def canonical_line_band(frame: np.ndarray, box: LineBox) -> np.ndarray:
     stable when the detector's box wobbles by a few pixels on identical
     content, and what makes two fixtures at different ROI resolutions
     directly comparable.
+
+    `ink_fn` decides which pixels are glyph ink. It defaults to Beta's
+    original per-patch dynamic-range midpoint; Beta-P injects a
+    local-contrast rule instead, leaving every other step of this
+    canonicalization identical.
     """
     height, width = frame.shape[0], frame.shape[1]
     x0 = max(0, min(int(box[0]), width))
@@ -152,12 +163,16 @@ def canonical_line_band(frame: np.ndarray, box: LineBox) -> np.ndarray:
     if patch.size == 0:
         return np.zeros((CANONICAL_BAND_HEIGHT, CANONICAL_BAND_WIDTH), dtype=bool)
 
-    ink = _binarize_ink(patch)
+    ink = ink_fn(patch)
     _tight_patch, tight_ink = _tighten_to_ink(patch, ink)
     return _resize_nearest(tight_ink, CANONICAL_BAND_HEIGHT, CANONICAL_BAND_WIDTH)
 
 
-def detector_assisted_signature(frame: np.ndarray, polygons) -> np.ndarray:
+def detector_assisted_signature(
+    frame: np.ndarray,
+    polygons,
+    ink_fn: Callable[[np.ndarray], np.ndarray] = _binarize_ink,
+) -> np.ndarray:
     """The Beta signature for one ROI-cropped frame: the glyph ink inside
     each detected caption line, each rescaled to one canonical band and
     stacked top to bottom into a fixed canvas.
@@ -172,7 +187,7 @@ def detector_assisted_signature(frame: np.ndarray, polygons) -> np.ndarray:
     )
     lines = detected_lines_from_polygons(polygons)[:MAX_LINES]
     for index, box in enumerate(lines):
-        band = canonical_line_band(frame, box)
+        band = canonical_line_band(frame, box, ink_fn=ink_fn)
         top = index * CANONICAL_BAND_HEIGHT
         canvas[top : top + CANONICAL_BAND_HEIGHT, :] = band
     return canvas
