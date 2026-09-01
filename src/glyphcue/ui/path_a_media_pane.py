@@ -529,6 +529,7 @@ class PathAMediaPane:
         self._refresh_timeline()
         self._refresh_current_cue_relationship(0.0)
         self._refresh_ocr_range_summary()
+        self._update_ocr_button_enabled()
 
     def current_roi(self) -> ROI:
         x = min(1.0, max(0.0, self.roi_x_spin.value()))

@@ -229,3 +229,33 @@ def test_open_video_sets_video_size_on_overlay(qapp_guard, repository, test_vide
 
     assert pane.video_overlay._video_size == (32, 32)
 
+
+def test_open_video_enables_dry_run_policy_action_and_preserves_run_ocr_semantics(
+    qapp_guard, repository, test_video, tmp_path
+):
+    from tests.support.fake_ocr_engine import FakeOcrEngine
+
+    db_path = tmp_path / "test_db.sqlite3"
+    engine = FakeOcrEngine(regions=[])
+
+    # Case 1: Fully wired with OCR engine and DB path
+    pane = PathAMediaPane(repository, ocr_engine=engine, db_path=db_path)
+    assert pane.dry_run_policy_button.isEnabled() is False
+    assert pane.run_ocr_button.isEnabled() is True
+
+    pane.open_video(test_video)
+
+    assert pane.dry_run_policy_button.isEnabled() is True
+    assert pane.run_ocr_button.isEnabled() is True
+
+    # Case 2: Pane without OCR engine (Run OCR disabled, Dry Run enabled when video loaded)
+    unwired_pane = PathAMediaPane(repository)
+    assert unwired_pane.dry_run_policy_button.isEnabled() is False
+    assert unwired_pane.run_ocr_button.isEnabled() is False
+
+    unwired_pane.open_video(test_video)
+
+    assert unwired_pane.dry_run_policy_button.isEnabled() is True
+    assert unwired_pane.run_ocr_button.isEnabled() is False
+
+
