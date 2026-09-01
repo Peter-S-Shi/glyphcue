@@ -32,7 +32,7 @@ DEFAULT_DB_PATH = Path.home() / ".glyphcue" / "glyphcue.sqlite3"
 
 class GlyphCueWorkbench(QMainWindow):
     """The persistent Evidence Workbench product shell (M11 UI Reconstruction
-    Phase A & Phase B / DOG-008).
+    Phase A, Phase B & Phase B.1 / DOG-008).
 
     Replaces the previous thin chooser / separate-window model with a single,
     persistent product shell. Path A (Video Extraction) and Path B (Caption
@@ -46,7 +46,8 @@ class GlyphCueWorkbench(QMainWindow):
         self._db_path = db_path
         self.setWindowTitle("GlyphCue — Subtitle Reconstruction Evidence Workbench")
         self.setStyleSheet(base_stylesheet())
-        self.resize(1360, 860)
+        self.resize(1280, 720)
+        self.setMinimumSize(1024, 600)
 
         # Compatibility reference
         self.window = self
@@ -117,12 +118,17 @@ class GlyphCueWorkbench(QMainWindow):
             db_path=self._db_path, on_open_caption_file=self.open_caption_file
         )
         self.path_a_pane.qa.bind_to_host(self)
+
+        # Hide redundant embedded in-pane actions when hosted in workbench shell
+        self.path_a_pane.open_button.hide()
+        self.path_a_pane.open_caption_file_button.hide()
+
         self._stack.addWidget(self.path_a_pane.qa.central_widget)
 
-        # Set default balanced 3-pane splitter widths (Left ~320px, Center 1fr, Right ~450px)
+        # Set default responsive 3-pane splitter widths (Left ~280px, Center 1fr flex, Right ~360px)
         splitter = self.path_a_pane.qa.window.findChild(QSplitter)
         if splitter:
-            splitter.setSizes([320, 600, 450])
+            splitter.setSizes([280, 640, 360])
 
         # Container for main layout
         root_container = QWidget()
@@ -176,10 +182,11 @@ class GlyphCueWorkbench(QMainWindow):
                 self.path_b_workspace = PathBWorkspace(
                     [], {}, dummy_path, on_open_video=self.open_video
                 )
+                self.path_b_workspace.open_video_button.hide()
                 self._stack.addWidget(self.path_b_workspace.qa.central_widget)
                 splitter_b = self.path_b_workspace.qa.window.findChild(QSplitter)
                 if splitter_b:
-                    splitter_b.setSizes([320, 600, 450])
+                    splitter_b.setSizes([280, 640, 360])
             self.path_b_workspace.qa.bind_to_host(self)
             self._stack.setCurrentIndex(1)
             if self.path_b_workspace and self.path_b_workspace._source_path.name != "untitled.srt":
@@ -196,8 +203,10 @@ class GlyphCueWorkbench(QMainWindow):
             self._stack.insertWidget(0, self.path_a_pane.qa.central_widget)
             splitter = self.path_a_pane.qa.window.findChild(QSplitter)
             if splitter:
-                splitter.setSizes([320, 600, 450])
+                splitter.setSizes([280, 640, 360])
         self.path_a_pane.open_video(path)
+        self.path_a_pane.open_button.hide()
+        self.path_a_pane.open_caption_file_button.hide()
         self.path_a_pane.qa.bind_to_host(self)
         self.switch_to_mode("path_a")
         self.asset_status_label.setText(f"Video: {path.name}")
@@ -216,6 +225,7 @@ class GlyphCueWorkbench(QMainWindow):
             import_warnings=import_warnings,
             on_open_video=self.open_video,
         )
+        workspace.open_video_button.hide()
         self.path_b_workspace = workspace
         workspace.qa.bind_to_host(self)
         # Update or add page 1
@@ -225,7 +235,7 @@ class GlyphCueWorkbench(QMainWindow):
         self._stack.addWidget(workspace.qa.central_widget)
         splitter = workspace.qa.window.findChild(QSplitter)
         if splitter:
-            splitter.setSizes([320, 600, 450])
+            splitter.setSizes([280, 640, 360])
         self.switch_to_mode("path_b")
         self.asset_status_label.setText(f"Captions: {path.name} ({len(cues)} cues)")
         return workspace

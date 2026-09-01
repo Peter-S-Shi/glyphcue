@@ -9,12 +9,15 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDoubleSpinBox,
+    QFrame,
+    QGridLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
     QListWidget,
     QListWidgetItem,
     QPushButton,
+    QScrollArea,
     QTextEdit,
     QVBoxLayout,
     QWidget,
@@ -292,18 +295,44 @@ class ReconstructionQaWorkspace:
         left_pane = QWidget()
         left_layout = QVBoxLayout(left_pane)
         left_layout.setContentsMargins(
-            Spacing.PANEL_MAJOR, Spacing.PANEL_MAJOR, Spacing.PANEL_MAJOR, Spacing.PANEL_MAJOR
+            Spacing.STANDARD, Spacing.STANDARD, Spacing.STANDARD, Spacing.STANDARD
         )
+        left_layout.setSpacing(Spacing.COMPACT)
+
+        # Dedicated scrollable container for injected structure/metadata widgets
+        self._left_structure_container = QWidget()
+        self._left_structure_layout = QVBoxLayout(self._left_structure_container)
+        self._left_structure_layout.setContentsMargins(0, 0, 0, 0)
+        self._left_structure_layout.setSpacing(Spacing.COMPACT)
+
+        self._left_structure_scroll = QScrollArea()
+        self._left_structure_scroll.setObjectName("leftPaneStructureScroll")
+        self._left_structure_scroll.setWidgetResizable(True)
+        self._left_structure_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._left_structure_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self._left_structure_scroll.setWidget(self._left_structure_container)
+        self._left_structure_scroll.setMaximumHeight(340)
+
+        left_layout.addWidget(self._left_structure_scroll)
         left_layout.addWidget(self.search_edit)
         left_layout.addWidget(self.filter_combo)
-        left_layout.addWidget(self.queue)
+        left_layout.addWidget(self.queue, stretch=1)
         self._left_layout = left_layout
 
         right_pane = QWidget()
-        right_layout = QVBoxLayout(right_pane)
+        right_scroll = QScrollArea(right_pane)
+        right_scroll.setObjectName("rightPaneScrollArea")
+        right_scroll.setWidgetResizable(True)
+        right_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        right_scroll.setFrameShape(QFrame.Shape.NoFrame)
+
+        right_content = QWidget()
+        right_content.setObjectName("rightPaneContent")
+        right_layout = QVBoxLayout(right_content)
         right_layout.setContentsMargins(
-            Spacing.PANEL_MAJOR, Spacing.PANEL_MAJOR, Spacing.PANEL_MAJOR, Spacing.PANEL_MAJOR
+            Spacing.STANDARD, Spacing.STANDARD, Spacing.STANDARD, Spacing.STANDARD
         )
+        right_layout.setSpacing(Spacing.STANDARD)
 
         # 1. Header Card (Cue ID, State badge, Priority badge)
         header_card = QWidget()
@@ -326,7 +355,7 @@ class ReconstructionQaWorkspace:
         # 3. Language Layers Editor
         right_layout.addWidget(self.language_layers_panel)
 
-        # 4. 50ms Precision Timing Card
+        # 4. 50ms Precision Timing Card (Reflowed 2x2 grid for responsive width)
         timing_card = QWidget()
         timing_card.setObjectName("timingCard")
         timing_card_layout = QVBoxLayout(timing_card)
@@ -336,16 +365,17 @@ class ReconstructionQaWorkspace:
         timing_title = QLabel("TIMING PRECISION (50ms)")
         timing_title.setObjectName("sectionHeaderLabel")
         timing_card_layout.addWidget(timing_title)
-        timing_row = QHBoxLayout()
-        for button in (
-            self.nudge_start_earlier_button,
-            self.nudge_start_later_button,
-            self.nudge_end_earlier_button,
-            self.nudge_end_later_button,
-        ):
-            button.setObjectName("secondaryBtn")
-            timing_row.addWidget(button)
-        timing_card_layout.addLayout(timing_row)
+
+        timing_grid = QGridLayout()
+        self.nudge_start_earlier_button.setObjectName("secondaryBtn")
+        self.nudge_start_later_button.setObjectName("secondaryBtn")
+        self.nudge_end_earlier_button.setObjectName("secondaryBtn")
+        self.nudge_end_later_button.setObjectName("secondaryBtn")
+        timing_grid.addWidget(self.nudge_start_earlier_button, 0, 0)
+        timing_grid.addWidget(self.nudge_start_later_button, 0, 1)
+        timing_grid.addWidget(self.nudge_end_earlier_button, 1, 0)
+        timing_grid.addWidget(self.nudge_end_later_button, 1, 1)
+        timing_card_layout.addLayout(timing_grid)
         right_layout.addWidget(timing_card)
 
         # 5. Split & Merge Tools
@@ -355,14 +385,16 @@ class ReconstructionQaWorkspace:
         split_merge_row.addWidget(self.merge_next_button)
         right_layout.addLayout(split_merge_row)
 
-        # 6. Primary QA Action Bar
-        action_row = QHBoxLayout()
-        action_row.addWidget(self.previous_button)
-        action_row.addWidget(self.replay_button)
-        action_row.addWidget(self.discard_button)
-        action_row.addWidget(self.approve_button, stretch=1)
-        action_row.addWidget(self.next_button)
-        right_layout.addLayout(action_row)
+        # 6. Primary QA Action Bar (Dominant full row Approve + sub-actions)
+        action_box = QVBoxLayout()
+        action_box.addWidget(self.approve_button)
+        sub_actions_row = QHBoxLayout()
+        sub_actions_row.addWidget(self.previous_button)
+        sub_actions_row.addWidget(self.replay_button)
+        sub_actions_row.addWidget(self.discard_button)
+        sub_actions_row.addWidget(self.next_button)
+        action_box.addLayout(sub_actions_row)
+        right_layout.addLayout(action_box)
 
         # 7. Raw Observations Evidence Card
         evidence_card = QWidget()
@@ -377,6 +409,10 @@ class ReconstructionQaWorkspace:
         evidence_layout.addWidget(self.evidence_view)
         right_layout.addWidget(evidence_card)
 
+        right_scroll.setWidget(right_content)
+        right_outer_layout = QVBoxLayout(right_pane)
+        right_outer_layout.setContentsMargins(0, 0, 0, 0)
+        right_outer_layout.addWidget(right_scroll)
         self._right_layout = right_layout
 
         self.window = MainWindow(left_pane=left_pane, center_pane=center_widget, right_pane=right_pane)
@@ -666,7 +702,12 @@ class ReconstructionQaWorkspace:
             return
 
         priority = self._priority_for(cue.id)
-        self.cue_identity_label.setText(f"{cue.id}   {cue.start_time:.3f}s – {cue.end_time:.3f}s")
+        cue_idx = next((i + 1 for i, c in enumerate(self._cues) if c.id == cue.id), 1)
+        duration = cue.end_time - cue.start_time
+        self.cue_identity_label.setText(
+            f"Cue #{cue_idx} · {cue.start_time:.3f}s – {cue.end_time:.3f}s ({duration:.2f}s)"
+        )
+        self.cue_identity_label.setToolTip(f"Cue ID: {cue.id}")
         self.review_state_label.setText(f"Review State: {review_state_badge(cue.review_state)}")
         self.priority_label.setText(_priority_label(priority))
         self.diagnostics_view.setPlainText(_diagnostics_text(priority))
@@ -847,14 +888,11 @@ class ReconstructionQaWorkspace:
         self._right_layout.addWidget(widget)
 
     def add_left_pane_widget(self, widget: QWidget) -> None:
-        """Appends `widget` below the review queue in the left pane --
-        the seam a caller uses for path-specific structural context
-        that legitimately differs from Path A (DESIGN.md section 15's
-        Path B ingestion/normalization profile: source filename,
-        format, source/output cue counts, source-protected status)."""
-        self._left_layout.addWidget(widget)
+        """Appends `widget` into the scrollable structure/context region
+        above search and review queue in the left pane."""
+        self._left_structure_layout.addWidget(widget)
 
     def insert_left_pane_widget(self, index: int, widget: QWidget) -> None:
-        """Inserts `widget` at `index` in the left pane layout (e.g. index 0
-        for Structure / ROI controls above the queue)."""
-        self._left_layout.insertWidget(index, widget)
+        """Inserts `widget` at `index` in the scrollable structure/context region
+        above search and review queue in the left pane."""
+        self._left_structure_layout.insertWidget(index, widget)
