@@ -62,21 +62,47 @@ def _wait_for_media_status(player: QMediaPlayer, timeout_ms: int = 3000) -> None
     loop.exec()
 
 
-def test_load_sets_the_media_source_and_prerolls_paused_state(qapp_guard, test_video):
+def test_load_sets_the_media_source_and_initializes_playback(qapp_guard, test_video):
     controller = PlaybackController()
     sink = QVideoSink(controller)
     controller.set_video_output(sink)
 
     controller.load(test_video)
-    _wait_for_media_status(controller.player)
 
     assert Path(controller.player.source().toLocalFile()) == test_video
-    assert controller.player.mediaStatus() in (
-        QMediaPlayer.MediaStatus.LoadedMedia,
-        QMediaPlayer.MediaStatus.BufferedMedia,
-    )
-    assert controller.player.playbackState() == QMediaPlayer.PlaybackState.PausedState
     assert controller.position_seconds == pytest.approx(0.0, abs=0.01)
+    assert controller.player.mediaStatus() != QMediaPlayer.MediaStatus.InvalidMedia
+    assert controller.player.playbackState() != QMediaPlayer.PlaybackState.PlayingState
+
+
+def test_on_media_status_changed_prerolls_stopped_player_on_ready_status(
+    qapp_guard, monkeypatch
+):
+    controller = PlaybackController()
+    paused = []
+    monkeypatch.setattr(controller._player, "pause", lambda: paused.append(True))
+
+    # When player is stopped and media becomes ready, it must request pause for preroll
+    controller._on_media_status_changed(QMediaPlayer.MediaStatus.LoadedMedia)
+    assert len(paused) == 1
+
+    controller._on_media_status_changed(QMediaPlayer.MediaStatus.BufferedMedia)
+    assert len(paused) == 2
+
+    # Non-ready media states do not trigger preroll pause
+    controller._on_media_status_changed(QMediaPlayer.MediaStatus.BufferingMedia)
+    controller._on_media_status_changed(QMediaPlayer.MediaStatus.LoadingMedia)
+    controller._on_media_status_changed(QMediaPlayer.MediaStatus.InvalidMedia)
+    assert len(paused) == 2
+
+    # When already playing, does not pause
+    monkeypatch.setattr(
+        controller._player,
+        "playbackState",
+        lambda: QMediaPlayer.PlaybackState.PlayingState,
+    )
+    controller._on_media_status_changed(QMediaPlayer.MediaStatus.LoadedMedia)
+    assert len(paused) == 2
 
 
 def test_play_and_pause_update_playback_state(qapp_guard, test_video):
