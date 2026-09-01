@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
+    QMessageBox,
     QProgressBar,
     QPushButton,
     QScrollArea,
@@ -886,6 +887,27 @@ class PathAMediaPane:
     def _on_discard_latest_run_clicked(self) -> None:
         if self._last_pre_run_cues is None or not self._source_id:
             return
+
+        msg_box = QMessageBox(self.window)
+        msg_box.setObjectName("discardRunConfirmDialog")
+        msg_box.setIcon(QMessageBox.Icon.Warning)
+        msg_box.setWindowTitle("Discard Latest OCR Run")
+        msg_box.setText(
+            "Are you sure you want to discard the latest successful OCR run?\n\n"
+            "This will remove the latest OCR run and restore the workspace to its pre-run state. "
+            "Earlier cues and protected human edits will be preserved."
+        )
+        discard_btn = msg_box.addButton("Discard Run", QMessageBox.ButtonRole.DestructiveRole)
+        discard_btn.setObjectName("confirmDiscardRunBtn")
+        cancel_btn = msg_box.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)
+        cancel_btn.setObjectName("cancelDiscardRunBtn")
+        msg_box.setDefaultButton(cancel_btn)
+        msg_box.setEscapeButton(cancel_btn)
+
+        msg_box.exec()
+        if msg_box.clickedButton() != discard_btn:
+            return
+
         restored_cues = list(self._last_pre_run_cues)
         if self._cue_repository is not None:
             self._cue_repository.save_cues_for_source(self._source_id, restored_cues)
