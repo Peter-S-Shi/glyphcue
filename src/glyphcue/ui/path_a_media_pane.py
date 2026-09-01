@@ -1,14 +1,17 @@
 from __future__ import annotations
 
+import json
 import time
 import uuid
 from pathlib import Path
 from typing import Callable
 
 from PySide6.QtCore import QEvent, QObject, Qt
+from PySide6.QtGui import QGuiApplication
 from PySide6.QtMultimediaWidgets import QVideoWidget
 from PySide6.QtWidgets import (
     QCheckBox,
+    QDialog,
     QDoubleSpinBox,
     QFileDialog,
     QFormLayout,
@@ -21,6 +24,7 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QSizePolicy,
     QSlider,
+    QTextEdit,
     QVBoxLayout,
     QWidget,
 )
@@ -320,6 +324,44 @@ class PathAMediaPane:
         ocr_box_layout.addLayout(ocr_controls)
         ocr_box_layout.addWidget(self.ocr_progress_bar)
         ocr_box_layout.addWidget(self.ocr_status_label)
+
+        # Performance Diagnostics result area (Phase B Temporal OCR Baseline Diagnostics)
+        self.diagnostics_container = QWidget()
+        self.diagnostics_container.setObjectName("performanceDiagnosticsBox")
+        diag_layout = QVBoxLayout(self.diagnostics_container)
+        diag_layout.setContentsMargins(0, Spacing.COMPACT, 0, 0)
+        diag_layout.setSpacing(Spacing.COMPACT)
+
+        self.diagnostics_summary_label = QLabel("")
+        self.diagnostics_summary_label.setObjectName("diagnosticsSummaryLabel")
+        self.diagnostics_summary_label.setStyleSheet(
+            f"color: {Color.TEXT_SECONDARY}; font-family: 'JetBrains Mono', 'Cascadia Code', monospace; font-size: 11px;"
+        )
+        diag_layout.addWidget(self.diagnostics_summary_label)
+
+        diag_actions_row = QHBoxLayout()
+        self.view_diagnostic_report_button = QPushButton("View Report")
+        self.view_diagnostic_report_button.setObjectName("secondaryBtn")
+        self.view_diagnostic_report_button.setEnabled(False)
+        self.view_diagnostic_report_button.clicked.connect(self._on_view_diagnostic_report_clicked)
+
+        self.save_diagnostic_json_button = QPushButton("Save Diagnostic JSON…")
+        self.save_diagnostic_json_button.setObjectName("secondaryBtn")
+        self.save_diagnostic_json_button.setEnabled(False)
+        self.save_diagnostic_json_button.clicked.connect(self._on_save_diagnostic_json_clicked)
+
+        self.copy_diagnostic_summary_button = QPushButton("Copy Summary")
+        self.copy_diagnostic_summary_button.setObjectName("secondaryBtn")
+        self.copy_diagnostic_summary_button.setEnabled(False)
+        self.copy_diagnostic_summary_button.clicked.connect(self._on_copy_diagnostic_summary_clicked)
+
+        diag_actions_row.addWidget(self.view_diagnostic_report_button)
+        diag_actions_row.addWidget(self.save_diagnostic_json_button)
+        diag_actions_row.addWidget(self.copy_diagnostic_summary_button)
+        diag_actions_row.addStretch(1)
+        diag_layout.addLayout(diag_actions_row)
+
+        ocr_box_layout.addWidget(self.diagnostics_container)
 
         center_layout.addWidget(ocr_container)
 
@@ -884,6 +926,8 @@ class PathAMediaPane:
             self.discard_latest_run_button.setEnabled(False)
             self.ocr_status_label.setText("OCR evidence job ended in an unexpected state")
 
+        self._update_diagnostics_ui()
+
     def _on_discard_latest_run_clicked(self) -> None:
         if self._last_pre_run_cues is None or not self._source_id:
             return
@@ -933,3 +977,63 @@ class PathAMediaPane:
         self._last_pre_run_cues = None
         self.discard_latest_run_button.setEnabled(False)
         self.ocr_status_label.setText("Latest OCR run discarded; workspace restored.")
+
+    def _update_diagnostics_ui(self) -> None:
+        has_data = self.ocr_metrics.frames_analyzed > 0 or self.ocr_metrics.ocr_calls > 0
+        self.view_diagnostic_report_button.setEnabled(has_data)
+        self.save_diagnostic_json_button.setEnabled(has_data)
+        self.copy_diagnostic_summary_button.setEnabled(has_data)
+        if has_data:
+            mean_ms = self.ocr_metrics.latency_mean_seconds * 1000.0
+            p95_ms = self.ocr_metrics.latency_p95_seconds * 1000.0
+            self.diagnostics_summary_label.setText(
+                f"Diagnostics: Calls: {self.ocr_metrics.ocr_calls} · Mean: {mean_ms:.1f}ms (p95: {p95_ms:.1f}ms) · "
+                f"Speed: {self.ocr_metrics.realtime_ratio:.2f}x realtime"
+            )
+        else:
+            self.diagnostics_summary_label.setText("")
+
+    def _on_view_diagnostic_report_clicked(self) -> None:
+        report_text = self.ocr_metrics.format_summary_report()
+        dialog = QDialog(self.window)
+        dialog.setObjectName("diagnosticReportDialog")
+        dialog.setWindowTitle("Temporal OCR Baseline Diagnostic Report")
+        dialog.resize(550, 420)
+        dialog_layout = QVBoxLayout(dialog)
+        text_edit = QTextEdit()
+        text_edit.setReadOnly(True)
+        text_edit.setPlainText(report_text)
+        text_edit.setStyleSheet(
+            f"background-color: {Color.SURFACE_1}; color: {Color.TEXT_PRIMARY}; "
+            f"font-family: 'JetBrains Mono', 'Cascadia Code', monospace; font-size: 11px;"
+        )
+        dialog_layout.addWidget(text_edit)
+
+        close_row = QHBoxLayout()
+        copy_btn = QPushButton("Copy to Clipboard")
+        copy_btn.setObjectName("secondaryBtn")
+        copy_btn.clicked.connect(lambda: QGuiApplication.clipboard().setText(report_text))
+        close_btn = QPushButton("Close")
+        close_btn.setObjectName("primaryBtn")
+        close_btn.clicked.connect(dialog.accept)
+        close_row.addWidget(copy_btn)
+        close_row.addStretch(1)
+        close_row.addWidget(close_btn)
+        dialog_layout.addLayout(close_row)
+        dialog.exec()
+
+    def _on_save_diagnostic_json_clicked(self) -> None:
+        file_path, _ = QFileDialog.getSaveFileName(
+            self.window,
+            "Save Diagnostic JSON",
+            "glyphcue_ocr_diagnostic.json",
+            "JSON Files (*.json)",
+        )
+        if not file_path:
+            return
+        data = self.ocr_metrics.to_dict(include_invocations=True)
+        Path(file_path).write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+    def _on_copy_diagnostic_summary_clicked(self) -> None:
+        report_text = self.ocr_metrics.format_summary_report()
+        QGuiApplication.clipboard().setText(report_text)

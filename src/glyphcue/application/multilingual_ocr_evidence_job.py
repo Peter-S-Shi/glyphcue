@@ -107,9 +107,11 @@ def build_multilingual_ocr_evidence_job(
         conn = None
         source = None
         try:
+            init_start = time.monotonic()
             for language, engine in ocr_engines.items():
                 engine.initialize()
                 initialized_languages.append(language)
+            metrics.engine_initialization_seconds = time.monotonic() - init_start
 
             conn = connect(db_path)
             observation_repository = ObservationRepository(conn)
@@ -124,19 +126,30 @@ def build_multilingual_ocr_evidence_job(
                 roi_frame = crop_to_roi(frame, track_group.roi)
 
                 if active_policy.should_ocr(roi_frame, timestamp):
-                    trigger_reason = getattr(active_policy, "last_trigger_reason", None)
+                    trigger_reason = getattr(active_policy, "last_trigger_reason", "unspecified")
+                    diff_score = getattr(active_policy, "last_difference_score", None)
                     frame_reference = f"{path}@{timestamp:.6f}s"
+                    h, w = roi_frame.shape[:2]
 
                     for engine in ocr_engines.values():
-                        metrics.ocr_calls += 1
+                        t0 = time.monotonic()
                         regions = engine.recognize(roi_frame)
+                        call_latency = time.monotonic() - t0
+
+                        metrics.record_invocation(
+                            timestamp=timestamp,
+                            trigger_reason=trigger_reason,
+                            difference_score=diff_score,
+                            dimensions=(w, h),
+                            latency_seconds=call_latency,
+                        )
                         runtime_info = engine.runtime_info()
                         detail = {
                             "engine_version": runtime_info.version,
                             "backend": runtime_info.backend,
                             "backend_version": runtime_info.backend_version or "",
                         }
-                        if trigger_reason is not None:
+                        if trigger_reason != "unspecified":
                             detail[STATE_TRIGGER_DETAIL_KEY] = trigger_reason
 
                         non_empty_regions = [region for region in regions if region.text]

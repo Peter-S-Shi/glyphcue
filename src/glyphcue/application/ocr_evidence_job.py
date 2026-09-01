@@ -108,7 +108,9 @@ def build_ocr_evidence_job(
         conn = None
         source = None
         try:
+            init_start = time.monotonic()
             ocr_engine.initialize()
+            metrics.engine_initialization_seconds = time.monotonic() - init_start
             engine_initialized = True
 
             conn = connect(db_path)
@@ -124,16 +126,28 @@ def build_ocr_evidence_job(
                 roi_frame = crop_to_roi(frame, roi)
 
                 if active_policy.should_ocr(roi_frame, timestamp):
-                    metrics.ocr_calls += 1
+                    trigger_reason = getattr(active_policy, "last_trigger_reason", "unspecified")
+                    diff_score = getattr(active_policy, "last_difference_score", None)
+                    h, w = roi_frame.shape[:2]
+
+                    t0 = time.monotonic()
                     regions = ocr_engine.recognize(roi_frame)
+                    call_latency = time.monotonic() - t0
+
+                    metrics.record_invocation(
+                        timestamp=timestamp,
+                        trigger_reason=trigger_reason,
+                        difference_score=diff_score,
+                        dimensions=(w, h),
+                        latency_seconds=call_latency,
+                    )
                     runtime_info = ocr_engine.runtime_info()
-                    trigger_reason = getattr(active_policy, "last_trigger_reason", None)
                     detail = {
                         "engine_version": runtime_info.version,
                         "backend": runtime_info.backend,
                         "backend_version": runtime_info.backend_version or "",
                     }
-                    if trigger_reason is not None:
+                    if trigger_reason != "unspecified":
                         detail[STATE_TRIGGER_DETAIL_KEY] = trigger_reason
 
                     non_empty_regions = [region for region in regions if region.text]
