@@ -9,6 +9,7 @@ from PySide6.QtCore import QEventLoop, QTimer
 from glyphcue.adapters.ocr_types import OcrTextRegion
 from glyphcue.adapters.pyav_media_source import probe_media
 from glyphcue.application.processing_range import ProcessingRange
+from glyphcue.application.source_identity import normalize_source_id
 from glyphcue.domain.roi import ROI
 from glyphcue.domain.track_group import TrackGroup
 from glyphcue.jobs.job import JobState
@@ -146,8 +147,9 @@ def test_multilingual_track_group_uses_the_multi_engine_job_and_shows_layers(
     # per-language engine set and the multilingual reconstruction path
     # -- not silently fall back to a single engine -- and the result
     # must land somewhere the user can see it (LanguageLayersPanel).
+    source_id = normalize_source_id(test_video)
     track_group_repository.save(
-        TrackGroup(id="default", roi=ROI(0.0, 0.0, 1.0, 1.0), languages=("en", "zh"))
+        TrackGroup(id=f"tg:{source_id}", roi=ROI(0.0, 0.0, 1.0, 1.0), languages=("en", "zh"))
     )
     engine_calls: list[str] = []
     # Real script content per language (not just a distinct string) --
@@ -186,8 +188,9 @@ def test_single_language_track_group_still_uses_the_single_engine_job(
     # factory is available -- only one engine gets constructed, and the
     # single-language M5 reconstruction (not M6's multilingual path)
     # produces exactly one language layer -- never a multilingual Cue.
+    source_id = normalize_source_id(test_video)
     track_group_repository.save(
-        TrackGroup(id="default", roi=ROI(0.0, 0.0, 1.0, 1.0), languages=("en",))
+        TrackGroup(id=f"tg:{source_id}", roi=ROI(0.0, 0.0, 1.0, 1.0), languages=("en",))
     )
     engine_calls: list[str] = []
 
@@ -228,8 +231,8 @@ def test_single_language_factory_follows_the_live_selection_when_plain_engine_is
         ocr_engine_factory=factory,
         db_path=db_path,
     )
-    pane.language_selection_panel.set_languages(("zh",))
     pane.open_video(test_video)
+    pane.language_selection_panel.set_languages(("zh",))
 
     pane.run_ocr_button.click()
     _wait_for(pane.current_ocr_job)
@@ -242,9 +245,10 @@ def test_single_language_factory_follows_the_live_selection_when_plain_engine_is
 def test_legacy_und_is_removed_before_a_restored_zh_track_group_runs(
     qapp_guard, track_group_repository, db_path, test_video
 ):
+    source_id = normalize_source_id(test_video)
     track_group_repository.save(
         TrackGroup(
-            id="default",
+            id=f"tg:{source_id}",
             roi=ROI(0.0, 0.0, 1.0, 1.0),
             languages=("und", "zh"),
         )
@@ -258,8 +262,8 @@ def test_legacy_und_is_removed_before_a_restored_zh_track_group_runs(
         )
 
     pane = PathAMediaPane(track_group_repository, ocr_engine_factory=factory, db_path=db_path)
-    assert pane.language_selection_panel.selected_languages() == ("zh",)
     pane.open_video(test_video)
+    assert pane.language_selection_panel.selected_languages() == ("zh",)
 
     pane.run_ocr_button.click()
     _wait_for(pane.current_ocr_job)
@@ -283,6 +287,7 @@ def test_user_configured_language_selection_persists_and_drives_the_real_multi_e
         )
 
     first_pane = PathAMediaPane(track_group_repository, ocr_engine_factory=factory, db_path=db_path)
+    first_pane.open_video(test_video)
     # Starts as a single legal language, never the "und" placeholder.
     assert first_pane.language_selection_panel.selected_languages() == ("en",)
 
@@ -294,9 +299,9 @@ def test_user_configured_language_selection_persists_and_drives_the_real_multi_e
     # Simulate reopening the app: a brand new pane over the same
     # repository, not the same live widget.
     second_pane = PathAMediaPane(track_group_repository, ocr_engine_factory=factory, db_path=db_path)
+    second_pane.open_video(test_video)
     assert second_pane.language_selection_panel.selected_languages() == ("en", "zh")
 
-    second_pane.open_video(test_video)
     second_pane.run_ocr_button.click()
     _wait_for(second_pane.current_ocr_job)
 
@@ -316,8 +321,9 @@ def test_final_multilingual_cue_uses_the_real_processing_range_end_not_a_1ms_ins
     # real resolved range end, not the ~1ms OCR-instant-marker fallback
     # (ROADMAP M5's frozen final-boundary contract, extended here to
     # multilingual reconstruction).
+    source_id = normalize_source_id(test_video)
     track_group_repository.save(
-        TrackGroup(id="default", roi=ROI(0.0, 0.0, 1.0, 1.0), languages=("en", "zh"))
+        TrackGroup(id=f"tg:{source_id}", roi=ROI(0.0, 0.0, 1.0, 1.0), languages=("en", "zh"))
     )
     texts = {"en": "Hello there", "zh": "你好朋友"}
 
@@ -738,5 +744,149 @@ def test_overlapping_reprocessing_preserves_needs_review_and_approved_cues(
     # Human-edited NEEDS_REVIEW cue is preserved and not overwritten
     cues = pane.qa.cues
     assert any(c.id == nudged_id and c.review_state == ReviewState.NEEDS_REVIEW for c in cues)
+
+
+def test_cancelled_or_failed_ocr_preserves_persisted_workspace(
+    qapp_guard, track_group_repository, db_path, test_video
+):
+    from glyphcue.domain.review_state import ReviewState
+
+    engine = FakeOcrEngine([
+        OcrTextRegion(text="Initial line", confidence=0.9, geometry=((0, 0), (10, 0), (10, 10), (0, 10)), language="en")
+    ])
+    pane = PathAMediaPane(track_group_repository, ocr_engine=engine, db_path=db_path)
+    pane.open_video(test_video)
+
+    pane.run_ocr_button.click()
+    _wait_for(pane.current_ocr_job)
+    assert len(pane.qa.cues) >= 1
+    pane.qa.approve_and_advance()
+    assert pane.qa.cues[0].review_state == ReviewState.APPROVED
+    original_cue_id = pane.qa.cues[0].id
+
+    # Run failing job
+    failing_engine = FakeOcrEngine(fail_recognize_with=RuntimeError("OCR error"))
+    failing_pane = PathAMediaPane(track_group_repository, ocr_engine=failing_engine, db_path=db_path)
+    failing_pane.open_video(test_video)
+    assert len(failing_pane.qa.cues) >= 1
+
+    failing_pane.run_ocr_button.click()
+    _wait_for(failing_pane.current_ocr_job)
+    assert failing_pane.current_ocr_job.state is JobState.FAILED
+
+    # Existing workspace cues are preserved, not cleared
+    assert len(failing_pane.qa.cues) >= 1
+    assert failing_pane.qa.cues[0].id == original_cue_id
+    assert failing_pane.qa.cues[0].review_state == ReviewState.APPROVED
+
+
+def test_succeeded_ocr_with_zero_observations_merges_incrementally_without_clearing_entire_workspace(
+    qapp_guard, track_group_repository, db_path, test_video
+):
+    from glyphcue.domain.review_state import ReviewState
+
+    engine = FakeOcrEngine([
+        OcrTextRegion(text="Start line", confidence=0.9, geometry=((0, 0), (10, 0), (10, 10), (0, 10)), language="en")
+    ])
+    pane = PathAMediaPane(track_group_repository, ocr_engine=engine, db_path=db_path)
+    pane.open_video(test_video)
+
+    # First run in 0.0 - 0.2s
+    pane.limit_processing_range_checkbox.setChecked(True)
+    pane.processing_range_start_spin.setValue(0.0)
+    pane.processing_range_end_spin.setValue(0.2)
+    pane.run_ocr_button.click()
+    _wait_for(pane.current_ocr_job)
+    assert len(pane.qa.cues) >= 1
+    cue_id = pane.qa.cues[0].id
+
+    # Second run in 0.3 - 0.5s with zero observations
+    empty_engine = FakeOcrEngine([])
+    pane._ocr_engine = empty_engine
+    pane.processing_range_start_spin.setValue(0.3)
+    pane.processing_range_end_spin.setValue(0.5)
+    pane.run_ocr_button.click()
+    _wait_for(pane.current_ocr_job)
+    assert pane.current_ocr_job.state is JobState.SUCCEEDED
+
+    # Cue at 0.0 - 0.2s is still retained in workspace
+    assert any(c.id == cue_id for c in pane.qa.cues)
+
+
+def test_switching_video_or_closing_window_commits_pending_text_edits(
+    qapp_guard, track_group_repository, db_path, tmp_path
+):
+    from glyphcue.domain.review_state import ReviewState
+
+    video_a = tmp_path / "video_a.mp4"
+    video_b = tmp_path / "video_b.mp4"
+    _write_test_video(video_a)
+    _write_test_video(video_b)
+
+    engine = FakeOcrEngine([
+        OcrTextRegion(text="Original Text", confidence=0.9, geometry=((0, 0), (10, 0), (10, 10), (0, 10)), language="en")
+    ])
+    pane = PathAMediaPane(track_group_repository, ocr_engine=engine, db_path=db_path)
+    pane.open_video(video_a)
+    pane.run_ocr_button.click()
+    _wait_for(pane.current_ocr_job)
+    assert len(pane.qa.cues) >= 1
+
+    # User modifies text in the editor without clicking Approve or pressing Enter
+    pane.qa.language_layers_panel.cards[0].text_edit.setPlainText("Human Hand-Edited Text")
+
+    # User switches video
+    pane.open_video(video_b)
+
+    # Reopen video A in a fresh pane -> verify hand-edited text was persisted with NEEDS_REVIEW
+    fresh_pane = PathAMediaPane(track_group_repository, ocr_engine=engine, db_path=db_path)
+    fresh_pane.open_video(video_a)
+    assert len(fresh_pane.qa.cues) >= 1
+    assert fresh_pane.qa.cues[0].language_layers[0].text == "Human Hand-Edited Text"
+    assert fresh_pane.qa.cues[0].review_state == ReviewState.NEEDS_REVIEW
+
+
+def test_new_source_does_not_inherit_legacy_default_track_group(
+    qapp_guard, track_group_repository, db_path, tmp_path
+):
+    # Seed legacy unassigned "default" track group
+    track_group_repository.save(
+        TrackGroup(id="default", roi=ROI(0.2, 0.2, 0.5, 0.5), languages=("zh",))
+    )
+
+    new_video = tmp_path / "new_video.mp4"
+    _write_test_video(new_video)
+
+    pane = PathAMediaPane(track_group_repository, db_path=db_path)
+    pane.open_video(new_video)
+
+    # Must NOT inherit legacy "default" settings; must use clean product defaults
+    assert pane.current_roi() == ROI(0.0, 0.0, 1.0, 1.0)
+    assert pane.language_selection_panel.selected_languages() == ("en",)
+
+
+def test_resumed_cues_have_neutral_review_priority(
+    qapp_guard, track_group_repository, db_path, test_video
+):
+    from glyphcue.domain.review_state import ReviewState
+
+    engine = FakeOcrEngine([
+        OcrTextRegion(text="Sample line", confidence=0.9, geometry=((0, 0), (10, 0), (10, 10), (0, 10)), language="en")
+    ])
+    pane1 = PathAMediaPane(track_group_repository, ocr_engine=engine, db_path=db_path)
+    pane1.open_video(test_video)
+    pane1.run_ocr_button.click()
+    _wait_for(pane1.current_ocr_job)
+    assert len(pane1.qa.cues) >= 1
+
+    pane2 = PathAMediaPane(track_group_repository, ocr_engine=engine, db_path=db_path)
+    pane2.open_video(test_video)
+
+    assert len(pane2.qa.cues) >= 1
+    for cue in pane2.qa.cues:
+        priority = pane2.qa._priority_for(cue.id)
+        assert priority.level == "None"
+        assert priority.score == 0.0
+
 
 

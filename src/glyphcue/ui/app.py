@@ -75,6 +75,10 @@ class GlyphCueEntry:
         paths is changing evidence-source mode inside one product, not
         restarting the app) go through, so there is exactly one place
         that decides which window is on screen."""
+        if self.path_a_pane is not None:
+            self.path_a_pane.commit_pending_edits()
+        if self.path_b_workspace is not None:
+            self.path_b_workspace.commit_pending_edits()
         self._active_window.hide()
         window.show()
         self._active_window = window

@@ -112,14 +112,26 @@ class _CtrlEnterApproveFilter(QObject):
         super().__init__(parent)
         self._callback = callback
 
-    def eventFilter(self, obj: QObject, event: QEvent) -> bool:  # noqa: N802 (Qt override)
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:
         if event.type() == QEvent.Type.ShortcutOverride and _is_approve_key_event(event):
             event.accept()
             return True
         if event.type() == QEvent.Type.KeyPress and _is_approve_key_event(event):
             self._callback()
+            event.accept()
             return True
-        return False
+        return super().eventFilter(watched, event)
+
+
+class _CloseEventFilter(QObject):
+    def __init__(self, on_close: Callable[[], None], parent: QObject | None = None) -> None:
+        super().__init__(parent)
+        self._on_close = on_close
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:
+        if event.type() == QEvent.Type.Close:
+            self._on_close()
+        return super().eventFilter(watched, event)
 
 
 def _priority_label(priority: ReviewPriority) -> str:
@@ -329,6 +341,9 @@ class ReconstructionQaWorkspace:
         # i.e. the highest Review Priority, not simply the first Cue in
         # whatever order the caller happened to pass them in.
         self._rebuild_queue(select_cue_id=None)
+
+        self._close_filter = _CloseEventFilter(self.commit_pending_edits)
+        self.window.installEventFilter(self._close_filter)
 
     @property
     def cues(self) -> list[Cue]:

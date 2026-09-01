@@ -342,6 +342,9 @@ class PathAMediaPane:
     def _on_replay(self, cue) -> None:
         self.controller.play_span(cue.start_time, cue.end_time)
 
+    def commit_pending_edits(self) -> None:
+        self.qa.commit_pending_edits()
+
     def switch_to_caption_file(self, path: Path) -> None:
         """Reaches Path B directly from an already-open Path A
         workbench (DESIGN.md section 9): switching paths is changing
@@ -349,6 +352,7 @@ class PathAMediaPane:
         app. Delegates to the shared entry (`GlyphCueEntry`) via the
         injected callback so the same window-transition logic used at
         first launch is reused, not duplicated."""
+        self.commit_pending_edits()
         if self._on_open_caption_file is not None:
             self._on_open_caption_file(path)
 
@@ -374,6 +378,7 @@ class PathAMediaPane:
         return self.qa.cues or None
 
     def open_video(self, path: Path) -> None:
+        self.commit_pending_edits()
         switching = self._video_path is not None and self._video_path != path
         self._video_path = path
         self._source_id = normalize_source_id(path)
@@ -395,8 +400,8 @@ class PathAMediaPane:
         self.processing_range_end_spin.setRange(0.0, metadata.duration_seconds)
         self.processing_range_end_spin.setValue(metadata.duration_seconds)
 
-        self._restore_roi(switching=switching)
-        self._restore_languages(switching=switching)
+        self._restore_roi()
+        self._restore_languages()
 
         if self._cue_repository is not None and self._source_id:
             persisted_cues = self._cue_repository.list_for_source(self._source_id)
@@ -412,8 +417,6 @@ class PathAMediaPane:
                 )
                 priorities = {
                     c.id: ReviewPriority(cue_id=c.id, score=0.0, level="None", components=())
-                    if c.review_state is ReviewState.APPROVED
-                    else ReviewPriority(cue_id=c.id, score=1.0, level="Low", components=())
                     for c in persisted_cues
                 }
                 self.qa.set_cues_and_priorities(persisted_cues, obs_map, priorities)
@@ -551,23 +554,19 @@ class PathAMediaPane:
             end_time=self.processing_range_end_spin.value(),
         )
 
-    def _restore_roi(self, switching: bool = False) -> None:
+    def _restore_roi(self) -> None:
         track_group = self._repository.get(self._track_group_id)
-        if track_group is None and not switching:
-            track_group = self._repository.get("default")
         if track_group is not None:
             self.set_roi(track_group.roi)
         else:
             self.reset_roi()
 
-    def _restore_languages(self, switching: bool = False) -> None:
+    def _restore_languages(self) -> None:
         track_group = self._repository.get(self._track_group_id)
-        if track_group is None and not switching:
-            track_group = self._repository.get("default")
         if track_group is not None:
             clean_languages = tuple(lang for lang in track_group.languages if lang != "und")
             self.language_selection_panel.set_languages(clean_languages or ("en",))
-        elif switching:
+        else:
             self.language_selection_panel.set_languages(("en",))
 
     def _on_save_roi_clicked(self) -> None:
@@ -705,42 +704,47 @@ class PathAMediaPane:
         # seams unchanged) and hand them to the shared QA workspace with
         # a real, explainable Review Priority per Cue -- not just a
         # language-layer preview (that was M6's thinner wiring).
-        observations_by_id = {observation.id: observation for observation in observations_for_run}
-        cues: list = []
-        priorities: dict[str, ReviewPriority] = {}
-        if state is JobState.SUCCEEDED and self._current_track_group is not None and observations_for_run:
-            if len(self._current_track_group.languages) > 1:
-                cues, diagnostics_list = reconstruct_multilingual_cues_for_track_group(
-                    observations_for_run,
-                    self._current_track_group,
-                    processing_end_time=self._current_processing_end_time,
-                )
-                signal_builder = review_signals_from_multilingual_diagnostics
-            else:
-                cues, diagnostics_list = reconstruct_cues_with_consensus(
-                    observations_for_run,
-                    processing_end_time=self._current_processing_end_time,
-                )
-                signal_builder = review_signals_from_consensus_diagnostics
+        if state is JobState.SUCCEEDED and self._current_track_group is not None:
+            observations_by_id = {observation.id: observation for observation in observations_for_run}
+            new_cues: list[Cue] = []
+            priorities: dict[str, ReviewPriority] = {}
+            if observations_for_run:
+                if len(self._current_track_group.languages) > 1:
+                    new_cues, diagnostics_list = reconstruct_multilingual_cues_for_track_group(
+                        observations_for_run,
+                        self._current_track_group,
+                        processing_end_time=self._current_processing_end_time,
+                    )
+                    signal_builder = review_signals_from_multilingual_diagnostics
+                else:
+                    new_cues, diagnostics_list = reconstruct_cues_with_consensus(
+                        observations_for_run,
+                        processing_end_time=self._current_processing_end_time,
+                    )
+                    signal_builder = review_signals_from_consensus_diagnostics
 
-            for cue, diagnostics in zip(cues, diagnostics_list):
-                cue_observations = [
-                    observations_by_id[observation_id]
-                    for layer in cue.language_layers
-                    for observation_id in layer.observation_ids
-                    if observation_id in observations_by_id
-                ]
-                priorities[cue.id] = compute_review_priority(
-                    signal_builder(diagnostics, cue_observations)
-                )
+                for cue, diagnostics in zip(new_cues, diagnostics_list):
+                    cue_observations = [
+                        observations_by_id[observation_id]
+                        for layer in cue.language_layers
+                        for observation_id in layer.observation_ids
+                        if observation_id in observations_by_id
+                    ]
+                    priorities[cue.id] = compute_review_priority(
+                        signal_builder(diagnostics, cue_observations)
+                    )
 
             if self._source_id and self._cue_repository is not None:
                 existing_cues = self._cue_repository.list_for_source(self._source_id)
                 range_start = self._processing_range.start_time or 0.0
-                range_end = self._current_processing_end_time or (self._processing_range.end_time or 999999.0)
-                merged_cues = merge_incremental_cues(existing_cues, cues, range_start, range_end)
+                range_end = self._current_processing_end_time or (
+                    self._processing_range.end_time or 999999.0
+                )
+                merged_cues = merge_incremental_cues(existing_cues, new_cues, range_start, range_end)
                 self._cue_repository.save_cues_for_source(self._source_id, merged_cues)
                 cues = merged_cues
+            else:
+                cues = new_cues
 
             if self._source_id and self._repository is not None:
                 self._repository.save(
@@ -761,8 +765,12 @@ class PathAMediaPane:
                 all_obs = self._observation_repository.get_by_ids(all_obs_ids)
                 observations_by_id.update(all_obs)
 
-        self.qa.set_cues_and_priorities(cues, observations_by_id, priorities)
-        self._refresh_timeline()
+            for c in cues:
+                if c.id not in priorities:
+                    priorities[c.id] = ReviewPriority(cue_id=c.id, score=0.0, level="None", components=())
+
+            self.qa.set_cues_and_priorities(cues, observations_by_id, priorities)
+            self._refresh_timeline()
 
         frames = self.ocr_metrics.frames_analyzed
         calls = self.ocr_metrics.ocr_calls

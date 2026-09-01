@@ -79,8 +79,8 @@ def test_create_path_a_app_constructs_the_live_single_language_runtime(
     video_path = tmp_path / "production-pane.mp4"
     _write_test_video(video_path)
     _app, pane = create_path_a_app(db_path=tmp_path / "glyphcue.sqlite3")
-    pane.language_selection_panel.set_languages(("zh",))
     pane.open_video(video_path)
+    pane.language_selection_panel.set_languages(("zh",))
 
     pane.run_ocr_button.click()
     _wait_for(pane.current_ocr_job)
