@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
+    QFrame,
     QHBoxLayout,
     QPushButton,
+    QScrollArea,
     QSizePolicy,
     QVBoxLayout,
     QWidget,
@@ -13,11 +15,12 @@ from glyphcue.ui.design_tokens import Color, Spacing
 
 
 class CollapsibleSection(QWidget):
-    """A VS Code-style collapsible work area / disclosure panel (Phase B.2).
+    """A VS Code-style collapsible work area / disclosure panel (Phase B.2 & B.3).
 
+    Participates in resizable vertical allocations (e.g. QSplitter).
     Renders a persistent compact header with disclosure arrow (▼ when expanded,
-    ▶ when collapsed) and toggles its content visibility without enforcing
-    exclusive accordion constraints.
+    ▶ when collapsed), optionally wraps its content in a vertical scroll area,
+    and locks/unlocks height bounds cleanly when toggled.
     """
 
     toggled = Signal(bool)
@@ -27,11 +30,15 @@ class CollapsibleSection(QWidget):
         title: str,
         content: QWidget | None = None,
         expanded: bool = True,
+        scrollable_content: bool = False,
+        min_expanded_height: int = 0,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self._title = title
         self._expanded = expanded
+        self.min_expanded_height = min_expanded_height
+        self._scrollable_content = scrollable_content
 
         self._header_button = QPushButton()
         self._header_button.setObjectName("disclosureHeaderBtn")
@@ -48,6 +55,8 @@ class CollapsibleSection(QWidget):
                 letter-spacing: 0.5px;
                 text-align: left;
                 padding: 4px 8px;
+                min-height: 20px;
+                max-height: 20px;
             }}
             QPushButton#disclosureHeaderBtn:hover {{
                 background-color: {Color.SURFACE_2};
@@ -70,8 +79,19 @@ class CollapsibleSection(QWidget):
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
         main_layout.addWidget(self._header_button)
-        main_layout.addWidget(self._content_widget)
 
+        if self._scrollable_content:
+            self._scroll_area = QScrollArea()
+            self._scroll_area.setObjectName("sectionScrollArea")
+            self._scroll_area.setWidgetResizable(True)
+            self._scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+            self._scroll_area.setFrameShape(QFrame.Shape.NoFrame)
+            self._scroll_area.setWidget(self._content_widget)
+            self._container_widget = self._scroll_area
+        else:
+            self._container_widget = self._content_widget
+
+        main_layout.addWidget(self._container_widget)
         self._refresh_state()
 
     def header_text(self) -> str:
@@ -109,8 +129,12 @@ class CollapsibleSection(QWidget):
     def _refresh_state(self) -> None:
         indicator = "▼" if self._expanded else "▶"
         self._header_button.setText(f"{indicator}  {self._title}")
-        self._content_widget.setVisible(self._expanded)
+        self._container_widget.setVisible(self._expanded)
         if self._expanded:
+            self.setMinimumHeight(self.min_expanded_height)
+            self.setMaximumHeight(16777215)
             self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
         else:
+            self.setMinimumHeight(0)
+            self.setMaximumHeight(30)
             self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)

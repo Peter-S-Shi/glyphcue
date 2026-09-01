@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QPushButton,
     QScrollArea,
+    QSplitter,
     QTextEdit,
     QVBoxLayout,
     QWidget,
@@ -300,8 +301,15 @@ class ReconstructionQaWorkspace:
         )
         left_layout.setSpacing(Spacing.COMPACT)
 
-        # 1. Structure & Region Collapsible Section (default expanded)
-        self.structure_section = CollapsibleSection("STRUCTURE & REGION", expanded=True)
+        # Vertical splitter for user-resizable work areas in the left sidebar (Phase B.3)
+        self.left_splitter = QSplitter(Qt.Orientation.Vertical)
+        self.left_splitter.setObjectName("leftSidebarSplitter")
+        self.left_splitter.setChildrenCollapsible(False)
+
+        # 1. Structure & Region Collapsible Section (scrollable content, minimum height 140)
+        self.structure_section = CollapsibleSection(
+            "STRUCTURE & REGION", expanded=True, scrollable_content=True, min_expanded_height=140
+        )
         self.structure_section.setObjectName("structureSection")
 
         # 2. Cue Queue Collapsible Section (default expanded, consumes remaining height)
@@ -313,15 +321,22 @@ class ReconstructionQaWorkspace:
         queue_layout.addWidget(self.filter_combo)
         queue_layout.addWidget(self.queue, stretch=1)
 
-        self.queue_section = CollapsibleSection("CUE QUEUE", content=queue_content, expanded=True)
+        self.queue_section = CollapsibleSection(
+            "CUE QUEUE", content=queue_content, expanded=True, min_expanded_height=140
+        )
         self.queue_section.setObjectName("queueSection")
+
+        self.left_splitter.addWidget(self.structure_section)
+        self.left_splitter.addWidget(self.queue_section)
+        self.left_splitter.setStretchFactor(0, 1)
+        self.left_splitter.setStretchFactor(1, 2)
+        self.left_splitter.setSizes([260, 420])
 
         # 3. Source Context Collapsible Section (default collapsed)
         self.context_section = CollapsibleSection("SOURCE CONTEXT", expanded=False)
         self.context_section.setObjectName("contextSection")
 
-        left_layout.addWidget(self.structure_section)
-        left_layout.addWidget(self.queue_section, stretch=1)
+        left_layout.addWidget(self.left_splitter, stretch=1)
         left_layout.addWidget(self.context_section)
         self._left_layout = left_layout
 
