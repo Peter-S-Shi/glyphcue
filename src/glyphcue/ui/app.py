@@ -4,12 +4,15 @@ import sys
 from pathlib import Path
 from typing import Callable
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QApplication,
     QFileDialog,
+    QHBoxLayout,
     QLabel,
     QMainWindow,
     QPushButton,
+    QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -18,94 +21,162 @@ from glyphcue.adapters.paddleocr_engine import PaddleOcrEngine
 from glyphcue.application.thin_path_b import parse_and_reconstruct
 from glyphcue.persistence.database import connect
 from glyphcue.persistence.track_group_repository import TrackGroupRepository
-from glyphcue.ui.design_tokens import Spacing, base_stylesheet
+from glyphcue.ui.design_tokens import Color, Spacing, base_stylesheet
 from glyphcue.ui.path_a_media_pane import PathAMediaPane
 from glyphcue.ui.path_b_workspace import PathBWorkspace
 
 DEFAULT_DB_PATH = Path.home() / ".glyphcue" / "glyphcue.sqlite3"
 
 
-class GlyphCueEntry:
-    """The single production entrypoint's first-launch / empty state
-    (DESIGN.md section 85): Path A and Path B are peer evidence-source
-    modes of one product (DESIGN.md section 9), reached from the same
-    launch screen rather than two separate tools. This is intentionally
-    thin -- `Open Video` / `Open Caption File` only, no dashboard
-    (DESIGN.md section 86) -- and hands off to the existing, unmodified
-    `PathAMediaPane` / `PathBWorkspace` shells once a source is picked.
+class GlyphCueWorkbench(QMainWindow):
+    """The persistent Evidence Workbench product shell (M11 UI Reconstruction
+    Phase A / DOG-008).
+
+    Replaces the previous thin chooser / separate-window model with a single,
+    persistent product shell. Path A (Video Extraction) and Path B (Caption
+    Normalizer) exist as peer evidence-source modes within this shell.
+    Mode switching preserves the window, commits pending edits, and switches
+    the 3-pane workbench view in-place.
     """
 
     def __init__(self, db_path: Path = DEFAULT_DB_PATH) -> None:
+        super().__init__()
         self._db_path = db_path
+        self.setWindowTitle("GlyphCue")
+        self.setStyleSheet(base_stylesheet())
+        self.resize(1360, 860)
+
+        # Compatibility reference
+        self.window = self
+        self._active_window = self
+
         self.path_a_pane: PathAMediaPane | None = None
         self.path_b_workspace: PathBWorkspace | None = None
+        self.current_mode: str = "path_a"
 
-        self.window = QMainWindow()
-        self._active_window = self.window
-        self.window.setWindowTitle("GlyphCue")
-        self.window.setStyleSheet(base_stylesheet())
+        # 1. Top App Header / Chrome
+        header_widget = QWidget()
+        header_widget.setObjectName("appHeader")
+        header_layout = QHBoxLayout(header_widget)
+        header_layout.setContentsMargins(
+            Spacing.PANEL_MAJOR, Spacing.STANDARD, Spacing.PANEL_MAJOR, Spacing.STANDARD
+        )
 
-        central = QWidget()
-        layout = QVBoxLayout(central)
-        layout.setContentsMargins(
-            Spacing.PANEL_MAJOR, Spacing.PANEL_MAJOR, Spacing.PANEL_MAJOR, Spacing.PANEL_MAJOR
+        brand_label = QLabel("GlyphCue")
+        brand_label.setStyleSheet(
+            f"font-weight: 800; font-size: 15px; color: {Color.TEXT_PRIMARY};"
         )
-        layout.addWidget(QLabel("GlyphCue"))
-        layout.addWidget(
-            QLabel(
-                "Open Video for Path A (visual/OCR evidence), or "
-                "Open Caption File for Path B (timed caption evidence)."
-            )
+        header_layout.addWidget(brand_label)
+
+        mode_nav = QHBoxLayout()
+        self.path_a_mode_button = QPushButton("Path A: Video Extraction")
+        self.path_b_mode_button = QPushButton("Path B: Caption Normalizer")
+        self.path_a_mode_button.setCheckable(True)
+        self.path_b_mode_button.setCheckable(True)
+        self.path_a_mode_button.setChecked(True)
+        mode_nav.addWidget(self.path_a_mode_button)
+        mode_nav.addWidget(self.path_b_mode_button)
+        header_layout.addLayout(mode_nav)
+
+        header_layout.addStretch(1)
+
+        self.asset_status_label = QLabel("Ready · No source loaded")
+        self.asset_status_label.setStyleSheet(
+            f"color: {Color.TEXT_MUTED}; font-size: 11px;"
         )
+        header_layout.addWidget(self.asset_status_label)
+
         self.open_video_button = QPushButton("Open Video…")
         self.open_caption_button = QPushButton("Open Caption File…")
-        layout.addWidget(self.open_video_button)
-        layout.addWidget(self.open_caption_button)
-        self.window.setCentralWidget(central)
+        header_layout.addWidget(self.open_video_button)
+        header_layout.addWidget(self.open_caption_button)
 
+        # 2. Central Stacked Workspaces
+        self._stack = QStackedWidget()
+
+        # Initialize Path A inside the workbench from startup
+        _app, self.path_a_pane = create_path_a_app(
+            db_path=self._db_path, on_open_caption_file=self.open_caption_file
+        )
+        self._stack.addWidget(self.path_a_pane.qa.window.centralWidget())
+
+        # Container for main layout
+        root_container = QWidget()
+        root_layout = QVBoxLayout(root_container)
+        root_layout.setContentsMargins(0, 0, 0, 0)
+        root_layout.setSpacing(0)
+        root_layout.addWidget(header_widget)
+        root_layout.addWidget(self._stack, stretch=1)
+        self.setCentralWidget(root_container)
+
+        self.statusBar().showMessage("Local-first · Non-Destructive Ingestion")
+
+        # Event connections
+        self.path_a_mode_button.clicked.connect(lambda: self.switch_to_mode("path_a"))
+        self.path_b_mode_button.clicked.connect(lambda: self.switch_to_mode("path_b"))
         self.open_video_button.clicked.connect(self._on_open_video_clicked)
         self.open_caption_button.clicked.connect(self._on_open_caption_clicked)
 
     def _show(self, window: QMainWindow) -> None:
-        """Hides whichever window is currently the visible workflow
-        window (the entry state, or an already-open Path A/Path B
-        workbench) and shows `window` -- the shared transition both
-        first-launch (`_on_open_video_clicked`/`_on_open_caption_clicked`)
-        and in-workbench path switching (DESIGN.md section 9: switching
-        paths is changing evidence-source mode inside one product, not
-        restarting the app) go through, so there is exactly one place
-        that decides which window is on screen."""
         if self.path_a_pane is not None:
             self.path_a_pane.commit_pending_edits()
         if self.path_b_workspace is not None:
             self.path_b_workspace.commit_pending_edits()
-        self._active_window.hide()
+        if self._active_window is not None and self._active_window is not window:
+            self._active_window.hide()
         window.show()
         self._active_window = window
+        self.show()
+
+    def commit_pending_edits(self) -> None:
+        if self.path_a_pane is not None:
+            self.path_a_pane.commit_pending_edits()
+        if self.path_b_workspace is not None:
+            self.path_b_workspace.commit_pending_edits()
+
+    def switch_to_mode(self, mode: str) -> None:
+        self.commit_pending_edits()
+        if mode == "path_a":
+            self.current_mode = "path_a"
+            self.path_a_mode_button.setChecked(True)
+            self.path_b_mode_button.setChecked(False)
+            self._stack.setCurrentIndex(0)
+            if self.path_a_pane and self.path_a_pane._video_path:
+                self.asset_status_label.setText(f"Video: {self.path_a_pane._video_path.name}")
+            else:
+                self.asset_status_label.setText("Path A: Ready · No video loaded")
+        elif mode == "path_b":
+            self.current_mode = "path_b"
+            self.path_a_mode_button.setChecked(False)
+            self.path_b_mode_button.setChecked(True)
+            if self.path_b_workspace is None:
+                # Provide a ready empty Path B workspace if none opened yet
+                dummy_path = Path("untitled.srt")
+                self.path_b_workspace = PathBWorkspace(
+                    [], {}, dummy_path, on_open_video=self.open_video
+                )
+                self._stack.addWidget(self.path_b_workspace.qa.window.centralWidget())
+            self._stack.setCurrentIndex(1)
+            if self.path_b_workspace and self.path_b_workspace._source_path.name != "untitled.srt":
+                self.asset_status_label.setText(f"Captions: {self.path_b_workspace._source_path.name}")
+            else:
+                self.asset_status_label.setText("Path B: Ready · No caption file loaded")
 
     def open_video(self, path: Path) -> PathAMediaPane:
-        """Switch into a real Path A workflow window for `path`,
-        reusing `create_path_a_app`'s own runtime wiring (PaddleOcrEngine
-        factory, TrackGroup persistence) so production behavior is
-        identical to before this entrypoint existed. Callable both from
-        the entry state and from an already-open Path B workbench (via
-        the `on_open_video` callback wired into `PathBWorkspace`)."""
-        _app, pane = create_path_a_app(
-            db_path=self._db_path, on_open_caption_file=self.open_caption_file
-        )
-        pane.open_video(path)
-        self.path_a_pane = pane
-        self._show(pane.window)
-        return pane
+        self.commit_pending_edits()
+        if self.path_a_pane is None:
+            _app, self.path_a_pane = create_path_a_app(
+                db_path=self._db_path, on_open_caption_file=self.open_caption_file
+            )
+            self._stack.insertWidget(0, self.path_a_pane.qa.window.centralWidget())
+        self.path_a_pane.open_video(path)
+        self.switch_to_mode("path_a")
+        self._show(self.path_a_pane.window)
+        self.asset_status_label.setText(f"Video: {path.name}")
+        return self.path_a_pane
 
     def open_caption_file(self, path: Path) -> PathBWorkspace:
-        """Switch into a real Path B workflow window for `path`: import
-        -> normalize (M8's `parse_and_reconstruct`) -> QA -> export,
-        with M8's per-event import warnings threaded through to the
-        workspace rather than silently discarded (ROADMAP M9). Callable
-        both from the entry state and from an already-open Path A
-        workbench (via the `on_open_caption_file` callback wired into
-        `PathAMediaPane`)."""
+        self.commit_pending_edits()
         cues, observations_by_id, diagnostics_by_cue_id, import_warnings = parse_and_reconstruct(
             path
         )
@@ -118,29 +189,39 @@ class GlyphCueEntry:
             on_open_video=self.open_video,
         )
         self.path_b_workspace = workspace
+        # Update or add page 1
+        if self._stack.count() > 1:
+            old_widget = self._stack.widget(1)
+            self._stack.removeWidget(old_widget)
+        self._stack.addWidget(workspace.qa.window.centralWidget())
+        self.switch_to_mode("path_b")
         self._show(workspace.window)
+        self.asset_status_label.setText(f"Captions: {path.name} ({len(cues)} cues)")
         return workspace
 
     def _on_open_video_clicked(self) -> None:
         path_str, _selected_filter = QFileDialog.getOpenFileName(
-            None, "Open Video", "", "Video files (*.mp4 *.mkv *.mov *.avi *.webm)"
+            self, "Open Video", "", "Video files (*.mp4 *.mkv *.mov *.avi *.webm)"
         )
         if path_str:
             self.open_video(Path(path_str))
 
     def _on_open_caption_clicked(self) -> None:
         path_str, _selected_filter = QFileDialog.getOpenFileName(
-            None, "Open Caption File", "", "Subtitle files (*.srt *.vtt)"
+            self, "Open Caption File", "", "Subtitle files (*.srt *.vtt)"
         )
         if path_str:
             self.open_caption_file(Path(path_str))
 
 
-def create_app(db_path: Path = DEFAULT_DB_PATH) -> tuple[QApplication, GlyphCueEntry]:
-    """Build the QApplication and the production entry state."""
+GlyphCueEntry = GlyphCueWorkbench
+
+
+def create_app(db_path: Path = DEFAULT_DB_PATH) -> tuple[QApplication, GlyphCueWorkbench]:
+    """Build the QApplication and the persistent Evidence Workbench product shell."""
     app = QApplication.instance() or QApplication(sys.argv)
-    entry = GlyphCueEntry(db_path=db_path)
-    return app, entry
+    workbench = GlyphCueWorkbench(db_path=db_path)
+    return app, workbench
 
 
 def create_path_a_app(
@@ -149,24 +230,6 @@ def create_path_a_app(
 ) -> tuple[QApplication, PathAMediaPane]:
     """Build the QApplication and the Path A media pane, with
     TrackGroup/ROI and OCR-evidence (Observation) persistence wired in.
-
-    `PaddleOcrEngine` is the V1 default runtime (see
-    docs/adr/0001-ocr-runtime-selection.md). It is wired as a factory so
-    the live Track Group language selects the engine that is actually
-    constructed. The real `paddleocr` import remains deferred until
-    the Run OCR Evidence button calls `.initialize()`, so this stays
-    safe to construct even when the optional `[ocr]` extra isn't
-    installed.
-
-    `PathAMediaPane` is given `db_path` (not a ready-made
-    ObservationRepository) so it can open its own connection for
-    UI-thread reads, kept separate from the connection the OCR job
-    opens on its own worker thread when it runs.
-
-    Only `ocr_engine_factory=PaddleOcrEngine` is wired (Milestone 6):
-    `PathAMediaPane` uses it once per configured language, including a
-    single-language Track Group. A plain `ocr_engine` remains available
-    only to direct callers as a test/injection compatibility fallback.
     """
     app = QApplication.instance() or QApplication(sys.argv)
     conn = connect(db_path)
@@ -182,17 +245,10 @@ def create_path_a_app(
 
 def main(db_path: Path | None = None) -> int:
     """Production entrypoint (ROADMAP M9): the shared GlyphCue product
-    entry -- Open Video (Path A) or Open Caption File (Path B) from one
-    launch screen, not a Path-A-only launcher.
-
-    `db_path` defaults to the real user database (DEFAULT_DB_PATH),
-    resolved at call time rather than baked in as a mutable default
-    argument, so it can be overridden (e.g. in tests) without relying on
-    monkeypatching a module-level constant that a default argument would
-    have already captured at import time.
+    entry -- persistent Evidence Workbench shell.
     """
-    app, entry = create_app(db_path=db_path or DEFAULT_DB_PATH)
-    entry.window.show()
+    app, workbench = create_app(db_path=db_path or DEFAULT_DB_PATH)
+    workbench.window.show()
     return app.exec()
 
 

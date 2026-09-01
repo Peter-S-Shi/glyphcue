@@ -5,6 +5,7 @@ from typing import Callable
 from PySide6.QtCore import QEvent, QObject, Qt
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
+    QAbstractItemView,
     QCheckBox,
     QComboBox,
     QDoubleSpinBox,
@@ -206,6 +207,7 @@ class ReconstructionQaWorkspace:
         self._filter_labels = filter_labels
         self._third_filter_predicate = third_filter_predicate
         self._displayed_cue_id: str | None = None
+        self._playback_active_cue_id: str | None = None
         self._approve_filter = _CtrlEnterApproveFilter(lambda: self.approve_and_advance())
 
         # DESIGN.md section 7.1 / section 53: the left pane must offer
@@ -481,6 +483,30 @@ class ReconstructionQaWorkspace:
         self._commit_displayed_edits()
         self._rebuild_queue(select_cue_id=self._displayed_cue_id)
 
+    @property
+    def playback_active_cue_id(self) -> str | None:
+        return self._playback_active_cue_id
+
+    def set_playback_active_cue_id(self, cue_id: str | None) -> None:
+        """DOG-007: Updates the playback-active Cue indicator in the queue
+        without altering the user's active editing selection (active_cue /
+        _displayed_cue_id)."""
+        if self._playback_active_cue_id == cue_id:
+            return
+        self._playback_active_cue_id = cue_id
+        self._refresh_queue_labels()
+        if cue_id is not None:
+            for row in range(self.queue.count()):
+                item = self.queue.item(row)
+                if item is not None and item.data(Qt.ItemDataRole.UserRole) == cue_id:
+                    self.queue.scrollToItem(item, QAbstractItemView.ScrollHint.EnsureVisible)
+                    break
+
+    def _queue_item_label(self, cue: Cue) -> str:
+        priority = self._priority_for(cue.id)
+        prefix = "▶ " if cue.id == self._playback_active_cue_id else ""
+        return f"{prefix}[{priority.level}] [{review_state_badge(cue.review_state)}] {queue_label_for_cue(cue)}"
+
     def _refresh_queue_labels(self) -> None:
         for row in range(self.queue.count()):
             item = self.queue.item(row)
@@ -489,10 +515,7 @@ class ReconstructionQaWorkspace:
             cue_id = item.data(Qt.ItemDataRole.UserRole)
             cue = next((c for c in self._cues if c.id == cue_id), None)
             if cue is not None:
-                priority = self._priority_for(cue.id)
-                item.setText(
-                    f"[{priority.level}] [{review_state_badge(cue.review_state)}] {queue_label_for_cue(cue)}"
-                )
+                item.setText(self._queue_item_label(cue))
 
     def _rebuild_queue(self, *, select_cue_id: str | None) -> None:
         ordered = sorted(
@@ -503,10 +526,7 @@ class ReconstructionQaWorkspace:
         self.queue.clear()
         select_row = 0
         for row, cue in enumerate(ordered):
-            priority = self._priority_for(cue.id)
-            item = QListWidgetItem(
-                f"[{priority.level}] [{review_state_badge(cue.review_state)}] {queue_label_for_cue(cue)}"
-            )
+            item = QListWidgetItem(self._queue_item_label(cue))
             item.setData(Qt.ItemDataRole.UserRole, cue.id)
             self.queue.addItem(item)
             if cue.id == select_cue_id:
@@ -765,3 +785,8 @@ class ReconstructionQaWorkspace:
         Path B ingestion/normalization profile: source filename,
         format, source/output cue counts, source-protected status)."""
         self._left_layout.addWidget(widget)
+
+    def insert_left_pane_widget(self, index: int, widget: QWidget) -> None:
+        """Inserts `widget` at `index` in the left pane layout (e.g. index 0
+        for Structure / ROI controls above the queue)."""
+        self._left_layout.insertWidget(index, widget)

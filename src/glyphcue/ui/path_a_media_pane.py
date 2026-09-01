@@ -237,71 +237,63 @@ class PathAMediaPane:
         self._restore_roi()
         self._restore_languages()
 
-        # Lower configuration and supporting controls container (DESIGN.md section 32:
-        # media evidence stays stable while supporting controls scroll when needed).
-        controls_container = QWidget()
-        controls_layout = QVBoxLayout(controls_container)
-        controls_layout.setContentsMargins(0, Spacing.STANDARD, 0, 0)
+        # Structure / ROI & Track Group setup container in Left Pane
+        structure_container = QWidget()
+        structure_layout = QVBoxLayout(structure_container)
+        structure_layout.setContentsMargins(0, 0, 0, Spacing.STANDARD)
 
         roi_form = QFormLayout()
         roi_form.addRow("ROI x", self.roi_x_spin)
         roi_form.addRow("ROI y", self.roi_y_spin)
         roi_form.addRow("ROI width", self.roi_width_spin)
         roi_form.addRow("ROI height", self.roi_height_spin)
-        controls_layout.addLayout(roi_form)
-        controls_layout.addWidget(self.reset_roi_button)
+        structure_layout.addLayout(roi_form)
+        structure_layout.addWidget(self.reset_roi_button)
 
         processing_range_form = QFormLayout()
         processing_range_form.addRow(self.limit_processing_range_checkbox)
         processing_range_form.addRow("Range start (s)", self.processing_range_start_spin)
         processing_range_form.addRow("Range end (s)", self.processing_range_end_spin)
-        controls_layout.addLayout(processing_range_form)
+        structure_layout.addLayout(processing_range_form)
 
-        controls_layout.addWidget(self.language_selection_panel)
-        controls_layout.addWidget(self.save_roi_button)
+        structure_layout.addWidget(self.language_selection_panel)
+        structure_layout.addWidget(self.save_roi_button)
 
-        ocr_controls = QHBoxLayout()
-        ocr_controls.addWidget(self.run_ocr_button)
-        ocr_controls.addWidget(self.cancel_ocr_button)
-        ocr_controls.addWidget(self.discard_latest_run_button)
-        controls_layout.addLayout(ocr_controls)
-        controls_layout.addWidget(self.ocr_progress_bar)
-        controls_layout.addWidget(self.ocr_status_label)
-        controls_layout.addWidget(self.evidence_pane)
-
-        scroll_area = QScrollArea()
-        scroll_area.setWidgetResizable(True)
-        scroll_area.setFrameShape(QFrame.Shape.NoFrame)
-        scroll_area.setWidget(controls_container)
-
+        # Center Pane: Primary Media & Evidence Workspace
         center_pane = QWidget()
-        layout = QVBoxLayout(center_pane)
-        layout.setContentsMargins(
+        center_layout = QVBoxLayout(center_pane)
+        center_layout.setContentsMargins(
             Spacing.PANEL_MAJOR, Spacing.PANEL_MAJOR, Spacing.PANEL_MAJOR, Spacing.PANEL_MAJOR
         )
-        layout.addWidget(self.open_button)
-        layout.addWidget(self.metadata_label)
-        layout.addWidget(self.video_widget, stretch=1)
+        center_layout.addWidget(self.open_button)
+        center_layout.addWidget(self.metadata_label)
+        center_layout.addWidget(self.video_widget, stretch=1)
 
         playback_controls = QHBoxLayout()
         playback_controls.addWidget(self.play_button)
         playback_controls.addWidget(self.pause_button)
-        layout.addLayout(playback_controls)
+        center_layout.addLayout(playback_controls)
 
-        layout.addWidget(self.position_slider)
-        layout.addWidget(self.current_time_label)
-        layout.addWidget(self.current_cue_relationship_label)
-        layout.addWidget(self.timeline)
-        layout.addWidget(scroll_area, stretch=1)
+        center_layout.addWidget(self.position_slider)
+        center_layout.addWidget(self.current_time_label)
+        center_layout.addWidget(self.current_cue_relationship_label)
+        center_layout.addWidget(self.timeline)
+
+        # OCR Action Pipeline Section in Center Pane (DOG-002 action hierarchy)
+        ocr_controls = QHBoxLayout()
+        ocr_controls.addWidget(self.run_ocr_button)
+        ocr_controls.addWidget(self.cancel_ocr_button)
+        ocr_controls.addWidget(self.discard_latest_run_button)
+        center_layout.addLayout(ocr_controls)
+        center_layout.addWidget(self.ocr_progress_bar)
+        center_layout.addWidget(self.ocr_status_label)
 
         # Milestone 7: Path A follows the same shared Reconstruction QA
         # seam Path B does (DESIGN.md section 6's frozen three-pane
         # shell) -- video/ROI/config stays this pane's own CENTER
         # content, the only thing that legitimately differs per path
         # (DESIGN.md section 7.2); the queue and QA right pane are
-        # identical to Path B's. Starts empty (no OCR run has completed
-        # yet) and is populated by `set_cues_and_priorities` once one
-        # does -- see `_on_ocr_finished`.
+        # identical to Path B's.
         self.qa = ReconstructionQaWorkspace(
             [],
             {},
@@ -321,11 +313,8 @@ class PathAMediaPane:
         self.roi_visualization.set_roi(self.current_roi())
         self._refresh_current_cue_relationship(0.0)
 
-        # DESIGN.md section 7.1 / section 66: Path A's left context is
-        # "ROI / Track Group" -- the queue alone is not enough. Kept
-        # read-only and minimal (no project manager); live-refreshed
-        # from the same live ROI/language/range controls the actual
-        # OCR run itself reads ("what you see is what runs").
+        # Left Pane: Top Structure Card + Queue
+        self.qa.insert_left_pane_widget(0, structure_container)
         self.qa.add_left_pane_widget(self.context_label)
         self._refresh_context_label()
         for spin in (
@@ -337,12 +326,9 @@ class PathAMediaPane:
         )
         self.language_selection_panel.languagesChanged.connect(self._refresh_context_label)
 
-        # ROADMAP M9: Path A previously had no export mechanism at all.
-        # Reuses the same required export surface Path B offers
-        # (DESIGN.md section 67's shared product grammar) rather than a
-        # second bespoke implementation. Disabled until a video is
-        # loaded and `set_source_path` gives it something real to
-        # export from -- see `open_video`.
+        # Right Pane: Supporting Raw Evidence + Export Controls
+        self.qa.add_right_pane_widget(self.evidence_pane)
+
         self.export_controls = ExportControls(
             get_cues=lambda: self.qa.cues,
             commit_pending_edits=self.qa.commit_pending_edits,
@@ -535,6 +521,7 @@ class PathAMediaPane:
             (cue for cue in self.qa.cues if cue.start_time <= position_seconds <= cue.end_time),
             None,
         )
+        self.qa.set_playback_active_cue_id(matching.id if matching is not None else None)
         if matching is None:
             self.current_cue_relationship_label.setText(
                 f"{position_seconds:.2f}s — No Cue at current time"
