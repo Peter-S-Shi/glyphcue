@@ -60,12 +60,14 @@ def _wait_for_media_status(player: QMediaPlayer, timeout_ms: int = 3000) -> None
     loop.exec()
 
 
-def test_load_sets_the_media_source(qapp_guard, test_video):
+def test_load_sets_the_media_source_and_prerolls_paused_state(qapp_guard, test_video):
     controller = PlaybackController()
 
     controller.load(test_video)
 
     assert Path(controller.player.source().toLocalFile()) == test_video
+    assert controller.player.playbackState() == QMediaPlayer.PlaybackState.PausedState
+    assert controller.position_seconds == pytest.approx(0.0, abs=0.01)
 
 
 def test_play_and_pause_update_playback_state(qapp_guard, test_video):

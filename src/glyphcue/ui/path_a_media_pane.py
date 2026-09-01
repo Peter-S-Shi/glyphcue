@@ -11,9 +11,12 @@ from PySide6.QtWidgets import (
     QDoubleSpinBox,
     QFileDialog,
     QFormLayout,
+    QFrame,
     QHBoxLayout,
     QLabel,
     QPushButton,
+    QScrollArea,
+    QSizePolicy,
     QSlider,
     QVBoxLayout,
     QWidget,
@@ -134,6 +137,8 @@ class PathAMediaPane:
 
         self.controller = PlaybackController()
         self.video_widget = QVideoWidget()
+        self.video_widget.setMinimumHeight(240)
+        self.video_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.controller.set_video_output(self.video_widget)
 
         self.open_button = QPushButton("Open Video…")
@@ -201,6 +206,41 @@ class PathAMediaPane:
         self._restore_roi()
         self._restore_languages()
 
+        # Lower configuration and supporting controls container (DESIGN.md section 32:
+        # media evidence stays stable while supporting controls scroll when needed).
+        controls_container = QWidget()
+        controls_layout = QVBoxLayout(controls_container)
+        controls_layout.setContentsMargins(0, Spacing.STANDARD, 0, 0)
+        controls_layout.addWidget(self.roi_visualization)
+
+        roi_form = QFormLayout()
+        roi_form.addRow("ROI x", self.roi_x_spin)
+        roi_form.addRow("ROI y", self.roi_y_spin)
+        roi_form.addRow("ROI width", self.roi_width_spin)
+        roi_form.addRow("ROI height", self.roi_height_spin)
+        controls_layout.addLayout(roi_form)
+
+        processing_range_form = QFormLayout()
+        processing_range_form.addRow(self.limit_processing_range_checkbox)
+        processing_range_form.addRow("Range start (s)", self.processing_range_start_spin)
+        processing_range_form.addRow("Range end (s)", self.processing_range_end_spin)
+        controls_layout.addLayout(processing_range_form)
+
+        controls_layout.addWidget(self.language_selection_panel)
+        controls_layout.addWidget(self.save_roi_button)
+
+        ocr_controls = QHBoxLayout()
+        ocr_controls.addWidget(self.run_ocr_button)
+        ocr_controls.addWidget(self.cancel_ocr_button)
+        controls_layout.addLayout(ocr_controls)
+        controls_layout.addWidget(self.ocr_status_label)
+        controls_layout.addWidget(self.evidence_pane)
+
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setFrameShape(QFrame.Shape.NoFrame)
+        scroll_area.setWidget(controls_container)
+
         center_pane = QWidget()
         layout = QVBoxLayout(center_pane)
         layout.setContentsMargins(
@@ -208,7 +248,7 @@ class PathAMediaPane:
         )
         layout.addWidget(self.open_button)
         layout.addWidget(self.metadata_label)
-        layout.addWidget(self.video_widget)
+        layout.addWidget(self.video_widget, stretch=1)
 
         playback_controls = QHBoxLayout()
         playback_controls.addWidget(self.play_button)
@@ -219,30 +259,7 @@ class PathAMediaPane:
         layout.addWidget(self.current_time_label)
         layout.addWidget(self.current_cue_relationship_label)
         layout.addWidget(self.timeline)
-
-        layout.addWidget(self.roi_visualization)
-        roi_form = QFormLayout()
-        roi_form.addRow("ROI x", self.roi_x_spin)
-        roi_form.addRow("ROI y", self.roi_y_spin)
-        roi_form.addRow("ROI width", self.roi_width_spin)
-        roi_form.addRow("ROI height", self.roi_height_spin)
-        layout.addLayout(roi_form)
-
-        processing_range_form = QFormLayout()
-        processing_range_form.addRow(self.limit_processing_range_checkbox)
-        processing_range_form.addRow("Range start (s)", self.processing_range_start_spin)
-        processing_range_form.addRow("Range end (s)", self.processing_range_end_spin)
-        layout.addLayout(processing_range_form)
-
-        layout.addWidget(self.language_selection_panel)
-        layout.addWidget(self.save_roi_button)
-
-        ocr_controls = QHBoxLayout()
-        ocr_controls.addWidget(self.run_ocr_button)
-        ocr_controls.addWidget(self.cancel_ocr_button)
-        layout.addLayout(ocr_controls)
-        layout.addWidget(self.ocr_status_label)
-        layout.addWidget(self.evidence_pane)
+        layout.addWidget(scroll_area, stretch=1)
 
         # Milestone 7: Path A follows the same shared Reconstruction QA
         # seam Path B does (DESIGN.md section 6's frozen three-pane

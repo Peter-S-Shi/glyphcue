@@ -21,6 +21,12 @@ class PlaybackController(QObject):
         self._audio_output = QAudioOutput()
         self._player.setAudioOutput(self._audio_output)
         self._span_end_ms: int | None = None
+        self._player.mediaStatusChanged.connect(self._on_media_status_changed)
+
+    def _on_media_status_changed(self, status: QMediaPlayer.MediaStatus) -> None:
+        if status == QMediaPlayer.MediaStatus.LoadedMedia:
+            if self._player.playbackState() == QMediaPlayer.PlaybackState.StoppedState:
+                self._player.pause()
 
     @property
     def player(self) -> QMediaPlayer:
@@ -36,6 +42,7 @@ class PlaybackController(QObject):
 
     def load(self, path: Path) -> None:
         self._player.setSource(QUrl.fromLocalFile(str(path)))
+        self.pause()
 
     def play(self) -> None:
         self._player.play()

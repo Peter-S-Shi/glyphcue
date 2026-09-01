@@ -75,6 +75,18 @@ def test_pane_embeds_a_video_widget_in_the_frozen_shell(qapp_guard, repository):
     assert pane.window.centralWidget().count() == 3
 
 
+def test_video_widget_retains_visible_viewport_height_and_does_not_collapse(
+    qapp_guard, repository, test_video
+):
+    pane = PathAMediaPane(repository)
+    pane.window.resize(1200, 800)
+    pane.window.show()
+    pane.open_video(test_video)
+
+    assert pane.video_widget.minimumHeight() >= 240
+    assert pane.video_widget.height() >= 240
+
+
 def test_open_video_loads_the_given_path(qapp_guard, repository, test_video):
     pane = PathAMediaPane(repository)
 
