@@ -26,10 +26,12 @@ entries:` loop (no try/except around it) aborts the whole run rather
 than starting the next entry.
 The controlled/synthetic corpus in `benchmarks/m10_controlled_video_corpus/`
 closes only the reproducible performance-diagnosis seam, not ROADMAP
-§17's representative-video target -- that target remains an open M10
-limitation (see `docs/m10_private_corpus_incident.md`). This script is
-kept, fixed, and tracked so a future milestone can safely re-attempt the
-real corpus once the performance question is addressed.
+§17's representative-video target -- that target is transferred to
+Milestone 11 as a mandatory acceptance gate, not waived (see
+`docs/m10_private_corpus_incident.md`, `ROADMAP.md` §17/§18). This script
+is kept, fixed, and tracked so Milestone 11 can safely re-attempt the
+real corpus once its performance-hardening scope addresses the
+underlying cost.
 
 Ground-truth methodology (see the manifest's own per-entry `notes`, kept
 private): each entry's ground truth is a small number of

@@ -362,14 +362,21 @@ evidence behind it. In particular:
   confirmed failure.
 - No entry for Path A OCR accuracy failures on real (non-benchmark)
   video — no such run has ever completed (see #6); the representative-
-  video acceptance item remains open (below).
+  video acceptance item is transferred to Milestone 11, not closed
+  (below).
 
-## Representative-video acceptance item: still open
+## Representative-video acceptance item: transferred to Milestone 11, not waived
 
-Per `docs/m10_evidence_inventory.md` and `docs/m10_private_corpus_incident.md`,
-ROADMAP §17's 3–5 representative videos × 2–5 minute segments target is
-**not closed** by any evidence in this report. The controlled/synthetic
-corpus underlying findings #7–#9 closes only the reproducible
-performance-diagnosis seam. This remains an explicit, open M10 limitation
-pending final gate disposition — it is not waived, moved, or treated as
-satisfied by any finding above.
+Per `docs/m10_evidence_inventory.md`, `docs/m10_private_corpus_incident.md`,
+and ROADMAP.md §17's gate audit disposition (2026-08-31), ROADMAP §17's
+3–5 representative videos × 2–5 minute segments target is **not closed**
+by any evidence in this report. The controlled/synthetic corpus
+underlying findings #7–#9 closes only the reproducible
+performance-diagnosis seam. M10's gate audit accepted M10 as complete
+while explicitly **transferring this target to Milestone 11 as a
+mandatory acceptance gate** (ROADMAP.md §18's acceptance gate 9) — it is
+not waived, silently downgraded to optional debt, or treated as
+satisfied by any finding above. Per that same disposition, Milestone 12
+must not begin until the transferred evaluation completes and its
+results are folded back into `EVALUATION_REPORT.md` and, where relevant,
+this report.

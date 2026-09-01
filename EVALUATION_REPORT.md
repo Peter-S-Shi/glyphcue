@@ -58,8 +58,11 @@ Every result below is tagged along four axes that must not be conflated:
 | **Realistic-private corpus** (`private_samples/m10_video_corpus/`) | **Real, private, copyrighted video** — the repo owner's own material | Independently verified point-samples (real captions read directly from extracted frames, not reverse-engineered from GlyphCue's own output) | **Incomplete.** The one real attempt crashed after ~40 minutes on an evaluation-harness bug before any entry finished (`docs/m10_private_corpus_incident.md`). Recovered partial evidence exists (trigger counts, coverage windows) but no entry produced a scored result. |
 
 **ROADMAP §17's target envelope — "3–5 representative videos × 2–5 minute
-segments" — is OPEN, not closed by any corpus in this report.** See
-"M10 evidence status / unresolved items" at the end of this report.
+segments" — was not closed by any corpus in this report.** M10's gate
+audit (2026-08-31, ROADMAP.md §17) accepted M10 as complete while
+transferring this specific target to Milestone 11 as a mandatory
+acceptance gate, not waiving it. See "M10 evidence status / unresolved
+items" at the end of this report.
 
 Public demo-safe material: none identified beyond the copyright-safe
 generated/rendered fixtures already listed above (per
@@ -382,19 +385,25 @@ this report.
 ## M10 evidence status / unresolved items
 
 - **ROADMAP §17's "3–5 representative videos × 2–5 minute segments"
-  target is OPEN.** It is not closed by any evidence in this report. The
-  controlled/synthetic corpus (`benchmarks/m10_controlled_video_corpus/`)
-  satisfies **reproducible performance diagnosis only** — it does not
-  satisfy the representative-video target and is not presented as
-  equivalent to it. The one real attempt against the repo owner's
-  realistic-private corpus supplies **partial external-realistic
-  evidence** (real OCR-trigger-rate signal, real coverage/timing data for
-  the fraction of each entry that ran) but is **not a completed
-  representative-video evaluation** — it crashed before any entry
-  finished scoring.
-- This report does **not** decide or move that gate. Final disposition
-  of the representative-video acceptance item belongs to the subsequent
-  M10 gate audit, not to this evaluation report.
+  target was not completed in M10 — and, per M10's gate audit
+  disposition (ROADMAP.md §17, 2026-08-31), this target is not waived.
+  It is transferred to Milestone 11 as a mandatory acceptance gate**
+  (ROADMAP.md §18's acceptance gate 9), because completing it safely
+  requires exactly the Path A performance/harness work M11 Product
+  Hardening already exists to do. The controlled/synthetic corpus
+  (`benchmarks/m10_controlled_video_corpus/`) satisfies **reproducible
+  performance diagnosis only** — it does not satisfy the
+  representative-video target and is not presented as equivalent to it.
+  The one real attempt against the repo owner's realistic-private corpus
+  supplies **partial external-realistic evidence** (real OCR-trigger-rate
+  signal, real coverage/timing data for the fraction of each entry that
+  ran) but is **not a completed representative-video evaluation** — it
+  crashed before any entry finished scoring.
+- **This report is not updated to reflect the transferred evaluation's
+  eventual results.** Per ROADMAP.md §17's gate audit disposition, M12
+  must not begin until Milestone 11 completes the transferred evaluation
+  and its results — whatever they are — are folded back into this
+  document and, where relevant, `FAILURE_MODE_REPORT.md`.
 - Also open, restated from "Limitations" above: Path A Cue-level
   precision/recall, Path A timing start/end error, WER (any corpus),
   multilingual layer-assignment correctness on real material, CPU use,

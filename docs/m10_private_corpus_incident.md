@@ -9,9 +9,11 @@ discarded. The controlled/synthetic corpus (see
 `docs/m10_performance_diagnosis.md` and
 `benchmarks/m10_controlled_video_corpus/`) closes only the reproducible
 performance-diagnosis seam; it does **not** satisfy ROADMAP §17's stated
-3–5 representative videos × 2–5 minute segments target. That target
-remains an explicit, open M10 limitation pending final gate disposition
-— it is not waived or silently substituted by the synthetic corpus.
+3–5 representative videos × 2–5 minute segments target. Per M10's gate
+audit disposition (ROADMAP.md §17, 2026-08-31), that target is **not
+waived** — it is transferred to Milestone 11 as a mandatory acceptance
+gate (ROADMAP.md §18's acceptance gate 9), not silently substituted by
+the synthetic corpus or left as unowned debt.
 
 ## What was run
 
@@ -160,9 +162,16 @@ controlled and reproducible way, in `docs/m10_performance_diagnosis.md`.
   performance-diagnosis seam of Path A evaluation — it is clearly labeled
   as controlled/synthetic, and is not a substitute for, or equivalent to,
   this realistic private corpus. ROADMAP §17's representative-video
-  target (3–5 videos × 2–5 minute segments) is **not** closed by it and
-  remains an open M10 limitation / acceptance item, to be dispositioned
-  at the M10 gate audit rather than silently waived or moved.
+  target (3–5 videos × 2–5 minute segments) is **not** closed by it.
+- **M10's gate audit (ROADMAP.md §17, 2026-08-31) accepted M10 as
+  complete while explicitly transferring this target to Milestone 11 as
+  a mandatory acceptance gate** (ROADMAP.md §18's acceptance gate 9) —
+  not waived, not silently moved, not downgraded to optional debt. M11
+  is responsible for exactly the Path A performance/harness prerequisites
+  this incident exposed, so it is also responsible for completing the
+  evaluation. Milestone 12 must not begin until Milestone 11 completes
+  it and folds the results back into `EVALUATION_REPORT.md` and, where
+  relevant, `FAILURE_MODE_REPORT.md`.
 - This incident, and the crashed run's real (if partial) evidence, stand
   as a documented M10 limitation and a real observed failure/finding —
   not discarded as noise.

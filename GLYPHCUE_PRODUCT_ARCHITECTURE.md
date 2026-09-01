@@ -3,7 +3,7 @@
 **Document type:** Authoritative post-Grill product architecture baseline  
 **Project:** GlyphCue  
 **Repository:** `Peter-S-Shi/glyphcue`  
-**Lifecycle phase:** Production Development in progress → Milestone 9 complete, Feature Freeze ACTIVE, Milestone 10 next  
+**Lifecycle phase:** Production Development in progress → Milestone 10 complete (evidence/evaluation closure accepted; representative-video gate transferred to Milestone 11, not waived — see `ROADMAP.md` §17's gate audit disposition), Feature Freeze ACTIVE, Milestone 11 (Product Hardening & Full Regression) next  
 **Status:** Authoritative V1 product architecture for production development  
 **Last updated:** 2026-08-31
 
@@ -1254,8 +1254,11 @@ Milestone 8 — Path B Deepening: CJK / Rolling Normalization
 Milestone 9 — V1 Product Completion & Feature Freeze
 ✓ complete
 
+Milestone 10 — Evaluation & Career Evidence Closure
+✓ complete (gate audit accepted 2026-08-31; representative-video target transferred to Milestone 11 as a mandatory gate, not waived — see `ROADMAP.md` §17)
+
 Production Development
-IN PROGRESS — Feature Freeze ACTIVE — Milestone 10 (Evaluation & Career Evidence Closure) next
+IN PROGRESS — Feature Freeze ACTIVE — Milestone 11 (Product Hardening & Full Regression) next
 ```
 
 ---
