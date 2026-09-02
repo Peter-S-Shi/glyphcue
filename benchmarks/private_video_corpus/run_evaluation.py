@@ -6,12 +6,20 @@ representative-video corpus the repo owner supplied locally: real
 `reconstruct_multilingual_cues_for_track_group`, no algorithm change and
 no Review Priority involvement.
 
-Which Path A evidence strategy it uses is named by `EVALUATION_PROFILE`
-rather than implied, so a reader of a results file can tell which
-pipeline produced it. M11 stage 5-C froze that at
-`EvidenceJobProfile.EXPERIMENTAL_HYBRID`; multilingual entries are a
-known open question under that profile -- see `preflight()`, which
-refuses rather than picking a language on the caller's behalf.
+Which Path A evidence strategy each entry uses is a per-entry, explicit
+choice in `_PROFILE_BY_ENTRY_ID` -- never implied or defaulted -- so a
+reader of a results file can always tell which pipeline produced which
+entry. M11 stage 5-C's human gate approved a SPLIT profile
+(docs/m11_representative_evaluation.md section 13, Option A):
+`EvidenceJobProfile.EXPERIMENTAL_HYBRID` for the two single-language
+windows (`sample_g`, `sample_e`) and `EvidenceJobProfile.PRODUCTION_TRIGGER`
+for the three bilingual ones (`sample_h`, `sample_f`, `sample_c`), since
+Hybrid is single-language by construction. `preflight()` requires every
+manifest entry to have an assigned profile and refuses a multilingual
+entry assigned Hybrid rather than picking a language on the caller's
+behalf. Results are grouped strictly by profile
+(`_summarize_by_profile`) -- nothing here ever averages a Hybrid entry
+and a Production entry into one number.
 
 This script is tracked; the corpus manifest and video files it reads are
 NOT. If `private_samples/m10_video_corpus/manifest.json` does not exist
@@ -132,26 +140,60 @@ _ROI_BY_ENTRY_ID = {
     "private-f-bilingual-fast-broll": ROI(x=0.05, y=0.76, width=0.90, height=0.24),
 }
 
-# Stage 5-C's evaluation profile, frozen at the stage 5-B human gate.
-# Named here rather than defaulted so a reader of a results file can tell
-# which pipeline produced it (the same reason
-# `evidence_job_profile.build_evidence_job_for_profile` makes callers name
-# their profile).
-EVALUATION_PROFILE = EvidenceJobProfile.EXPERIMENTAL_HYBRID
+# Stage 5-C's split-profile evaluation, approved at the stage 5-C human
+# gate (Option A of docs/m11_representative_evaluation.md section 13):
+# EXPERIMENTAL_HYBRID cannot run a multilingual entry at all (it is
+# single-language by construction -- build_hybrid_ocr_evidence_job takes
+# one engine, not a per-language mapping), so the two single-language M11
+# stage 5 windows run under it and the three bilingual ones run under the
+# shipped PRODUCTION_TRIGGER path instead. This is a real difference in
+# which pipeline produced each entry's evidence, not an implementation
+# detail -- every consumer of a result (preflight, the crash check, the
+# real run, and the report) must be able to say which profile ran which
+# entry, and nothing here may quietly average the two together.
+#
+# M10's four original entries are included for completeness of this
+# table (so a caller asking `_PROFILE_BY_ENTRY_ID[entry.id]` for any
+# entry this script has ever known about gets an answer) at
+# PRODUCTION_TRIGGER, which is what they actually ran under in M10 --
+# EXPERIMENTAL_HYBRID did not exist yet.
+_PROFILE_BY_ENTRY_ID: dict[str, EvidenceJobProfile] = {
+    "private-a-clean-zh": EvidenceJobProfile.PRODUCTION_TRIGGER,
+    "private-d-bilingual-typical": EvidenceJobProfile.PRODUCTION_TRIGGER,
+    "private-b-difficult-styled": EvidenceJobProfile.PRODUCTION_TRIGGER,
+    "private-c-difficult-mixed-format": EvidenceJobProfile.PRODUCTION_TRIGGER,
+    "private-g-english-handheld": EvidenceJobProfile.EXPERIMENTAL_HYBRID,
+    "private-e-chinese-screenshare": EvidenceJobProfile.EXPERIMENTAL_HYBRID,
+    "private-h-bilingual-fixed-overlay": EvidenceJobProfile.PRODUCTION_TRIGGER,
+    "private-f-bilingual-fast-broll": EvidenceJobProfile.PRODUCTION_TRIGGER,
+}
 
 
-def _run_single_language_job(video_path: Path, entry: CorpusEntry, db_path: Path) -> tuple[PipelineMetrics, list, str]:
+def _profile_for(entry: CorpusEntry) -> EvidenceJobProfile:
+    """The one place that resolves which profile an entry runs under.
+    Raises rather than defaulting: an entry this table has no opinion
+    about must never silently pick a profile."""
+    try:
+        return _PROFILE_BY_ENTRY_ID[entry.id]
+    except KeyError as error:
+        raise PreflightError(f"{entry.id}: no profile assigned in _PROFILE_BY_ENTRY_ID") from error
+
+
+def _run_single_language_job(
+    video_path: Path, entry: CorpusEntry, db_path: Path
+) -> tuple[PipelineMetrics, list, str, EvidenceJobProfile]:
+    profile = _profile_for(entry)
     engine = PaddleOcrEngine(language=entry.languages[0])
     metrics = PipelineMetrics()
     evidence_run_id = str(uuid.uuid4())
     processing_range = ProcessingRange(entry.segment_start_seconds, entry.segment_end_seconds)
     detector = None
-    if EVALUATION_PROFILE is EvidenceJobProfile.EXPERIMENTAL_HYBRID:
+    if profile is EvidenceJobProfile.EXPERIMENTAL_HYBRID:
         detector = PaddleOcrTextDetector()
         detector.initialize()
     try:
         job = build_evidence_job_for_profile(
-            EVALUATION_PROFILE,
+            profile,
             video_path,
             processing_range,
             _ROI_BY_ENTRY_ID[entry.id],
@@ -172,10 +214,23 @@ def _run_single_language_job(video_path: Path, entry: CorpusEntry, db_path: Path
     observations = ObservationRepository(read_conn).list_for_run(evidence_run_id)
     read_conn.close()
     cues, _diagnostics = reconstruct_cues_with_consensus(observations)
-    return metrics, cues, state
+    return metrics, cues, state, profile
 
 
-def _run_multilingual_job(video_path: Path, entry: CorpusEntry, db_path: Path) -> tuple[PipelineMetrics, list, str]:
+def _run_multilingual_job(
+    video_path: Path, entry: CorpusEntry, db_path: Path
+) -> tuple[PipelineMetrics, list, str, EvidenceJobProfile]:
+    profile = _profile_for(entry)
+    if profile is not EvidenceJobProfile.PRODUCTION_TRIGGER:
+        # Defense in depth: preflight already refuses a multilingual entry
+        # assigned EXPERIMENTAL_HYBRID before any job is built, so reaching
+        # here with a non-production profile means preflight was bypassed
+        # (e.g. a direct call to run()) -- fail loudly rather than build a
+        # job under a profile this function does not actually implement.
+        raise PreflightError(
+            f"{entry.id}: multilingual entry assigned {profile.value}, but only "
+            f"{EvidenceJobProfile.PRODUCTION_TRIGGER.value} supports multilingual evidence"
+        )
     track_group = TrackGroup(id=f"tg-{entry.id}", roi=_ROI_BY_ENTRY_ID[entry.id], languages=entry.languages)
     engines = {language: PaddleOcrEngine(language=language) for language in entry.languages}
     metrics = PipelineMetrics()
@@ -189,7 +244,7 @@ def _run_multilingual_job(video_path: Path, entry: CorpusEntry, db_path: Path) -
     observations = ObservationRepository(read_conn).list_for_run(evidence_run_id)
     read_conn.close()
     cues, _diagnostics = reconstruct_multilingual_cues_for_track_group(observations, track_group)
-    return metrics, cues, state
+    return metrics, cues, state, profile
 
 
 _JOB_TIMEOUT_SECONDS = 600.0
@@ -202,7 +257,13 @@ def _cue_covering(cues: list, timestamp: float):
     return None
 
 
-def _evaluate_entry(entry: CorpusEntry, metrics: PipelineMetrics, cues: list, job_state: str) -> dict:
+def _evaluate_entry(
+    entry: CorpusEntry,
+    metrics: PipelineMetrics,
+    cues: list,
+    job_state: str,
+    profile: EvidenceJobProfile,
+) -> dict:
     # Group the manifest's point-sample ground-truth cues (one per
     # language per verified instant) back into one record per instant,
     # by their shared window midpoint.
@@ -232,10 +293,30 @@ def _evaluate_entry(entry: CorpusEntry, metrics: PipelineMetrics, cues: list, jo
             recovered_text = recovered_by_language.get(language, "")
             cer_by_language.setdefault(language, []).append(character_error_rate(truth_text, recovered_text))
 
+    range_seconds = entry.segment_end_seconds - entry.segment_start_seconds
+    coverage_ratio = (
+        metrics.media_seconds_processed / range_seconds if range_seconds > 0 else 0.0
+    )
+    # A completion label a reader can act on without cross-referencing
+    # job_final_state against coverage by hand: `cancelled` alone does not
+    # say whether that meant "barely started" or "essentially finished".
+    if job_state == "succeeded":
+        completion = "completed"
+    elif job_state == "cancelled" and coverage_ratio >= 0.98:
+        completion = "completed_via_timeout_cancel"
+    elif job_state == "cancelled":
+        completion = "partial_timeout"
+    else:
+        completion = "failed"
+
     return {
         "entry_id": entry.id,
+        "profile": profile.value,
         "languages": list(entry.languages),
+        "window_seconds": [entry.segment_start_seconds, entry.segment_end_seconds],
         "job_final_state": job_state,
+        "completion": completion,
+        "range_coverage_ratio": round(coverage_ratio, 4),
         "verified_point_count": len(points),
         "point_recall": matched / len(points) if points else 0.0,
         "mean_cer_by_language": {
@@ -243,6 +324,8 @@ def _evaluate_entry(entry: CorpusEntry, metrics: PipelineMetrics, cues: list, jo
         },
         "multilingual_missing_layer_count": missing_total,
         "multilingual_wrong_assignment_count": wrong_assignment_total,
+        "user_facing_cue_count": len(cues),
+        "observation_count": metrics.observations_created,
         "performance": {
             # Raw durations kept alongside the derived rates below -- a
             # rate/ratio alone would let a reader lose track of how much
@@ -256,6 +339,8 @@ def _evaluate_entry(entry: CorpusEntry, metrics: PipelineMetrics, cues: list, jo
             else 0.0,
             "frames_analyzed": metrics.frames_analyzed,
             "ocr_calls": metrics.ocr_calls,
+            "detector_calls": metrics.detector_calls,
+            "detector_seconds": round(metrics.detector_seconds, 2),
             "frames_analyzed_per_second": round(metrics.frames_analyzed / metrics.elapsed_seconds, 3)
             if metrics.elapsed_seconds > 0
             else 0.0,
@@ -293,6 +378,10 @@ def preflight() -> dict:
         if roi is None:
             problems.append(f"{entry.id}: no ROI in _ROI_BY_ENTRY_ID")
 
+        profile = _PROFILE_BY_ENTRY_ID.get(entry.id)
+        if profile is None:
+            problems.append(f"{entry.id}: no profile assigned in _PROFILE_BY_ENTRY_ID")
+
         duration = None
         if video_path.exists():
             duration = probe_media(video_path).duration_seconds
@@ -304,11 +393,13 @@ def preflight() -> dict:
                 problems.append(f"{entry.id}: processing range rejected -- {error}")
 
         multilingual = len(entry.languages) > 1
-        if multilingual and EVALUATION_PROFILE is EvidenceJobProfile.EXPERIMENTAL_HYBRID:
+        profile_supports_entry = True
+        if profile is EvidenceJobProfile.EXPERIMENTAL_HYBRID and multilingual:
+            profile_supports_entry = False
             problems.append(
-                f"{entry.id}: {EVALUATION_PROFILE.value} is single-language by construction "
-                f"(build_hybrid_ocr_evidence_job takes one engine) but this entry declares "
-                f"{list(entry.languages)}; refusing to pick a language on the caller's behalf"
+                f"{entry.id}: assigned {EvidenceJobProfile.EXPERIMENTAL_HYBRID.value}, which is "
+                f"single-language by construction (build_hybrid_ocr_evidence_job takes one engine), "
+                f"but this entry declares {list(entry.languages)}"
             )
 
         instants = {round((cue.start_time + cue.end_time) / 2, 3) for cue in entry.ground_truth_cues}
@@ -321,18 +412,26 @@ def preflight() -> dict:
 
         rows.append({
             "entry_id": entry.id,
+            "profile": profile.value if profile else None,
             "languages": list(entry.languages),
             "window": [entry.segment_start_seconds, entry.segment_end_seconds],
             "media_duration_seconds": round(duration, 2) if duration is not None else None,
             "roi": [roi.x, roi.y, roi.width, roi.height] if roi else None,
             "ground_truth_cues": len(entry.ground_truth_cues),
             "verified_instants": len(instants),
-            "runnable_under_frozen_profile": not (
-                multilingual and EVALUATION_PROFILE is EvidenceJobProfile.EXPERIMENTAL_HYBRID
-            ),
+            "runnable": profile is not None and profile_supports_entry,
         })
 
-    report = {"profile": EVALUATION_PROFILE.value, "manifest": str(MANIFEST_PATH), "entries": rows}
+    # Deliberately no single top-level "profile" field: this is a
+    # split-profile evaluation, and a reader who only looked at one field
+    # here could mistake it for the whole run's profile. `profiles_used`
+    # names every distinct profile actually assigned below, keyed
+    # per-entry in `entries`.
+    report = {
+        "manifest": str(MANIFEST_PATH),
+        "profiles_used": sorted({row["profile"] for row in rows if row["profile"]}),
+        "entries": rows,
+    }
     if problems:
         bullets = "".join(f"{chr(10)}  - {problem}" for problem in problems)
         raise PreflightError("preflight failed; nothing was run:" + bullets)
@@ -393,17 +492,16 @@ def crash_condition_check(*, timeout_seconds: float = 1.0) -> dict:
             video_path = MANIFEST_PATH.parent / entry.video_path
             db_path = Path(tmpdir) / f"crashcheck-{entry.id}.sqlite3"
             metrics = PipelineMetrics()
-            # Check each entry through the job type it would really use:
-            # the frozen profile where it supports the entry, the
-            # production job where it does not. Both have their own work
-            # loop, so verifying only one would leave the other's
-            # cancellation path unexercised on these windows.
-            hybrid = (
-                EVALUATION_PROFILE is EvidenceJobProfile.EXPERIMENTAL_HYBRID
-                and len(entry.languages) == 1
-            )
+            # Check each entry through the job type it will really use in
+            # the real run -- the entry's assigned split-profile entry,
+            # single-language build_hybrid_ocr_evidence_job or multilingual
+            # build_ocr_evidence_job's shared machinery either way. Both
+            # have their own work loop, so verifying only one would leave
+            # the other's cancellation path unexercised on these windows.
+            entry_profile = _profile_for(entry)
+            hybrid = entry_profile is EvidenceJobProfile.EXPERIMENTAL_HYBRID
             job = build_evidence_job_for_profile(
-                EVALUATION_PROFILE if hybrid else EvidenceJobProfile.PRODUCTION_TRIGGER,
+                entry_profile,
                 video_path,
                 ProcessingRange(entry.segment_start_seconds, entry.segment_end_seconds),
                 _ROI_BY_ENTRY_ID[entry.id],
@@ -416,7 +514,7 @@ def crash_condition_check(*, timeout_seconds: float = 1.0) -> dict:
             state = run_job_or_cancel(job, timeout_seconds=timeout_seconds, cancel_grace_seconds=30.0)
             rows.append({
                 "entry_id": entry.id,
-                "job_profile": (EVALUATION_PROFILE if hybrid else EvidenceJobProfile.PRODUCTION_TRIGGER).value,
+                "job_profile": entry_profile.value,
                 "terminal_state": state,
                 "worker_thread_still_alive": job.state.value == "running",
                 "media_seconds_processed": round(metrics.media_seconds_processed, 3),
@@ -445,6 +543,44 @@ def crash_condition_check(*, timeout_seconds: float = 1.0) -> dict:
     }
 
 
+def _summarize_by_profile(entry_results: list[dict]) -> dict:
+    """Per-profile aggregates ONLY -- grouped strictly by which profile
+    produced each entry, never combined across profiles. This function
+    exists precisely so nothing downstream has to (or can, without
+    reaching past it) collapse Hybrid and Production results into one
+    number."""
+    by_profile: dict[str, list[dict]] = {}
+    for row in entry_results:
+        by_profile.setdefault(row["profile"], []).append(row)
+
+    summary = {}
+    for profile, rows in by_profile.items():
+        recalls = [row["point_recall"] for row in rows]
+        cer_values: list[float] = []
+        for row in rows:
+            cer_values.extend(row["mean_cer_by_language"].values())
+        ratios = [
+            row["performance"]["processing_time_to_media_duration_ratio"]
+            for row in rows
+            if row["performance"]["media_duration_seconds"] > 0
+        ]
+        summary[profile] = {
+            "entry_count": len(rows),
+            "entry_ids": [row["entry_id"] for row in rows],
+            "completion_by_entry": {row["entry_id"]: row["completion"] for row in rows},
+            "mean_point_recall": sum(recalls) / len(recalls) if recalls else 0.0,
+            "mean_cer_across_languages_and_entries": (
+                sum(cer_values) / len(cer_values) if cer_values else None
+            ),
+            "mean_processing_time_to_media_duration_ratio": (
+                sum(ratios) / len(ratios) if ratios else None
+            ),
+            "total_user_facing_cues": sum(row["user_facing_cue_count"] for row in rows),
+            "total_observations": sum(row["observation_count"] for row in rows),
+        }
+    return summary
+
+
 def run() -> dict | None:
     if not MANIFEST_PATH.exists():
         print(f"No private corpus manifest at {MANIFEST_PATH} -- skipping (this is expected on any machine "
@@ -455,17 +591,26 @@ def run() -> dict | None:
     preflight()
     entries = load_corpus_manifest(MANIFEST_PATH)
 
-    results = {"entries": []}
+    entry_results = []
     with tempfile.TemporaryDirectory() as tmpdir:
         for entry in entries:
             video_path = MANIFEST_PATH.parent / entry.video_path
             db_path = Path(tmpdir) / f"{entry.id}.sqlite3"
             if len(entry.languages) > 1:
-                metrics, cues, state = _run_multilingual_job(video_path, entry, db_path)
+                metrics, cues, state, profile = _run_multilingual_job(video_path, entry, db_path)
             else:
-                metrics, cues, state = _run_single_language_job(video_path, entry, db_path)
-            results["entries"].append(_evaluate_entry(entry, metrics, cues, state))
+                metrics, cues, state, profile = _run_single_language_job(video_path, entry, db_path)
+            entry_results.append(_evaluate_entry(entry, metrics, cues, state, profile))
 
+    results = {
+        "entries": entry_results,
+        # Grouped by the profile that actually produced each entry's
+        # evidence -- never a single number spanning both. A reader who
+        # wants "the" recall or CER for this run must pick a profile
+        # group; there is deliberately no cross-profile aggregate to
+        # reach for instead.
+        "summary_by_profile": _summarize_by_profile(entry_results),
+    }
     PRIVATE_RESULTS_PATH.write_text(json.dumps(results, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"Wrote {PRIVATE_RESULTS_PATH} (private, gitignored)")
     return results

@@ -1,22 +1,26 @@
 # Milestone 11 — Representative Evaluation (stage ⑤)
 
-**Status:** IN PROGRESS, at step **⑤-C**, which is **READY TO RUN for 2
-of 5 windows** and blocked on one decision for the other three (§13).
-No evaluation run has been executed yet.
+**Status:** IN PROGRESS. The step ⑤-C split-profile evaluation has been
+**executed** against all five frozen windows and its results are
+reported in §15 — **but stage ⑤ is NOT closed**: the run is
+timeout-limited (every window partial), and several items in §15's
+Human Adjudication list are still open.
 
 | Step | State |
 |---|---|
 | ⑤-A Corpus selection | **CLOSED** — accepted at the human gate; the corpus below is frozen |
 | ⑤-B Evaluation preparation | **CLOSED** — five ROI proposals approved unchanged (§6); all 44 ground-truth candidates confirmed with no corrections (§7, §9) |
-| ⑤-C Hardened harness run | **READY, not started** — manifest and harness wired (§10), preflight passes structurally (§11), M10 crash condition does not reproduce (§12). Blocked for the three bilingual windows by §13. |
+| ⑤-C Split-profile evaluation | **RUN COMPLETE, awaiting human adjudication** — manifest and harness wired (§10), preflight and crash-check re-verified 5/5 runnable under the approved split profile (§11–§13), the real run executed with no exceptions (§15), all five windows partial due to the 600 s per-entry timeout. |
 
 **Frozen corpus (⑤-A):** `sample_g` 90–270 s, `sample_e` 150–330 s,
 `sample_h` 900–1080 s, `sample_f` 560–740 s, `sample_c` 480–660 s.
 
-**Not done here, deliberately:** no evaluation run, no OCR or temporal
-pipeline change, no reopening of Beta-S / Auto-ROI research, no retuning
-of the 0.300 threshold, no promotion of the Experimental Hybrid profile.
-Nothing under `src/` has been touched by stage ⑤.
+**Not done here, deliberately:** no OCR or temporal pipeline change, no
+reopening of Beta-S / Auto-ROI research, no retuning of the 0.300
+threshold, no promotion of the Experimental Hybrid profile, and no re-run
+with a longer timeout to chase a better-looking number. Nothing under
+`src/` has been touched by stage ⑤ — every change is in `benchmarks/`,
+docs, or untracked private corpus files.
 
 **Privacy:** the corpus is untracked (`private_samples/` is in
 `.gitignore`) and stays that way. This document describes the samples by
@@ -471,7 +475,7 @@ test was added. `tests/benchmarks/test_job_harness.py` already pins the
 harder case — a job that refuses to cooperate must abort the whole run
 rather than let the next entry start.
 
-## 13. Blocker: the frozen profile cannot run the three bilingual windows
+## 13. Blocker: the frozen profile cannot run the three bilingual windows — RESOLVED (Option A approved)
 
 `EXPERIMENTAL_HYBRID` is single-language **by construction**:
 `build_hybrid_ocr_evidence_job` takes one `OcrEngine`, not a per-language
@@ -479,20 +483,38 @@ mapping, and `path_a_media_pane` already refuses a multilingual Hybrid
 run in the UI for the same reason. Three of the five frozen windows —
 `sample_h`, `sample_f`, `sample_c` — are bilingual.
 
-Preflight refuses the whole run rather than silently choosing a language,
-so today ⑤-C is **ready for 2 of 5 windows** (`sample_g`, `sample_e`).
-This needs one decision, and each option costs something different:
+Three options were set out, each costing something different:
 
 | Option | What it means | Cost |
 |---|---|---|
-| **A. Split profile** (recommended) | Hybrid on `sample_g` + `sample_e`; production trigger on `sample_h`, `sample_f`, `sample_c`. Implementation: a `_PROFILE_BY_ENTRY_ID` override beside the existing ROI table, and the results file already records the profile per entry. | Cross-window comparison mixes two pipelines. Every metric stays valid. |
-| **B. Hybrid everywhere, one language per window** | Pick a single language for each bilingual window and run Hybrid on it. | The other layer's confirmed ground truth must be dropped, and multilingual layer-assignment metrics are lost on 3 of 5 windows. |
-| **C. Hybrid twice per bilingual window, merged** | One hybrid run per language, observations merged before multilingual reconstruction. | **Not a small change, and not obviously sound.** `build_multilingual_ocr_evidence_job` deliberately makes the OCR-trigger decision *once per frame, shared across languages*, which is what lets M6's reconstruction reuse M5's state-run grouping. Two independent hybrid runs would each schedule on their own detector anchors, so the two layers would not share a trigger cadence. This would need its own evidence before it could be trusted. |
+| **A. Split profile** — **approved at the ⑤-C human gate** | Hybrid on `sample_g` + `sample_e`; production trigger on `sample_h`, `sample_f`, `sample_c`. | Cross-window comparison mixes two pipelines. Every metric stays valid *within* a profile; nothing is merged across them. |
+| B. Hybrid everywhere, one language per window | Pick a single language for each bilingual window and run Hybrid on it. | The other layer's confirmed ground truth must be dropped, and multilingual layer-assignment metrics are lost on 3 of 5 windows. Not chosen. |
+| C. Hybrid twice per bilingual window, merged | One hybrid run per language, observations merged before multilingual reconstruction. | Not a small change, and not obviously sound — `build_multilingual_ocr_evidence_job` deliberately makes the OCR-trigger decision once per frame, shared across languages, which two independent hybrid runs would not preserve. Not chosen. |
 
-Nothing here has been implemented: choosing is the gate's call, not the
-harness's.
+**Implementation.** `_PROFILE_BY_ENTRY_ID` in
+`benchmarks/private_video_corpus/run_evaluation.py` assigns a profile to
+every entry explicitly:
 
-## 14. The run command, once that decision is made
+| Entry id | Profile |
+|---|---|
+| `private-g-english-handheld` | `experimental_hybrid` |
+| `private-e-chinese-screenshare` | `experimental_hybrid` |
+| `private-h-bilingual-fixed-overlay` | `production_trigger` |
+| `private-f-bilingual-fast-broll` | `production_trigger` |
+| `private-c-difficult-mixed-format` | `production_trigger` |
+
+`preflight()` requires every manifest entry to resolve a profile from
+this table and refuses a multilingual entry assigned Hybrid; both job
+runners (`_run_single_language_job`, `_run_multilingual_job`) resolve and
+return the actual profile they ran under, and `_evaluate_entry` records
+it on every result row (`"profile": "..."`). `_summarize_by_profile`
+groups every aggregate strictly by that field — mean recall, mean CER,
+mean realtime ratio, cue and observation totals are each computed only
+within one profile's rows, never across both. Re-run under this wiring:
+preflight and `--crash-check` both confirm **5/5 windows runnable**, with
+`profiles_used: ["experimental_hybrid", "production_trigger"]`.
+
+## 14. The run command
 
 ```
 python -m benchmarks.private_video_corpus.run_evaluation --preflight
@@ -505,9 +527,139 @@ Requirements: the `[ocr]` extra (present locally: `paddleocr` and
 `private_samples/m10_video_corpus/evaluation_results.json` — untracked,
 and only ever summarised into `EVALUATION_REPORT.md` in anonymised form.
 
-Before starting, note the standing cost warning: the per-entry job
-timeout is 600 s and M10's own numbers on this corpus were far slower
-than realtime (`docs/m10_performance_diagnosis.md`). A window that
-overruns is cancelled cleanly — verified in §12 — but it will then have
-covered only part of its 180 s, and that partial coverage must be
-reported honestly rather than retried until it looks better.
+Standing cost warning: the per-entry job timeout is 600 s and M10's own
+numbers on this corpus were far slower than realtime
+(`docs/m10_performance_diagnosis.md`). A window that overruns is
+cancelled cleanly — verified in §12 — but it will then have covered only
+part of its 180 s, and that partial coverage is reported honestly
+(`completion: "partial_timeout"` on that entry) rather than retried until
+it looks better.
+
+## 15. Real run — results and adjudication
+
+**Executed:** `python -m benchmarks.private_video_corpus.run_evaluation`,
+2026-09-02. Exit code 0, no exception, no Python traceback anywhere in
+the run log. Results written to the untracked
+`private_samples/m10_video_corpus/evaluation_results.json`; the numbers
+below are that file's content, anonymised (no caption text, no frame
+content, no timestamps beyond the frozen windows already named in this
+document).
+
+**Headline finding, stated first because it governs how to read
+everything below: none of the five windows completed.** Every entry hit
+its 600 s per-entry timeout, was cancelled cleanly (consistent with §12's
+crash-check), and stopped with only part of its 180 s window processed.
+This is the exact real-world performance cost `docs/m10_performance_diagnosis.md`
+already flagged, now reproduced on all five real windows rather than
+inferred from confounded M10 evidence or a synthetic fixture. **It is
+reported as observed, not retried or tuned to look better** — see item 1
+under Human Adjudication.
+
+### Per-window result
+
+| Entry | Profile | Completion | Window coverage | Point recall | Mean CER (matched points only) | Cues / Observations | Realtime ratio |
+|---|---|---|---|---|---|---|---|
+| `sample_g` (English-only, handheld) | Hybrid | partial_timeout | 90.4 / 180 s (50.2%) | 5/11 (45.5%) | en 0.017 | 17 / 59 | 6.8× |
+| `sample_e` (Chinese-only, screen-share) | Hybrid | partial_timeout | 109.6 / 180 s (60.9%) | 6/10 (60.0%) | zh 0.492 | 58 / 64 | 5.6× |
+| `sample_h` (bilingual, fixed footer) | Production | partial_timeout | 4.8 / 180 s (2.7%) | 1/10 (10.0%) | zh 0.0, en 0.145 | 5 / 114 | 128.6× |
+| `sample_f` (bilingual, fast cadence) | Production | partial_timeout | 3.9 / 180 s (2.2%) | 1/11 (9.1%) | en 0.0, zh 1.0 | 8 / 104 | 158.9× |
+| `sample_c` (bilingual, position/format change) | Production | partial_timeout | 6.3 / 180 s (3.5%) | 1/10 (10.0%) | en 0.32, zh 0.0 | 4 / 62 | 98.8× |
+
+Total wall clock across all five: 3096.6 s (51.6 min). Every job's own
+timeout (600 s) accounts for almost all of that — the small remainder is
+model construction, decode setup and the cancellation grace period.
+
+**"Mean CER (matched points only)" is exactly that** — computed only over
+the verified instants a real Cue actually covered, per this harness's
+stated scope (module docstring, and the M10 methodology it inherits): it
+says nothing about the 45–90% of instants no Cue reached at all under
+this run's timeout. A single matched point drives most of these numbers
+(`sample_h`, `sample_f`, `sample_c` each matched exactly one), so none of
+the Production-profile CER figures should be read as a stable accuracy
+estimate — they are one data point each.
+
+**`sample_f`'s zh CER = 1.0 is a missing layer, not a wrong transcription.**
+`multilingual_missing_layer_count: 1` on that entry confirms it: the one
+matched instant produced an English Cue with no Chinese layer at all, so
+`character_error_rate` against an empty string reads as total error. This
+is unrelated to the illegible-frame candidate (#7) from the confirmed
+ground truth, which was deliberately given no zh ground-truth cue in the
+first place (§9) — the matched instant here is a different, earlier one,
+reachable only because `sample_f`'s window coverage stopped at 3.9 s.
+
+### Correctness and performance, by profile — never merged
+
+Per the instruction this run was scoped under, the two profiles are
+reported strictly separately. No number below averages a Hybrid entry
+with a Production entry.
+
+| | Hybrid (`sample_g`, `sample_e`) | Production (`sample_h`, `sample_f`, `sample_c`) |
+|---|---|---|
+| Mean point recall | **52.7%** | **9.7%** |
+| Mean CER (matched points only) | 0.255 | 0.244 |
+| Mean realtime ratio | **6.2×** | **128.8×** |
+| Total user-facing cues | 75 | 17 |
+| Total observations | 123 | 280 |
+| OCR (recognition) calls / media-second | g: 0.37/s, e: 0.54/s | h: 7.9/s, f: 9.2/s, c: 3.2/s |
+| Detector calls (Hybrid only) | g: 161 (163.6 s), e: 127 (129.2 s) | n/a (`detector_calls: 0` by construction) |
+
+**The recall and realtime-ratio gap is large and consistent across both
+entries in each group** — not a one-off. On these specific real,
+non-static, real-world windows, `EXPERIMENTAL_HYBRID`'s detector-anchored
+scheduling issued OCR recognition calls at roughly 1/15–1/25th the
+density `PRODUCTION_TRIGGER`'s `ChangeTriggeredOcrPolicy` did, and
+finished 6–20× more of its window before hitting the same 600 s ceiling.
+This is exactly the mechanism `docs/m10_performance_diagnosis.md`
+hypothesised (real, non-static backgrounds over-trigger the change-detection
+threshold) — it is now measured directly on real background footage
+rather than inferred from M10's contention-confounded numbers, and the
+gap this run measured is larger than anything in that document.
+
+**What this finding is NOT:** a controlled Hybrid-vs-Production
+benchmark. The two groups are also two different kinds of content — the
+two Hybrid windows are the corpus' two single-language, single-speaker
+entries; the three Production windows are its three bilingual,
+visually busier entries (screen-shares, position changes, a fixed
+overlay). Content and profile are confounded here by construction (Hybrid
+cannot run the bilingual windows at all — that's §13's whole reason for
+existing), so this run cannot separate "Hybrid is faster" from "these two
+windows happen to be easier to process quickly." **No conclusion is drawn
+from this about promoting Experimental Hybrid to default Production, and
+none should be** — that question needs its own controlled evidence, which
+is explicitly out of scope for this run.
+
+### Observed failures
+
+None. Every job reached `cancelled` cleanly — no exception, no
+`PermissionError`, no orphaned worker thread (consistent with §12's
+crash-check), no Python traceback anywhere in the run log.
+
+### Human Adjudication needed
+
+1. **The 600 s per-entry timeout leaves every window mostly unprocessed.**
+   Raising it is a harness parameter, not an OCR/temporal algorithm
+   change and not a 0.300 retune — but it was **not** changed
+   unilaterally in this pass, per the explicit instruction not to
+   re-tune and re-run for a better number. Whether to re-run with a
+   longer timeout (and how long — Production's own numbers suggest it
+   would need well over an hour per bilingual window to finish 180 s) is
+   a call for the gate, not the harness.
+2. **`sample_h`'s duplicate-cue risk (the reason it was chosen in ⑤-A) is
+   inconclusive.** Only 2.7% of its window was processed, too little to
+   say whether the fixed footer produced duplicate user-facing Cues or
+   not. This specific window is the strongest candidate for a longer
+   individual timeout if only one is extended.
+3. **Whether the Hybrid/Production performance gap above is real signal
+   or a content-confound artifact** needs a controlled follow-up (same
+   content, both profiles) before it informs any roadmap decision — not
+   attempted here, and explicitly not a basis for touching M11's
+   Research Gate disposition on Experimental Hybrid.
+4. **Whether these partial results are sufficient to fold into
+   `EVALUATION_REPORT.md`** as this stage's contribution to ROADMAP §18
+   acceptance gate 9, reported honestly as partial (exactly as M10's own
+   evidence was), or whether the gate wants fuller coverage first.
+
+**Stage ⑤ is NOT closed by this run.** Nothing above is a PASS/FAIL
+verdict on the product; it is evidence, reported exactly as produced,
+for the gate to read.
+

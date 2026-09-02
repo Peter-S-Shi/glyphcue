@@ -8,10 +8,16 @@
 Stage ④ **Targeted Regression is CLOSED** — its automated evidence passed
 the human gate on 2026-09-02. Currently at stage ⑤ **Representative
 Evaluation**, which is the M10 gate transferred by §17's gate audit
-(ROADMAP §18 acceptance gate 9). Steps **⑤-A and ⑤-B are CLOSED**;
-**⑤-C is READY but not started**, and is blocked for three of the five
-windows (see Unresolved). M11 is **not** complete and that gate is still
-open.
+(ROADMAP §18 acceptance gate 9). Steps **⑤-A and ⑤-B are CLOSED**.
+**⑤-C has been executed**: the split-profile evaluation approved at its
+human gate (Option A — `EXPERIMENTAL_HYBRID` for the two single-language
+windows, `PRODUCTION_TRIGGER` for the three bilingual ones) ran against
+all five frozen windows with no exceptions. **Every window finished
+partial** — each hit the 600 s per-entry timeout before covering its
+full 180 s — so **stage ⑤ is NOT closed**; results and a Human
+Adjudication list are recorded in
+[`docs/m11_representative_evaluation.md`](docs/m11_representative_evaluation.md)
+§15. M11 is **not** complete and that gate is still open.
 
 Feature Freeze is ACTIVE. Milestones 0–10 are complete and merged
 (PRs #1–#12).
@@ -35,7 +41,7 @@ plus 2 verified negative points that deliberately emit no cue. One
 `sample_f` instant carries only its English layer — its Chinese layer is
 illegible in the frame and was left untranscribed rather than guessed.
 
-**⑤-C Evaluation preflight — READY, nothing run:**
+**⑤-C Split-profile evaluation — RUN COMPLETE, awaiting adjudication:**
 
 - Manifest path inconsistency resolved: the canonical
   `private_samples/m10_video_corpus/manifest.json` now exists with
@@ -43,24 +49,39 @@ illegible in the frame and was left untranscribed rather than guessed.
   read by nothing.
 - `_ROI_BY_ENTRY_ID` extended with the four new entry ids at exactly the
   approved ROI values; preflight fails if ids and manifest ever disagree.
-- `EVALUATION_PROFILE` frozen at `EXPERIMENTAL_HYBRID` as a named
-  constant, with a real detector constructed and shut down per entry.
-- New `--preflight` and `--crash-check` entry points; `run()` now refuses
-  to start unless preflight passes. Both no-op without the private corpus,
-  so CI and fresh clones are unaffected.
-- Preflight structural checks: 5/5 on manifest load, video presence, ROI
-  presence, range resolution against real probed duration, and
-  ground-truth placement inside the window.
-- **M10 crash condition re-verified against all five windows and does
-  NOT reproduce**: every job overran a deliberate 1 s timeout, was
-  cancelled to a terminal `cancelled` state, left no worker thread alive,
-  reported live progress, and the temp directory deleted cleanly. Both
-  job types exercised (hybrid where the profile supports the entry,
-  production where it does not). No harness defect found, so nothing was
-  fixed and no new test was added.
+- `_PROFILE_BY_ENTRY_ID` replaces the earlier single frozen profile:
+  `EXPERIMENTAL_HYBRID` for `sample_g`/`sample_e`, `PRODUCTION_TRIGGER`
+  for `sample_h`/`sample_f`/`sample_c`, per the ⑤-C human gate's approval
+  of Option A. Preflight requires every manifest entry to have an
+  assigned profile and refuses a multilingual entry assigned Hybrid.
+  Results record the actual profile per entry, and a
+  `_summarize_by_profile` step aggregates strictly within each profile —
+  nothing merges a Hybrid and a Production result into one number.
+- New `--preflight` and `--crash-check` entry points; `run()` refuses to
+  start unless preflight passes. Both re-confirmed **5/5 windows
+  runnable** under the split profile, and the crash-check re-verified
+  the M10 incident does not reproduce (clean cancellation, no orphaned
+  thread) on all five real windows.
+- **The real evaluation ran to completion (exit code 0, no exceptions)
+  against real video and real OCR/detector models.** Every one of the
+  five windows came back `partial_timeout`: each hit the 600 s per-entry
+  cap before finishing its 180 s window (coverage 2.2%–60.9%). This
+  reproduces, on real footage, the exact performance cost
+  `docs/m10_performance_diagnosis.md` already diagnosed — reported
+  honestly, not retried with a longer timeout to get a better number.
+- **By profile (never merged):** Hybrid (`sample_g`, `sample_e`) — mean
+  point recall 52.7%, mean realtime ratio 6.2×. Production
+  (`sample_h`, `sample_f`, `sample_c`) — mean point recall 9.7%, mean
+  realtime ratio 128.8×. The gap is real and consistent within each
+  group, but the two groups are also different content (single- vs.
+  multi-language), so it is reported as a signal for a future controlled
+  comparison, not a conclusion about promoting either profile.
+- Full per-window table and the Human Adjudication list are in
+  `docs/m11_representative_evaluation.md` §15.
 
-No evaluation run was started. No OCR or temporal pipeline code changed;
-nothing under `src/` has been touched by stage ⑤.
+No OCR or temporal pipeline code changed; nothing under `src/` has been
+touched by stage ⑤ — all of the above is `benchmarks/` harness code plus
+untracked private-corpus artifacts.
 
 Stage ④ Targeted Regression (CLOSED) remains recorded in
 [`docs/m11_targeted_regression.md`](docs/m11_targeted_regression.md):
@@ -100,17 +121,17 @@ appears anywhere in the repository.
 ## Unresolved
 
 - ROADMAP §18 acceptance gate is open, including gate 9 (the transferred
-  representative-video evaluation) — stage ⑤ is at corpus selection; no
-  evaluation run has been executed.
-- **⑤-C is blocked for three of five windows.** `EXPERIMENTAL_HYBRID` is
-  single-language by construction (`build_hybrid_ocr_evidence_job` takes
-  one engine), but `sample_h`, `sample_f` and `sample_c` are bilingual.
-  Preflight refuses the run rather than picking a language on the
-  caller's behalf. Three options with their costs are set out in
-  `docs/m11_representative_evaluation.md` §13; the recommendation is a
-  split profile (Hybrid on the two single-language windows, production
-  trigger on the three bilingual ones). Not implemented — the choice is
-  the gate's.
+  representative-video evaluation) — stage ⑤'s ⑤-C run is complete but
+  every window is partial; four items need human adjudication before
+  stage ⑤ can close (`docs/m11_representative_evaluation.md` §15):
+  whether to re-run with a longer per-entry timeout (a harness
+  parameter, not an algorithm change) given none of the five windows
+  finished; `sample_h`'s duplicate-cue risk is inconclusive at only 2.7%
+  window coverage; whether the measured Hybrid/Production performance
+  gap warrants a controlled follow-up before informing any roadmap
+  decision; and whether these partial results are sufficient to fold
+  into `EVALUATION_REPORT.md` as reported, or the gate wants fuller
+  coverage first.
 - `sample_f`'s one illegible Chinese layer would change if the gate
   chooses to re-read that frame by hand.
 - Packaging hardening (Qt plugins, FFmpeg path, OCR model assets, runtime
@@ -120,9 +141,9 @@ appears anywhere in the repository.
 
 ## Next action
 
-Decide how the frozen Experimental Hybrid profile should handle the three
-bilingual windows (§13), then start ⑤-C:
-`python -m benchmarks.private_video_corpus.run_evaluation`. Do not treat
-M11 as complete, and do not advance to Full Regression or
+Human adjudication of the four items above
+(`docs/m11_representative_evaluation.md` §15), starting with whether the
+per-entry timeout should be raised for a fuller-coverage re-run. Do not
+treat M11 as complete, and do not advance to Full Regression or
 merge-readiness before its earlier stages are signed off. PR #13 stays
 Draft.

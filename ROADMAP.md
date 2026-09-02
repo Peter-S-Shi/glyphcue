@@ -3,7 +3,7 @@
 **Document type:** Authoritative V1 milestone roadmap  
 **Project:** GlyphCue  
 **Repository:** `Peter-S-Shi/glyphcue`  
-**Lifecycle phase:** Production Development in progress → Milestone 10 complete (evidence/evaluation closure accepted; representative-video gate transferred to Milestone 11, not waived — see §17's gate audit disposition), Feature Freeze ACTIVE, **Milestone 11 (Product Hardening & Full Regression) IN PROGRESS — stage ④ Targeted Regression CLOSED (automated evidence accepted at the human gate, see `docs/m11_targeted_regression.md`), currently at stage ⑤ Representative Evaluation, step ⑤-C READY (not started)** (see `docs/m11_representative_evaluation.md`); M11 is NOT complete and its acceptance gate, including the transferred representative-video evaluation, is still open  
+**Lifecycle phase:** Production Development in progress → Milestone 10 complete (evidence/evaluation closure accepted; representative-video gate transferred to Milestone 11, not waived — see §17's gate audit disposition), Feature Freeze ACTIVE, **Milestone 11 (Product Hardening & Full Regression) IN PROGRESS — stage ④ Targeted Regression CLOSED (automated evidence accepted at the human gate, see `docs/m11_targeted_regression.md`), currently at stage ⑤ Representative Evaluation, step ⑤-C RUN COMPLETE (all five windows partial, awaiting human adjudication)** (see `docs/m11_representative_evaluation.md`); M11 is NOT complete and its acceptance gate, including the transferred representative-video evaluation, is still open  
 **Status:** Current V1 execution roadmap  
 **Last updated:** 2026-09-02
 
@@ -2003,12 +2003,19 @@ transferred M10 gate (§18 acceptance gate 9), recorded in
 `docs/m11_representative_evaluation.md`. Steps ⑤-A (corpus selection) and
 ⑤-B (ROI proposals and ground-truth confirmation) are both CLOSED at the
 human gate: the corpus is frozen at five windows, each with an approved
-ROI and confirmed point-sample ground truth. Step ⑤-C is wired and
-preflighted — manifest, ROI table and profile agree, and the M10 harness
-crash condition was re-verified against all five windows and does not
-reproduce — but **the runs themselves have not been started**, and three
-of the five windows are blocked because the frozen Experimental Hybrid
-profile is single-language by construction.
+ROI and confirmed point-sample ground truth. Step ⑤-C's earlier blocker
+— Experimental Hybrid being single-language by construction, against
+three bilingual windows — was resolved by a human-gate-approved
+split-profile evaluation (Hybrid on the two single-language windows,
+Production Trigger on the three bilingual ones), and **the real
+five-window evaluation has been run**: no exceptions, but every window
+came back partial (2.2%–60.9% of its 180 s covered) against the 600 s
+per-entry timeout, reproducing on real footage the performance cost
+`docs/m10_performance_diagnosis.md` diagnosed. **Stage ⑤ does not close
+on this run** — a short list of human-adjudication items (timeout
+extension, `sample_h`'s inconclusive duplicate-cue check, and how to
+fold partial results into `EVALUATION_REPORT.md`) is recorded in
+`docs/m11_representative_evaluation.md` §15.
 
 The remaining M11 stages — packaging hardening, formal Manual QA, and the
 Full Regression itself — have not been started.
