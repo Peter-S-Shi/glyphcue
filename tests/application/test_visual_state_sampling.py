@@ -125,6 +125,45 @@ def _drifting_frame(step: int) -> np.ndarray:
     return frame
 
 
+def test_a_confirmed_blank_is_a_hard_boundary_for_text_state_continuity():
+    """A blank state ends the preceding caption's identity: the first
+    non-blank frame after it starts a FRESH grouping context instead of
+    being judged against the pre-blank anchor.
+
+    The existing blank test above only shows the three runs land in
+    three groups, which a plain distance change would also produce. This
+    pins the semantic itself, by making the caption after the blank
+    PIXEL-IDENTICAL to the one before it. Distance alone would merge
+    them; only the blank observation standing between them keeps them
+    apart. Two captions separated by the subtitle going away are two
+    states even when they say the same thing -- the same words shown
+    twice are two cues, not one long one.
+
+    What this guards, checked rather than assumed: dropping blank
+    observations from the stream before grouping -- a plausible
+    "they carry no text, why pay for them" optimization -- collapses
+    this to ONE group and one representative, and the assertions below
+    fail. What it cannot guard is a grouper that carries the pre-blank
+    anchor across the gap, because that behavior is not reachable here:
+    a blank observation closes the open text group unconditionally, so
+    the boundary is structural rather than a rule that could be relaxed.
+    """
+    caption = _text_frame()
+    frames = [_sampled(i, float(i), caption) for i in range(3)]
+    frames += [_sampled(i, float(i), _BLANK_FRAME) for i in range(3, 6)]
+    frames += [_sampled(i, float(i), caption) for i in range(6, 9)]
+
+    result = group_visual_states(frames)
+
+    assert [g.state_kind for g in result.groups] == ["subtitle", "blank", "subtitle"]
+    # The two subtitle groups are separate despite zero distance between
+    # them, and each keeps its own representative.
+    assert signature_distance(frames[0].signature, frames[6].signature) == 0.0
+    assert len(result.representative_timestamps) == 2
+    assert result.representative_timestamps[0] < 3.0
+    assert result.representative_timestamps[1] >= 6.0
+
+
 def test_anchor_comparison_does_not_drift_across_a_long_stable_run():
     # Every frame stays within threshold of the FIRST frame (the anchor),
     # even though a naive frame-to-frame chain could accumulate drift
