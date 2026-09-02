@@ -216,3 +216,37 @@ def test_path_switching_preserves_preview_loop_isolation(qapp_guard, repository,
     assert switched_paths == [dummy_srt]
     # Preview loop state is isolated and does not corrupt processing range
     assert pane.current_processing_range().is_whole_media() is True
+
+
+def test_cue_replay_suspends_and_restores_ab_loop(qapp_guard, repository, test_video):
+    pane = PathAMediaPane(repository)
+    pane.open_video(test_video)
+
+    # Set and enable A-B loop: 0.1s to 0.3s
+    pane.loop_a_spin.setValue(0.1)
+    pane.loop_b_spin.setValue(0.3)
+    pane.preview_loop_checkbox.setChecked(True)
+    assert pane.controller.is_loop_enabled is True
+    assert pane.controller.loop_range == (0.1, 0.3)
+
+    # Trigger Cue Replay for a cue spanning 0.4s to 0.8s
+    from glyphcue.domain.cue import Cue
+    from glyphcue.domain.language_layer import LanguageLayer
+
+    cue = Cue(
+        id="cue-1",
+        start_time=0.4,
+        end_time=0.8,
+        language_layers=[LanguageLayer(language="en", text="Test Cue")],
+    )
+
+    pane._on_replay(cue)
+    # A-B loop must be temporarily suspended during span replay
+    assert pane.controller.is_loop_enabled is False
+
+    # Simulate position reaching end of span (800ms)
+    pane.controller._on_position_changed_during_span(850)
+
+    # Span replay pauses and restores original A-B loop state
+    assert pane.controller.is_loop_enabled is True
+    assert pane.controller.loop_range == (0.1, 0.3)

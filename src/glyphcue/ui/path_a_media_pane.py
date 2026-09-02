@@ -412,27 +412,32 @@ class PathAMediaPane:
         preview_loop_container.setObjectName("previewLoopBox")
         preview_loop_layout = QVBoxLayout(preview_loop_container)
         preview_loop_layout.setContentsMargins(
-            Spacing.COMPACT, Spacing.COMPACT, Spacing.COMPACT, Spacing.COMPACT
+            Spacing.COMPACT, Spacing.MICRO, Spacing.COMPACT, Spacing.MICRO
         )
         preview_loop_layout.setSpacing(Spacing.MICRO)
 
+        # Row 1: Preview Toggle + Actions + Status Summary
         loop_header_row = QHBoxLayout()
+        loop_header_row.setSpacing(Spacing.COMPACT)
         loop_header_row.addWidget(self.preview_loop_checkbox)
+        loop_header_row.addWidget(self.play_loop_button)
+        loop_header_row.addWidget(self.clear_loop_button)
         loop_header_row.addStretch(1)
         loop_header_row.addWidget(self.preview_loop_status_label)
         preview_loop_layout.addLayout(loop_header_row)
 
-        loop_controls_row = QHBoxLayout()
-        loop_controls_row.setSpacing(Spacing.COMPACT)
-        loop_controls_row.addWidget(QLabel("A (s):"))
-        loop_controls_row.addWidget(self.loop_a_spin)
-        loop_controls_row.addWidget(self.set_loop_a_from_playhead_button)
-        loop_controls_row.addWidget(QLabel("B (s):"))
-        loop_controls_row.addWidget(self.loop_b_spin)
-        loop_controls_row.addWidget(self.set_loop_b_from_playhead_button)
-        loop_controls_row.addWidget(self.play_loop_button)
-        loop_controls_row.addWidget(self.clear_loop_button)
-        preview_loop_layout.addLayout(loop_controls_row)
+        # Row 2: Point A & Point B with Playhead Setters
+        loop_points_row = QHBoxLayout()
+        loop_points_row.setSpacing(Spacing.COMPACT)
+        loop_points_row.addWidget(QLabel("A:"))
+        loop_points_row.addWidget(self.loop_a_spin)
+        loop_points_row.addWidget(self.set_loop_a_from_playhead_button)
+        loop_points_row.addSpacing(Spacing.STANDARD)
+        loop_points_row.addWidget(QLabel("B:"))
+        loop_points_row.addWidget(self.loop_b_spin)
+        loop_points_row.addWidget(self.set_loop_b_from_playhead_button)
+        loop_points_row.addStretch(1)
+        preview_loop_layout.addLayout(loop_points_row)
 
         center_layout.addWidget(preview_loop_container)
 

@@ -24,6 +24,7 @@ class PlaybackController(QObject):
         self._loop_start_ms: int | None = None
         self._loop_end_ms: int | None = None
         self._loop_enabled: bool = False
+        self._suspended_loop_enabled: bool | None = None
         self._last_position_ms: int = 0
         self._player.mediaStatusChanged.connect(self._on_media_status_changed)
         self._player.positionChanged.connect(self._on_playback_position_changed)
@@ -78,7 +79,16 @@ class PlaybackController(QObject):
 
     def play_span(self, start_seconds: float, end_seconds: float) -> None:
         """Cue-span replay: seek to `start_seconds`, play, and
-        automatically pause once playback reaches `end_seconds`."""
+        automatically pause once playback reaches `end_seconds`.
+
+        Temporarily suspends an active A-B preview loop during the span
+        playback, restoring the original loop configuration once the
+        span replay concludes or is paused.
+        """
+        if self._loop_enabled:
+            self._suspended_loop_enabled = True
+            self._loop_enabled = False
+
         self._span_end_ms = round(end_seconds * 1000)
         self._player.positionChanged.connect(self._on_position_changed_during_span)
         self.play()
@@ -102,10 +112,12 @@ class PlaybackController(QObject):
         """
         if start_seconds < 0.0 or end_seconds <= start_seconds:
             self._loop_enabled = False
+            self._suspended_loop_enabled = None
             return False
         self._loop_start_ms = round(start_seconds * 1000)
         self._loop_end_ms = round(end_seconds * 1000)
         self._loop_enabled = enabled
+        self._suspended_loop_enabled = None
         return True
 
     def set_loop_enabled(self, enabled: bool) -> None:
@@ -120,15 +132,18 @@ class PlaybackController(QObject):
                 self._loop_enabled = False
         else:
             self._loop_enabled = False
+        self._suspended_loop_enabled = None
 
     def clear_ab_loop(self) -> None:
         self._loop_enabled = False
+        self._suspended_loop_enabled = None
         self._loop_start_ms = None
         self._loop_end_ms = None
 
     def _on_playback_position_changed(self, position_ms: int) -> None:
         if (
             self._loop_enabled
+            and self._span_end_ms is None
             and self._loop_start_ms is not None
             and self._loop_end_ms is not None
             and self._loop_end_ms > self._loop_start_ms
@@ -142,5 +157,11 @@ class PlaybackController(QObject):
     def _on_position_changed_during_span(self, position_ms: int) -> None:
         if self._span_end_ms is not None and position_ms >= self._span_end_ms:
             self.pause()
-            self._player.positionChanged.disconnect(self._on_position_changed_during_span)
+            try:
+                self._player.positionChanged.disconnect(self._on_position_changed_during_span)
+            except (RuntimeError, TypeError):
+                pass
             self._span_end_ms = None
+            if self._suspended_loop_enabled:
+                self._loop_enabled = True
+                self._suspended_loop_enabled = None

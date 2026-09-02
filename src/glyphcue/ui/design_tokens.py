@@ -166,6 +166,15 @@ def base_stylesheet() -> str:
     #structureCard:hover, #ocrActionBox:hover, #qaHeaderCard:hover {{
         border-color: {Color.BORDER_MEDIUM};
     }}
+    #previewLoopBox {{
+        background-color: {Color.SURFACE_1};
+        border: 1px solid {Color.BORDER_SUBTLE};
+        border-radius: 6px;
+        padding: 4px 8px;
+    }}
+    #previewLoopBox:hover {{
+        border-color: {Color.BORDER_MEDIUM};
+    }}
 
     .section-title, #sectionHeaderLabel {{
         font-size: 11px;
