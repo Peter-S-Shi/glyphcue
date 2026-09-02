@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 from typing import Callable
@@ -20,6 +21,7 @@ from PySide6.QtWidgets import (
 )
 
 from glyphcue.adapters.paddleocr_engine import PaddleOcrEngine
+from glyphcue.adapters.paddleocr_text_detector import PaddleOcrTextDetector
 from glyphcue.application.thin_path_b import parse_and_reconstruct
 from glyphcue.persistence.database import connect
 from glyphcue.persistence.track_group_repository import TrackGroupRepository
@@ -28,6 +30,16 @@ from glyphcue.ui.path_a_media_pane import PathAMediaPane
 from glyphcue.ui.path_b_workspace import PathBWorkspace
 
 DEFAULT_DB_PATH = Path.home() / ".glyphcue" / "glyphcue.sqlite3"
+
+DEV_OCR_PROFILE_SELECTOR_ENV_VAR = "GLYPHCUE_DEV_OCR_PROFILE_SELECTOR"
+"""Set to "1" before launching to reveal the developer/manual-QA-only
+OCR Profile dropdown in Path A (M11). Unset/anything else keeps the
+shipped default: production trigger, no selector shown. Not a V1
+product feature -- there is no in-app way to turn this on."""
+
+
+def _dev_ocr_profile_selector_enabled() -> bool:
+    return os.environ.get(DEV_OCR_PROFILE_SELECTOR_ENV_VAR) == "1"
 
 
 class GlyphCueWorkbench(QMainWindow):
@@ -280,6 +292,8 @@ def create_path_a_app(
         ocr_engine_factory=PaddleOcrEngine,
         db_path=db_path,
         on_open_caption_file=on_open_caption_file,
+        enable_dev_ocr_profile_selector=_dev_ocr_profile_selector_enabled(),
+        hybrid_detector_factory=PaddleOcrTextDetector,
     )
     return app, pane
 

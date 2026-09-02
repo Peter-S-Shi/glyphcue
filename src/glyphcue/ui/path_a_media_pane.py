@@ -11,6 +11,7 @@ from PySide6.QtGui import QGuiApplication
 from PySide6.QtMultimediaWidgets import QVideoWidget
 from PySide6.QtWidgets import (
     QCheckBox,
+    QComboBox,
     QDialog,
     QDoubleSpinBox,
     QFileDialog,
@@ -42,6 +43,7 @@ from glyphcue.application.evidence_job_profile import (
     EvidenceJobProfile,
     build_evidence_job_for_profile,
 )
+from glyphcue.application.hybrid_evidence_job import TextDetector
 from glyphcue.application.pipeline_metrics import PipelineMetrics
 from glyphcue.application.processing_range import ProcessingRange
 from glyphcue.application.review_priority import (
@@ -118,6 +120,27 @@ class PathAMediaPane:
     the old "und" placeholder, which it cannot). Saving persists both
     ROI and the selected languages together into one `TrackGroup`;
     reconstructing this pane over the same repository restores both.
+
+    `enable_dev_ocr_profile_selector` (M11) is a developer/manual-QA-only
+    seam, OFF by default: when True, an "OCR Profile" dropdown appears in
+    the OCR Evidence Pipeline section letting the operator pick
+    PRODUCTION_TRIGGER (default selection) or EXPERIMENTAL_HYBRID for the
+    next run. It is not a V1 product feature -- there is no shipped UI
+    path that enables it; see `app.py`'s `GLYPHCUE_DEV_OCR_PROFILE_SELECTOR`
+    env var for how a developer turns it on locally. Every other Path A
+    control (video, ROI, Processing Range, Run OCR, progress UX,
+    workspace/reconstruction) behaves identically regardless of which
+    profile is selected -- only which evidence job gets built changes.
+    Hybrid is single-language only; selecting it with more than one
+    language configured, or without `hybrid_detector_factory` wired,
+    refuses the run with a clear status message rather than silently
+    running production instead.
+
+    `hybrid_detector_factory` (M11) lazily constructs the text detector
+    EXPERIMENTAL_HYBRID needs -- called only when a Hybrid run actually
+    starts, so opening the app never pays for a detector model nobody
+    asked for. The pane owns its `initialize()`/`shutdown()` lifecycle
+    around the run.
     """
 
     def __init__(
@@ -129,6 +152,8 @@ class PathAMediaPane:
         db_path: Path | None = None,
         available_languages: tuple[str, ...] = CANONICAL_LANGUAGES,
         on_open_caption_file: Callable[[Path], None] | None = None,
+        enable_dev_ocr_profile_selector: bool = False,
+        hybrid_detector_factory: Callable[[], TextDetector] | None = None,
     ) -> None:
         self._repository = track_group_repository
         self._track_group_id = track_group_id
@@ -136,6 +161,8 @@ class PathAMediaPane:
         self._ocr_engine_factory = ocr_engine_factory
         self._db_path = db_path
         self._on_open_caption_file = on_open_caption_file
+        self._hybrid_detector_factory = hybrid_detector_factory
+        self._active_hybrid_detector: TextDetector | None = None
         self._current_track_group: TrackGroup | None = None
         self._processing_range = ProcessingRange()
         self._source_id: str | None = None
@@ -214,6 +241,25 @@ class PathAMediaPane:
         self.limit_processing_range_checkbox.toggled.connect(
             self.processing_range_end_spin.setEnabled
         )
+
+        # Developer/manual-QA-only OCR profile selector (M11): absent
+        # entirely unless explicitly enabled, so it never appears in the
+        # default product experience. Production is always the first
+        # item / default selection.
+        self.dev_ocr_profile_combo: QComboBox | None = None
+        if enable_dev_ocr_profile_selector:
+            self.dev_ocr_profile_combo = QComboBox()
+            self.dev_ocr_profile_combo.addItem(
+                "OCR Profile: Production (default)", EvidenceJobProfile.PRODUCTION_TRIGGER
+            )
+            self.dev_ocr_profile_combo.addItem(
+                "OCR Profile: Experimental Hybrid (dev/QA only)",
+                EvidenceJobProfile.EXPERIMENTAL_HYBRID,
+            )
+            self.dev_ocr_profile_combo.setCurrentIndex(0)
+            self.dev_ocr_profile_combo.setToolTip(
+                "Developer/manual-QA only. Not a shipped product control."
+            )
 
         self.run_ocr_button = QPushButton("Run OCR Evidence")
         self.dry_run_policy_button = QPushButton("Dry Run Policy")
@@ -320,6 +366,9 @@ class PathAMediaPane:
         )
         ocr_header_row.addWidget(self.ocr_range_summary_label)
         ocr_box_layout.addLayout(ocr_header_row)
+
+        if self.dev_ocr_profile_combo is not None:
+            ocr_box_layout.addWidget(self.dev_ocr_profile_combo)
 
         ocr_controls = QHBoxLayout()
         self.run_ocr_button.setObjectName("runOcrBtn")
@@ -745,7 +794,50 @@ class PathAMediaPane:
         self.ocr_metrics = PipelineMetrics()
         self.current_evidence_run_id = str(uuid.uuid4())
 
-        if len(languages) == 1:
+        profile = (
+            self.dev_ocr_profile_combo.currentData()
+            if self.dev_ocr_profile_combo is not None
+            else EvidenceJobProfile.PRODUCTION_TRIGGER
+        )
+
+        if profile is EvidenceJobProfile.EXPERIMENTAL_HYBRID:
+            # Hybrid is single-language only (build_hybrid_ocr_evidence_job
+            # takes one engine, not a per-language set) and needs a real
+            # detector -- both refused explicitly, never silently
+            # downgraded to the production path.
+            if len(languages) != 1:
+                self.ocr_status_label.setText(
+                    "Experimental Hybrid profile supports a single language only "
+                    "(multilingual Track Groups use the production profile)"
+                )
+                return
+            if self._hybrid_detector_factory is None:
+                self.ocr_status_label.setText(
+                    "Experimental Hybrid profile needs a detector "
+                    "(no hybrid_detector_factory wired)"
+                )
+                return
+
+            engine = (
+                self._ocr_engine_factory(languages[0])
+                if self._ocr_engine_factory is not None
+                else self._ocr_engine
+            )
+            detector = self._hybrid_detector_factory()
+            detector.initialize()
+            self._active_hybrid_detector = detector
+            self.current_ocr_job = build_evidence_job_for_profile(
+                EvidenceJobProfile.EXPERIMENTAL_HYBRID,
+                self._video_path,
+                self._processing_range,
+                track_group.roi,
+                engine,
+                self._db_path,
+                self.ocr_metrics,
+                self.current_evidence_run_id,
+                detect=detector,
+            )
+        elif len(languages) == 1:
             # The live language selection must choose the real runtime
             # whenever a factory is available. A plain engine remains
             # only as the M4/M5 injection compatibility fallback.
@@ -820,6 +912,9 @@ class PathAMediaPane:
         )
 
     def _on_ocr_finished(self) -> None:
+        if self._active_hybrid_detector is not None:
+            self._active_hybrid_detector.shutdown()
+            self._active_hybrid_detector = None
         self.run_ocr_button.setEnabled(True)
         self.dry_run_policy_button.setEnabled(self._video_path is not None)
         self.cancel_ocr_button.setEnabled(False)
