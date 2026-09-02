@@ -205,6 +205,108 @@ def test_characterizes_a_short_intervening_state_being_swallowed_by_anchor_based
     assert 5.0 not in result.representative_timestamps
 
 
+def test_characterizes_why_no_grouping_rule_can_separate_the_swallowed_state():
+    """CHARACTERIZATION of the M11 Offline Grouping Robustness Gate's
+    STOP result. This is a measured property of the EVIDENCE, not a
+    limitation of any particular segmentation policy.
+
+    The gate asked whether an offline, non-greedy or look-back
+    segmentation rule could give the swallowed short state its own
+    representative while still resisting slow drift across a long stable
+    run. Four structural rules were compared on cached real observation
+    sequences (18 fixture x ROI-variant replays over sample_a/b/d):
+    greedy anchor, anchor AND chained, contiguous complete-linkage
+    agglomeration, and a parameter-free recursive gap split accepting a
+    cut only when the two halves are further from each other than either
+    is from itself. None of them recovered the state; the only variants
+    that appeared to were degenerate -- allowing a half of ONE member
+    forces its diameter to zero, so any two non-identical observations
+    separate, which shatters real states (up to 6 representatives for
+    one real state) rather than segmenting them.
+
+    The numbers below are why, taken from the contaminated group in the
+    real hand-drawn-tighter replay (7 observations: 4 from the longer
+    preceding state, 3 from the short state). Ranking every candidate
+    cut by its separation margin puts the REAL transition first -- the
+    rule looks in the right place -- but its margin is NEGATIVE: under
+    that ROI the short state's own three observations scatter by MORE
+    (0.1051, itself above the 0.10 grouping threshold) than they are
+    separated from the neighbouring state (0.0948).
+
+    So by any internal-consistency measure these observations are more
+    like their neighbour than like each other. No segmentation policy --
+    greedy or offline, threshold-based or scale-free -- can separate
+    clusters whose within-scatter exceeds their between-distance; that
+    is a discriminability property of the Beta-S signature under a
+    perturbed ROI, one layer upstream of grouping. Fixing it therefore
+    requires the signature (or the threshold it feeds), which this round
+    is explicitly scoped out of.
+    """
+    # Measured on the real replay: index 0-3 are the longer preceding
+    # state, 4-6 the short state that gets swallowed.
+    to_anchor = [0.0, 0.0246, 0.0296, 0.0627, 0.0953, 0.0967, 0.0989]
+    measured = {
+        (1, 2): 0.0100, (1, 3): 0.0400, (2, 3): 0.0400,  # within the long state
+        (4, 5): 0.0240, (5, 6): 0.1051, (4, 6): 0.0900,  # within the short state
+        (3, 4): 0.0948,  # the closest pair across the real transition
+    }
+    for index, distance in enumerate(to_anchor):
+        measured[(0, index)] = distance
+
+    def _forensic_distance(a, b):
+        i, j = sorted((a[0], b[0]))
+        if i == j:
+            return 0.0
+        return measured.get((i, j), 0.30)
+
+    frames = [_labeled_sampled(i, float(i), i) for i in range(7)]
+
+    def _diameter(members):
+        return max(
+            (
+                _forensic_distance(x.signature, y.signature)
+                for a, x in enumerate(members)
+                for y in members[a + 1 :]
+            ),
+            default=0.0,
+        )
+
+    # 1. The production rule swallows the state: every one of its
+    #    observations sits under the threshold from the anchor.
+    result = group_visual_states(
+        frames,
+        group_distance_threshold=0.10,
+        distance=_forensic_distance,
+        representative=lambda members: stable_representative(
+            members, distance=_forensic_distance
+        ),
+    )
+    assert len(result.groups) == 1
+    assert all(distance <= 0.10 for distance in to_anchor)
+
+    # 2. The real transition is where a scale-free rule looks FIRST --
+    #    it maximizes the separation margin among all candidate cuts.
+    def _margin(cut):
+        left, right = frames[:cut], frames[cut:]
+        between = min(
+            _forensic_distance(x.signature, y.signature) for x in left for y in right
+        )
+        return between - max(_diameter(left), _diameter(right))
+
+    cuts = range(2, len(frames) - 1)
+    assert max(cuts, key=_margin) == 4  # the real transition, ranked first
+
+    # 3. ...and it still must not cut there, because the short state is
+    #    internally MORE scattered than it is separated from its
+    #    neighbour. This inequality, not the policy, is the blocker.
+    assert _diameter(frames[4:]) > min(
+        _forensic_distance(x.signature, y.signature)
+        for x in frames[:4]
+        for y in frames[4:]
+    )
+    assert _margin(4) < 0
+
+
 def test_group_distance_threshold_controls_sensitivity():
     frames = [_sampled(0, 0.0, _text_frame(offset=0))]
     frames.append(_sampled(1, 1.0, _text_frame(offset=8)))
