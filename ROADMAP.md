@@ -3,7 +3,7 @@
 **Document type:** Authoritative V1 milestone roadmap  
 **Project:** GlyphCue  
 **Repository:** `Peter-S-Shi/glyphcue`  
-**Lifecycle phase:** Production Development in progress → Milestone 10 complete (evidence/evaluation closure accepted; representative-video gate transferred to Milestone 11, not waived — see §17's gate audit disposition), Feature Freeze ACTIVE, **Milestone 11 (Product Hardening & Full Regression) IN PROGRESS — currently at stage ④ Targeted Regression** (see `docs/m11_targeted_regression.md`); M11 is NOT complete and its acceptance gate, including the transferred representative-video evaluation, is still open  
+**Lifecycle phase:** Production Development in progress → Milestone 10 complete (evidence/evaluation closure accepted; representative-video gate transferred to Milestone 11, not waived — see §17's gate audit disposition), Feature Freeze ACTIVE, **Milestone 11 (Product Hardening & Full Regression) IN PROGRESS — stage ④ Targeted Regression CLOSED (automated evidence accepted at the human gate, see `docs/m11_targeted_regression.md`), currently at stage ⑤ Representative Evaluation** (see `docs/m11_representative_evaluation.md`); M11 is NOT complete and its acceptance gate, including the transferred representative-video evaluation, is still open  
 **Status:** Current V1 execution roadmap  
 **Last updated:** 2026-09-02
 
@@ -1991,12 +1991,22 @@ The next engineering action is:
 
 > **Milestone 11 — Product Hardening & Full Regression** (in progress)
 
-Milestone 11 is under way, not queued: stage ④ Targeted Regression is
-complete and recorded in `docs/m11_targeted_regression.md` (two defects
-reproduced and fixed, three findings recorded and deliberately left
-unfixed). The remaining M11 stages — packaging hardening, formal Manual
-QA, the transferred representative-video evaluation, and the Full
-Regression itself — have not been started.
+Milestone 11 is under way, not queued.
+
+Stage ④ Targeted Regression is **CLOSED**: its automated evidence
+(`docs/m11_targeted_regression.md` — two defects reproduced and fixed,
+three findings recorded and deliberately left unfixed) passed the human
+gate on 2026-09-02.
+
+Stage ⑤ **Representative Evaluation is IN PROGRESS** — this is the
+transferred M10 gate (§18 acceptance gate 9). Its corpus selection step is
+complete and recorded in `docs/m11_representative_evaluation.md`: a
+read-only inventory of the eight private sample videos and a recommended
+five-window evaluation corpus. The evaluation runs themselves have not
+been started.
+
+The remaining M11 stages — packaging hardening, formal Manual QA, and the
+Full Regression itself — have not been started.
 
 Do not ask AG2.0 to implement the whole roadmap.
 
