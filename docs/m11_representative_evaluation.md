@@ -1,13 +1,14 @@
 # Milestone 11 — Representative Evaluation (stage ⑤)
 
-**Status:** IN PROGRESS, at step **⑤-B Evaluation Preparation**.
+**Status:** IN PROGRESS, at step **⑤-C**, which is **READY TO RUN for 2
+of 5 windows** and blocked on one decision for the other three (§13).
 No evaluation run has been executed yet.
 
 | Step | State |
 |---|---|
 | ⑤-A Corpus selection | **CLOSED** — accepted at the human gate; the corpus below is frozen |
-| ⑤-B Evaluation preparation | **IN PROGRESS** — ROI proposals (§6) and ground-truth candidate worksheets (§7) |
-| ⑤-C Hardened harness run | not started; prerequisites in §8 |
+| ⑤-B Evaluation preparation | **CLOSED** — five ROI proposals approved unchanged (§6); all 44 ground-truth candidates confirmed with no corrections (§7, §9) |
+| ⑤-C Hardened harness run | **READY, not started** — manifest and harness wired (§10), preflight passes structurally (§11), M10 crash condition does not reproduce (§12). Blocked for the three bilingual windows by §13. |
 
 **Frozen corpus (⑤-A):** `sample_g` 90–270 s, `sample_e` 150–330 s,
 `sample_h` 900–1080 s, `sample_f` 560–740 s, `sample_c` 480–660 s.
@@ -291,6 +292,8 @@ and no manual work was duplicated.
 
 ## 8. What must be confirmed before ⑤-C starts
 
+*Disposition, after the ⑤-B gate: items 1 and 2 are closed (§9), and items 4, 5 and 6 are closed (§10, §12). Item 3 — which profile the run uses — was answered (Experimental Hybrid) and that answer is what §13 now blocks on.*
+
 **Human gate:**
 
 1. **The five ROI proposals**, and specifically the two trade-offs called
@@ -325,3 +328,186 @@ and no manual work was duplicated.
 6. The M10 crash condition (`docs/m10_private_corpus_incident.md`) has
    not been re-verified against these five specific windows on the
    hardened harness.
+
+# ⑤-C Evaluation Preflight
+
+## 9. Ground truth — confirmed
+
+The ⑤-B human gate confirmed all 44 candidate points (11 × 4) with no
+corrections. The untracked worksheets are now filled in and marked
+`CONFIRMED -- human-verified point samples`.
+
+| Window | Candidates | Negative points | Verified instants | Ground-truth cues emitted |
+|---|---|---|---|---|
+| `sample_g` 90–270 s | 11 | 0 | 11 | 11 (`en`) |
+| `sample_e` 150–330 s | 11 | **1** (#5) | 10 | 10 (`zh`) |
+| `sample_h` 900–1080 s | 11 | **1** (#9) | 10 | 20 (`zh` + `en`) |
+| `sample_f` 560–740 s | 11 | 0 | 11 | 21 (`en` + `zh`, one instant `en`-only) |
+| `sample_c` 480–660 s | inherited from M10 | 0 | 10 | 20 (`en` + `zh`) |
+
+Rules applied, exactly as the gate specified:
+
+- **Verbatim.** Each point records the burned-in caption text as it
+  appears on screen. No grammar correction, no punctuation
+  normalisation, no rewriting — including where the source captions are
+  themselves ungrammatical or uncapitalised.
+- **`sample_e` #5 and `sample_h` #9 are negative points.** They are
+  marked `subtitle_present: false` in the worksheets and deliberately
+  emit **no** ground-truth cue: a point-recall metric has no meaning for
+  an instant with nothing to recall. They remain in the worksheets as
+  evidence, and are the natural basis for a later false-positive check.
+- **`sample_g` #4's large "stylized overlay" text is excluded.** Only the
+  burned-in caption beneath it is ground truth. This is the same overlay
+  the ROI cannot fully exclude (§6), so the distinction is recorded on
+  the row itself.
+- **`sample_c` is untouched**, still carrying its 20 verified M10
+  instants.
+
+One point could not be fully transcribed and is recorded as such rather
+than guessed: **`sample_f` #7's Chinese layer is present but illegible**
+in the evidence frame — a white caption over a white full-screen b-roll
+screenshot. Its English layer is confirmed and emitted; no `zh` cue is
+emitted for that instant. That is why `sample_f` has 21 cues across 11
+instants rather than 22. This is itself a finding about the window, and
+is the one ground-truth item that would change if the gate wants to
+re-read that frame by hand.
+
+## 10. Manifest and harness configuration
+
+**Manifest path inconsistency — resolved.**
+`benchmarks/private_video_corpus/run_evaluation.py` reads
+`private_samples/m10_video_corpus/manifest.json`; that file now exists
+and is the canonical corpus manifest, holding exactly the five frozen
+entries. The historical M10 export at
+`private_samples/m10_video_corpus/export docu/manifest.json` was left
+untouched as the M10 record; no code reads it. Both stay untracked.
+
+**Entry ids** (these are simultaneously the manifest keys and the
+`_ROI_BY_ENTRY_ID` keys — the preflight fails if they ever disagree):
+
+| Entry id | Window | Languages | ROI `(x, y, w, h)` |
+|---|---|---|---|
+| `private-g-english-handheld` | 90–270 s | `en` | (0.05, 0.80, 0.90, 0.20) |
+| `private-e-chinese-screenshare` | 150–330 s | `zh` | (0.05, 0.85, 0.90, 0.15) |
+| `private-h-bilingual-fixed-overlay` | 900–1080 s | `zh`, `en` | (0.05, 0.73, 0.90, 0.19) |
+| `private-f-bilingual-fast-broll` | 560–740 s | `en`, `zh` | (0.05, 0.76, 0.90, 0.24) |
+| `private-c-difficult-mixed-format` | 480–660 s | `en`, `zh` | (0.05, 0.50, 0.90, 0.47) |
+
+The ROI values are exactly the ⑤-B proposals, unchanged.
+
+**Profile.** `EVALUATION_PROFILE` is a named module constant, frozen at
+`EvidenceJobProfile.EXPERIMENTAL_HYBRID`. It is named rather than
+defaulted so a results file can be traced to the pipeline that produced
+it — the same reason `build_evidence_job_for_profile` makes its callers
+name a profile. A hybrid run now constructs a real
+`PaddleOcrTextDetector` per entry and shuts it down before the next
+entry builds its own.
+
+**New harness entry points** (both refuse to do anything if the private
+corpus is absent, so a fresh clone and CI are unaffected):
+
+- `--preflight` — validates the corpus, ROI table, ranges, ground-truth
+  placement and profile compatibility. Reports **every** problem at once
+  and runs nothing. `run()` now calls it first and will not start a job
+  unless it passes.
+- `--crash-check` — re-verifies the M10 incident's failure mode against
+  the real windows using a stub recognizer, so it cannot become an
+  accidental evaluation run.
+
+## 11. Preflight result
+
+Structural checks — all five entries **PASS**:
+
+| Check | Result |
+|---|---|
+| Manifest loads under `glyphcue.evaluation.corpus` schema | 5/5 |
+| Video file present | 5/5 |
+| Entry id has an ROI in `_ROI_BY_ENTRY_ID` | 5/5 |
+| `ProcessingRange.resolve()` accepts the window against the real probed duration | 5/5 |
+| Every verified ground-truth instant falls inside its window | 5/5 (72 cues, 52 instants) |
+
+Profile compatibility — **2 of 5 entries runnable under the frozen
+profile**, and preflight refuses the run because of it. See §13.
+
+## 12. M10 crash condition — re-verified, does NOT reproduce
+
+The M10 incident was an orchestration failure, not an OCR failure: the
+old `_run_job` timeout path called only `loop.quit()`, never
+`job.request_cancel()`, so an overrunning job kept running on an orphaned
+thread while the loop started the next entry — turning a sequential run
+into unbounded concurrency. A second, smaller bug left a SQLite
+connection open, so the temporary directory could not be deleted and the
+crash surfaced as `PermissionError`.
+
+`--crash-check` reproduces the *conditions* on all five real windows:
+each entry's real job is built on its real window and ROI, given a
+deliberately tiny 1.0 s timeout so it is guaranteed to overrun, and the
+recognizer is stubbed so no OCR runs. Each entry is checked through the
+job type it would really use — the hybrid job where the frozen profile
+supports the entry, the production job where it does not.
+
+| Entry | Job profile exercised | Terminal state | Worker thread left alive |
+|---|---|---|---|
+| `private-g-english-handheld` | experimental_hybrid | `cancelled` | no |
+| `private-e-chinese-screenshare` | experimental_hybrid | `cancelled` | no |
+| `private-h-bilingual-fixed-overlay` | production_trigger | `cancelled` | no |
+| `private-f-bilingual-fast-broll` | production_trigger | `cancelled` | no |
+| `private-c-difficult-mixed-format` | production_trigger | `cancelled` | no |
+
+- Every job reached a terminal state, and every one of them `cancelled`
+  — overran, was asked to stop, and stopped. (A `failed` state would also
+  be "terminal", so the check reports both, and a failure invalidates its
+  own verdict rather than passing quietly.)
+- **No worker thread was left alive**, which is the orphaned-thread
+  condition itself.
+- The temporary directory deleted cleanly on Windows — the secondary M10
+  bug's exact symptom would have been a `PermissionError` here.
+- Live progress was reported throughout (7–161 updates per entry); the
+  M10 incident's compounding "no way to see it stalling" gap is visibly
+  closed.
+
+No harness defect was found, so nothing was fixed and no new regression
+test was added. `tests/benchmarks/test_job_harness.py` already pins the
+harder case — a job that refuses to cooperate must abort the whole run
+rather than let the next entry start.
+
+## 13. Blocker: the frozen profile cannot run the three bilingual windows
+
+`EXPERIMENTAL_HYBRID` is single-language **by construction**:
+`build_hybrid_ocr_evidence_job` takes one `OcrEngine`, not a per-language
+mapping, and `path_a_media_pane` already refuses a multilingual Hybrid
+run in the UI for the same reason. Three of the five frozen windows —
+`sample_h`, `sample_f`, `sample_c` — are bilingual.
+
+Preflight refuses the whole run rather than silently choosing a language,
+so today ⑤-C is **ready for 2 of 5 windows** (`sample_g`, `sample_e`).
+This needs one decision, and each option costs something different:
+
+| Option | What it means | Cost |
+|---|---|---|
+| **A. Split profile** (recommended) | Hybrid on `sample_g` + `sample_e`; production trigger on `sample_h`, `sample_f`, `sample_c`. Implementation: a `_PROFILE_BY_ENTRY_ID` override beside the existing ROI table, and the results file already records the profile per entry. | Cross-window comparison mixes two pipelines. Every metric stays valid. |
+| **B. Hybrid everywhere, one language per window** | Pick a single language for each bilingual window and run Hybrid on it. | The other layer's confirmed ground truth must be dropped, and multilingual layer-assignment metrics are lost on 3 of 5 windows. |
+| **C. Hybrid twice per bilingual window, merged** | One hybrid run per language, observations merged before multilingual reconstruction. | **Not a small change, and not obviously sound.** `build_multilingual_ocr_evidence_job` deliberately makes the OCR-trigger decision *once per frame, shared across languages*, which is what lets M6's reconstruction reuse M5's state-run grouping. Two independent hybrid runs would each schedule on their own detector anchors, so the two layers would not share a trigger cadence. This would need its own evidence before it could be trusted. |
+
+Nothing here has been implemented: choosing is the gate's call, not the
+harness's.
+
+## 14. The run command, once that decision is made
+
+```
+python -m benchmarks.private_video_corpus.run_evaluation --preflight
+python -m benchmarks.private_video_corpus.run_evaluation --crash-check
+python -m benchmarks.private_video_corpus.run_evaluation
+```
+
+Requirements: the `[ocr]` extra (present locally: `paddleocr` and
+`paddle` both import) and the private corpus. Results are written to
+`private_samples/m10_video_corpus/evaluation_results.json` — untracked,
+and only ever summarised into `EVALUATION_REPORT.md` in anonymised form.
+
+Before starting, note the standing cost warning: the per-entry job
+timeout is 600 s and M10's own numbers on this corpus were far slower
+than realtime (`docs/m10_performance_diagnosis.md`). A window that
+overruns is cancelled cleanly — verified in §12 — but it will then have
+covered only part of its 180 s, and that partial coverage must be
+reported honestly rather than retried until it looks better.
