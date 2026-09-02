@@ -250,3 +250,18 @@ def test_cue_replay_suspends_and_restores_ab_loop(qapp_guard, repository, test_v
     # Span replay pauses and restores original A-B loop state
     assert pane.controller.is_loop_enabled is True
     assert pane.controller.loop_range == (0.1, 0.3)
+
+
+def test_center_pane_has_vertical_scroll_area(qapp_guard, repository):
+    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QScrollArea, QWidget
+
+    pane = PathAMediaPane(repository)
+    scroll_area = pane.window.findChild(QScrollArea, "centerPaneScrollArea")
+    assert scroll_area is not None
+    assert scroll_area.widgetResizable() is True
+    assert scroll_area.horizontalScrollBarPolicy() == Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+    assert scroll_area.widget() is not None
+    assert scroll_area.findChild(QWidget, "videoViewport") is not None
+    assert scroll_area.findChild(QWidget, "previewLoopBox") is not None
+    assert scroll_area.findChild(QWidget, "ocrActionBox") is not None

@@ -386,9 +386,17 @@ class PathAMediaPane:
         structure_layout.addWidget(self.language_selection_panel)
         structure_layout.addWidget(self.save_roi_button)
 
-        # Center Pane: Primary Media & Evidence Workspace
+        # Center Pane: Primary Media & Evidence Workspace wrapped in a vertical QScrollArea
         center_pane = QWidget()
-        center_layout = QVBoxLayout(center_pane)
+        center_scroll = QScrollArea(center_pane)
+        center_scroll.setObjectName("centerPaneScrollArea")
+        center_scroll.setWidgetResizable(True)
+        center_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        center_scroll.setFrameShape(QFrame.Shape.NoFrame)
+
+        center_content = QWidget()
+        center_content.setObjectName("centerPaneContent")
+        center_layout = QVBoxLayout(center_content)
         center_layout.setContentsMargins(
             Spacing.PANEL_MAJOR, Spacing.PANEL_MAJOR, Spacing.PANEL_MAJOR, Spacing.PANEL_MAJOR
         )
@@ -518,6 +526,11 @@ class PathAMediaPane:
         ocr_box_layout.addWidget(self.diagnostics_container)
 
         center_layout.addWidget(ocr_container)
+
+        center_scroll.setWidget(center_content)
+        center_outer_layout = QVBoxLayout(center_pane)
+        center_outer_layout.setContentsMargins(0, 0, 0, 0)
+        center_outer_layout.addWidget(center_scroll)
 
         # Milestone 7: Path A follows the same shared Reconstruction QA
         # seam Path B does (DESIGN.md section 6's frozen three-pane
