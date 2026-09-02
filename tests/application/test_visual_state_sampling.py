@@ -108,15 +108,44 @@ def test_blank_frames_form_their_own_explicit_state_group():
     assert result.blank_group_count == 1
 
 
+def _drifting_frame(step: int) -> np.ndarray:
+    """The SAME caption over a slowly changing scene: pixel-identical
+    glyphs, plus a distractor block above them that creeps sideways one
+    column every eighth sample.
+
+    This is what a real long subtitle state looks like -- a presenter
+    moving behind a static caption -- and it is deliberately not what
+    the earlier version of this test used. Byte-identical frames make
+    every distance exactly zero, which no representation can fail, so
+    that version could not catch an over-sensitive signature.
+    """
+    frame = _text_frame()
+    left = 2 + step // 8
+    frame[2:6, left : left + 2] = 200
+    return frame
+
+
 def test_anchor_comparison_does_not_drift_across_a_long_stable_run():
     # Every frame stays within threshold of the FIRST frame (the anchor),
     # even though a naive frame-to-frame chain could accumulate drift
     # across many small steps -- this is the failure mode being tested.
-    frames = [_sampled(i, float(i), _text_frame()) for i in range(50)]
+    frames = [_sampled(i, float(i), _drifting_frame(i)) for i in range(50)]
 
     result = group_visual_states(frames)
 
     assert len(result.groups) == 1
+
+    # The test is only meaningful if the run actually drifts. Pin that:
+    # the scene really does change, the change really does accumulate
+    # away from the anchor, and it is the ANCHOR comparison that holds
+    # the state together rather than the frames being identical.
+    anchor = frames[0].signature
+    to_anchor = [signature_distance(anchor, f.signature) for f in frames]
+    assert max(to_anchor) > 0.0
+    assert max(to_anchor) > 3 * max(
+        signature_distance(a.signature, b.signature)
+        for a, b in zip(frames, frames[1:])
+    )
 
 
 def test_characterizes_a_short_intervening_state_being_swallowed_by_anchor_based_grouping():

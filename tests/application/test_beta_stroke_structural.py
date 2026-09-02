@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 
 from glyphcue.application.beta_detector_dry_run import BETA_GROUP_DISTANCE_THRESHOLD
 from glyphcue.application.beta_photometric_ink import beta_p_signature
@@ -166,6 +167,65 @@ def test_different_glyphs_stay_a_different_state_on_the_same_background():
     b = beta_s_signature(_two_line_frame(_OTHER_GLYPH_COLUMNS), _TWO_LINE_POLY)
 
     assert signature_distance(a, b) > BETA_GROUP_DISTANCE_THRESHOLD
+
+
+def test_characterizes_the_distance_scale_depending_on_how_many_lines_are_detected():
+    """CHARACTERIZATION of the M11 Beta-S Signature Discriminability
+    Gate's root-cause finding. Not a bug this round fixes.
+
+    The signature is a FIXED canvas of MAX_LINES canonical bands and the
+    distance is the mismatch fraction over all of it, so an unoccupied
+    band contributes zeros to both operands and dilutes the result. The
+    measured distance between two captions therefore scales with how
+    many bands the detector happened to FILL -- not with how different
+    the captions are.
+
+    That is what a hand-drawn ROI changes. Cropping tighter can exclude
+    the second line of a two-line caption, and every distance in that
+    run then halves. Measured on the real corpus (24 cached replays,
+    same detector, same signature, only the ROI perturbed):
+
+        sample_d  frozen ROI       2.00 lines   mean pairwise 0.1930
+        sample_d  hand-drawn tight 1.00 line    mean pairwise 0.0895
+        sample_b  frozen ROI       2.00 lines   mean pairwise 0.2027
+        sample_b  hand-drawn tight 0.92 lines   mean pairwise 0.1034
+
+    Exactly the factor of two, and it is what pushes the separation
+    between two genuinely different captions (~0.20 -> ~0.095) below the
+    frozen 0.10 grouping threshold, which is what the earlier rounds
+    observed downstream as a swallowed state. The signature did not get
+    worse at telling captions apart; the ruler shrank.
+
+    This also fixes the meaning of 0.10: it is not a property of caption
+    content, it is entangled with a mean band occupancy of about two.
+    The obvious corrective -- normalize the mismatch over the OCCUPIED
+    bands instead of the whole canvas -- does remove the ROI dependence
+    (the real per-band figures converge to ~0.45 across every variant),
+    but it multiplies every distance by MAX_LINES/occupied, so the
+    frozen threshold no longer means anything and both the scale and the
+    operating point would have to be re-derived together. That is out of
+    scope for this gate, which may not move 0.10, so no corrective is
+    applied here.
+    """
+    one_line = [_LINE_POLY[0]]
+    a_one = beta_s_signature(_two_line_frame(_GLYPH_COLUMNS), one_line)
+    b_one = beta_s_signature(_two_line_frame(_OTHER_GLYPH_COLUMNS), one_line)
+    a_two = beta_s_signature(_two_line_frame(_GLYPH_COLUMNS), _TWO_LINE_POLY)
+    b_two = beta_s_signature(_two_line_frame(_OTHER_GLYPH_COLUMNS), _TWO_LINE_POLY)
+
+    one_band = signature_distance(a_one, b_one)
+    two_bands = signature_distance(a_two, b_two)
+
+    # The captions differ by exactly as much either way -- the second
+    # line carries the same change the first one does.
+    assert one_band > 0
+    assert two_bands == pytest.approx(2 * one_band, rel=0.05)
+
+    # The consequence, stated against the real threshold: the SAME pair
+    # of genuinely different captions lands on opposite sides of it
+    # purely because of how the ROI was drawn.
+    assert two_bands > BETA_GROUP_DISTANCE_THRESHOLD
+    assert one_band < BETA_GROUP_DISTANCE_THRESHOLD
 
 
 def test_different_glyphs_stay_a_different_state_across_backgrounds_too():
