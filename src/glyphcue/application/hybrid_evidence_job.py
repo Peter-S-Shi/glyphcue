@@ -10,7 +10,8 @@ cannot silently drift from the研究 result it integrates:
     1.0s safety sentinel                hybrid_cascade_dry_run
     bootstrap + tail boundary rule      hybrid_cascade_dry_run
     Beta-S stroke-structural signature  beta_stroke_structural
-    0.10 state grouping threshold       beta_detector_dry_run
+    occupancy-normalized distance       occupancy_normalized_distance
+    0.300 state grouping threshold      occupancy_normalized_distance
     stable medoid representative        sparse_observation_semantics
 
 What the research runs never did is call recognition. The shape of the
@@ -37,11 +38,29 @@ So Cue reconstruction, review state, workspace persistence and the UI
 see the same kind of evidence they already see -- fewer, more
 deliberately chosen observations, not a different contract.
 
-RESIDUAL RISK, carried over from the research gate and NOT solved here:
-a subtitle state that is shorter than the 1.0s sentinel, lies strictly
-inside the processing range, and does not trip the cheap gate can be
-missed. The bootstrap covers the range's head and the boundary rule
-covers its tail; nothing covers that interior case.
+RESIDUAL RISK, measured and NOT solved here. It is not a scheduling
+gap: a state shorter than the sentinel is still covered, by the
+bootstrap at the head of the range and the boundary rule at its tail,
+and replaying the corpus confirms such a state is observed inside its
+own span on every ROI tested.
+
+The real exposure is spatial. If the user's ROI does not cover the area
+an unusually wide or tall caption occupies, the detector finds nothing
+there on ANY frame for that caption's whole duration, so it is never
+observed as text at all and produces no cue. Measured on the corpus: a
+caption spanning 81% and 76% of frame width across two lines was
+detected on every frame of its span under a generous ROI and on ZERO
+frames under a tighter hand-drawn one, while the neighbouring 32-35%
+wide captions survived both. No sampling rate, sentinel or grouping
+change can recover it -- there is no frame in which the text is
+visible to the detector.
+
+V1 accepts this deliberately: the ROI stays a coarse, user-drawn search
+envelope. Uniform ROI padding was tried and rejected (it cost real
+states on the frozen research framing), and software-proposed ROIs were
+tried and rejected (probing the full frame under-resolves captions, so
+the proposals cropped real captions on held-out fixtures). The UI asks
+the user to leave margin for wider and taller captions instead.
 
 `detect` is injected, so this module never imports PaddleOCR's detector
 and the job stays testable without the heavy `[ocr]` extra.
@@ -58,11 +77,14 @@ import numpy as np
 
 from glyphcue.adapters.ocr_engine import OcrEngine
 from glyphcue.adapters.pyav_media_source import PyAvMediaFrameSource, probe_media
-from glyphcue.application.beta_detector_dry_run import BETA_GROUP_DISTANCE_THRESHOLD
 from glyphcue.application.beta_stroke_structural import beta_s_signature
 from glyphcue.application.hybrid_cascade_dry_run import (
     CASCADE_CANDIDATE_DISTANCE_THRESHOLD,
     MAX_DETECTOR_GAP_SECONDS,
+)
+from glyphcue.application.occupancy_normalized_distance import (
+    OCCUPANCY_GROUP_DISTANCE_THRESHOLD,
+    occupancy_normalized_distance,
 )
 from glyphcue.application.ocr_evidence_job import (
     INSTANT_SPAN_SECONDS,
@@ -90,6 +112,16 @@ from glyphcue.domain.roi import ROI
 from glyphcue.jobs.job import Job, JobContext
 from glyphcue.persistence.database import connect
 from glyphcue.persistence.observation_repository import ObservationRepository
+
+
+def _state_representative(members: list[SampledFrame]) -> SampledFrame:
+    """The group's medoid, measured with the SAME distance the grouping
+    used. Keeping one definition here is what stops the two from
+    drifting apart -- a representative chosen under a different metric
+    than the one that formed the group is how you get the right state
+    with the wrong frame."""
+    return stable_representative(members, distance=occupancy_normalized_distance)
+
 
 HYBRID_EVIDENCE_GRID_FPS = 5.0
 """The frozen research evidence grid. Not a quality knob: every gate in
@@ -146,9 +178,9 @@ def build_hybrid_ocr_evidence_job(
             observation_repository = ObservationRepository(conn)
 
             grouper = IncrementalVisualStateGrouper(
-                group_distance_threshold=BETA_GROUP_DISTANCE_THRESHOLD,
-                distance=signature_distance,
-                representative=stable_representative,
+                group_distance_threshold=OCCUPANCY_GROUP_DISTANCE_THRESHOLD,
+                distance=occupancy_normalized_distance,
+                representative=_state_representative,
             )
             region_mask = TextAnchoredRegionMask()
             stability = EdgeStabilityBuffer()
@@ -163,7 +195,7 @@ def build_hybrid_ocr_evidence_job(
                 metrics.observations_created += 1
 
             def emit_state(group, members: list[SampledFrame]) -> None:
-                representative = stable_representative(members)
+                representative = _state_representative(members)
                 for member in members:
                     if member.index != representative.index:
                         observed_frames.pop(member.index, None)

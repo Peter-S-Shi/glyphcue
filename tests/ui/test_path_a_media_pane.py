@@ -117,6 +117,30 @@ def test_play_button_plays_and_pause_button_pauses(qapp_guard, repository, test_
     assert pane.controller.player.playbackState() == QMediaPlayer.PlaybackState.PausedState
 
 
+def test_the_roi_controls_advise_leaving_margin_for_larger_captions(
+    qapp_guard, repository
+):
+    """A caption the ROI does not cover is invisible to the detector for
+    its whole duration -- no sampling, grouping or threshold change can
+    recover it (see hybrid_evidence_job's residual risk). V1 answers that
+    with advice rather than a gate, so the hint has to actually be there,
+    next to the ROI fields, and it must not become a step: nothing blocks
+    a tight ROI and nothing widens one automatically.
+    """
+    pane = PathAMediaPane(repository)
+
+    assert pane.roi_hint_label.text() == (
+        "Cover the full subtitle area and leave margin for wider/taller captions."
+    )
+    assert pane.roi_hint_label.wordWrap() is True
+    # Advice only: the ROI the user set is still exactly the ROI in force.
+    pane.roi_x_spin.setValue(0.2)
+    pane.roi_y_spin.setValue(0.85)
+    pane.roi_width_spin.setValue(0.5)
+    pane.roi_height_spin.setValue(0.05)
+    assert pane.current_roi() == ROI(x=0.2, y=0.85, width=0.5, height=0.05)
+
+
 def test_roi_fields_default_to_the_full_frame_when_nothing_is_saved(qapp_guard, repository):
     pane = PathAMediaPane(repository)
 

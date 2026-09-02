@@ -1,7 +1,9 @@
 """M11 Research Gate -- occupancy-normalized signature distance.
 
-RESEARCH ONLY. Nothing in the production OCR path imports this; the
-production distance is still `visual_state_sampling.signature_distance`.
+Used by the EXPERIMENTAL_HYBRID Path A profile. The default
+PRODUCTION_TRIGGER profile is untouched and still uses
+`visual_state_sampling.signature_distance`, so both pipelines remain
+live and independently selectable.
 
 The forensic in 810d632 located the last blocker, and it was not the
 detector, the stroke mask, the tighten step, the grouping rules or the
@@ -36,9 +38,10 @@ canonical bands, same canvas layout, same detector, same scheduler, same
 grouping topology. Only the denominator changes.
 
 Because the denominator shrinks, distances under this metric are LARGER
-than under the production one (by `MAX_LINES / occupied`), so the frozen
-0.10 operating point does not carry over and has to be re-derived
-against this scale. Scale and operating point are one quantity.
+than under the production one (by `MAX_LINES / occupied`), so the old
+0.10 operating point does not carry over. Scale and operating point are
+one quantity, which is why the threshold calibrated against this scale
+lives here beside it rather than anywhere else.
 """
 
 from __future__ import annotations
@@ -92,3 +95,28 @@ def occupancy_normalized_distance(a: np.ndarray, b: np.ndarray) -> float:
         ]
     )
     return float(np.mean(a[rows] != b[rows]))
+
+
+OCCUPANCY_GROUP_DISTANCE_THRESHOLD = 0.300
+"""The state-grouping operating point for THIS metric.
+
+Not a knob. It was derived once, by a policy declared before it was run,
+from sample_d and its ROI perturbation family alone -- sample_a and
+sample_b were held out and never consulted while deriving it:
+
+    S95 = p95(same-state pairwise distances)      = 0.2530
+    D05 = p05(adjacent different-state distances) = 0.3569
+    D05 > S95, so the threshold is sqrt(S95 * D05) = 0.3005 -> 0.300,
+    a symmetric 1.19x multiplicative margin from each bound.
+
+Validated afterwards with both the metric and this value frozen:
+sample_d 7/7 and sample_a 6/6 with zero swallowed states on all eight
+ROI variants each, sample_b 5/5 on six of eight. The two sample_b
+variants that fall short lose only its 0.265s tail caption, and only
+because the ROI crops that caption out of frame entirely -- see the
+residual risk in `hybrid_evidence_job`.
+
+Changing this number invalidates that evidence, and it cannot be
+retuned independently of the metric above: the two were calibrated as
+one quantity.
+"""

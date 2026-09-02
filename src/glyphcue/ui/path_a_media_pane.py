@@ -222,6 +222,14 @@ class PathAMediaPane:
         self.roi_y_spin = _roi_spin_box()
         self.roi_width_spin = _roi_spin_box()
         self.roi_height_spin = _roi_spin_box()
+        # Advice, not a gate: a caption the ROI does not cover is invisible
+        # to the detector for its whole duration, and captions vary in size
+        # far more than users expect. Nothing here blocks a tight ROI or
+        # widens one automatically -- see hybrid_evidence_job's residual risk.
+        self.roi_hint_label = QLabel(
+            "Cover the full subtitle area and leave margin for wider/taller captions."
+        )
+        self.roi_hint_label.setWordWrap(True)
         self.reset_roi_button = QPushButton("Reset to Full Frame")
         self.language_selection_panel = LanguageSelectionPanel(available_languages)
         self.save_roi_button = QPushButton("Save Track Group")
@@ -367,6 +375,7 @@ class PathAMediaPane:
         roi_form.addRow("ROI width", self.roi_width_spin)
         roi_form.addRow("ROI height", self.roi_height_spin)
         structure_layout.addLayout(roi_form)
+        structure_layout.addWidget(self.roi_hint_label)
         structure_layout.addWidget(self.reset_roi_button)
 
         processing_range_form = QFormLayout()
