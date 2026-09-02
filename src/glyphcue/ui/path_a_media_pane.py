@@ -235,11 +235,27 @@ class PathAMediaPane:
         self.processing_range_end_spin = _roi_spin_box(maximum=1_000_000.0)
         self.processing_range_start_spin.setEnabled(False)
         self.processing_range_end_spin.setEnabled(False)
+        self.set_range_start_from_playhead_button = QPushButton("Set Start = Playhead")
+        self.set_range_start_from_playhead_button.setObjectName("secondaryBtn")
+        self.set_range_start_from_playhead_button.setToolTip(
+            "Copy current video playhead time into OCR range start."
+        )
+        self.set_range_end_from_playhead_button = QPushButton("Set End = Playhead")
+        self.set_range_end_from_playhead_button.setObjectName("secondaryBtn")
+        self.set_range_end_from_playhead_button.setToolTip(
+            "Copy current video playhead time into OCR range end."
+        )
         self.limit_processing_range_checkbox.toggled.connect(
             self.processing_range_start_spin.setEnabled
         )
         self.limit_processing_range_checkbox.toggled.connect(
             self.processing_range_end_spin.setEnabled
+        )
+        self.set_range_start_from_playhead_button.clicked.connect(
+            self._on_set_range_start_from_playhead_clicked
+        )
+        self.set_range_end_from_playhead_button.clicked.connect(
+            self._on_set_range_end_from_playhead_clicked
         )
 
         # Developer/manual-QA-only OCR profile selector (M11): absent
@@ -260,6 +276,44 @@ class PathAMediaPane:
             self.dev_ocr_profile_combo.setToolTip(
                 "Developer/manual-QA only. Not a shipped product control."
             )
+
+        # Preview / Calibration A-B Loop Controls (human QA only, separated from OCR range)
+        self.preview_loop_checkbox = QCheckBox("A-B Loop Preview")
+        self.preview_loop_checkbox.setObjectName("previewLoopToggle")
+        self.preview_loop_checkbox.setToolTip(
+            "Loop a local segment for human QA (e.g. onset/offset inspection). Does not alter OCR Processing Range."
+        )
+        self.loop_a_spin = _roi_spin_box(maximum=1_000_000.0)
+        self.loop_a_spin.setSingleStep(0.05)
+        self.loop_a_spin.setToolTip("Loop start timestamp in seconds.")
+        self.loop_b_spin = _roi_spin_box(maximum=1_000_000.0)
+        self.loop_b_spin.setSingleStep(0.05)
+        self.loop_b_spin.setToolTip("Loop end timestamp in seconds.")
+        self.set_loop_a_from_playhead_button = QPushButton("Set A = Playhead")
+        self.set_loop_a_from_playhead_button.setObjectName("secondaryBtn")
+        self.set_loop_a_from_playhead_button.setToolTip("Set point A to current video playhead.")
+        self.set_loop_b_from_playhead_button = QPushButton("Set B = Playhead")
+        self.set_loop_b_from_playhead_button.setObjectName("secondaryBtn")
+        self.set_loop_b_from_playhead_button.setToolTip("Set point B to current video playhead.")
+        self.play_loop_button = QPushButton("Play Loop")
+        self.play_loop_button.setObjectName("secondaryBtn")
+        self.play_loop_button.setToolTip("Seek to point A and begin playing in loop.")
+        self.clear_loop_button = QPushButton("Clear Loop")
+        self.clear_loop_button.setObjectName("secondaryBtn")
+        self.clear_loop_button.setToolTip("Clear points and disable A-B loop.")
+        self.preview_loop_status_label = QLabel("A-B Loop: Off · Preview only")
+        self.preview_loop_status_label.setObjectName("previewLoopStatusLabel")
+        self.preview_loop_status_label.setStyleSheet(
+            f"color: {Color.TEXT_SECONDARY}; font-family: 'JetBrains Mono', 'Cascadia Code', monospace; font-size: 11px;"
+        )
+
+        self.preview_loop_checkbox.toggled.connect(self._on_preview_loop_changed)
+        self.loop_a_spin.valueChanged.connect(self._on_preview_loop_changed)
+        self.loop_b_spin.valueChanged.connect(self._on_preview_loop_changed)
+        self.set_loop_a_from_playhead_button.clicked.connect(self._on_set_loop_a_from_playhead_clicked)
+        self.set_loop_b_from_playhead_button.clicked.connect(self._on_set_loop_b_from_playhead_clicked)
+        self.play_loop_button.clicked.connect(self._on_play_loop_clicked)
+        self.clear_loop_button.clicked.connect(self._on_clear_loop_clicked)
 
         self.run_ocr_button = QPushButton("Run OCR Evidence")
         self.dry_run_policy_button = QPushButton("Dry Run Policy")
@@ -317,8 +371,16 @@ class PathAMediaPane:
 
         processing_range_form = QFormLayout()
         processing_range_form.addRow(self.limit_processing_range_checkbox)
-        processing_range_form.addRow("Range start (s)", self.processing_range_start_spin)
-        processing_range_form.addRow("Range end (s)", self.processing_range_end_spin)
+        
+        range_start_row = QHBoxLayout()
+        range_start_row.addWidget(self.processing_range_start_spin, stretch=1)
+        range_start_row.addWidget(self.set_range_start_from_playhead_button)
+        processing_range_form.addRow("Range start (s)", range_start_row)
+
+        range_end_row = QHBoxLayout()
+        range_end_row.addWidget(self.processing_range_end_spin, stretch=1)
+        range_end_row.addWidget(self.set_range_end_from_playhead_button)
+        processing_range_form.addRow("Range end (s)", range_end_row)
         structure_layout.addLayout(processing_range_form)
 
         structure_layout.addWidget(self.language_selection_panel)
@@ -344,6 +406,35 @@ class PathAMediaPane:
         center_layout.addWidget(self.current_time_label)
         center_layout.addWidget(self.current_cue_relationship_label)
         center_layout.addWidget(self.timeline)
+
+        # Preview / Calibration A-B Loop Bar (DOG-002: human calibration only, strictly isolated from OCR Range)
+        preview_loop_container = QWidget()
+        preview_loop_container.setObjectName("previewLoopBox")
+        preview_loop_layout = QVBoxLayout(preview_loop_container)
+        preview_loop_layout.setContentsMargins(
+            Spacing.COMPACT, Spacing.COMPACT, Spacing.COMPACT, Spacing.COMPACT
+        )
+        preview_loop_layout.setSpacing(Spacing.MICRO)
+
+        loop_header_row = QHBoxLayout()
+        loop_header_row.addWidget(self.preview_loop_checkbox)
+        loop_header_row.addStretch(1)
+        loop_header_row.addWidget(self.preview_loop_status_label)
+        preview_loop_layout.addLayout(loop_header_row)
+
+        loop_controls_row = QHBoxLayout()
+        loop_controls_row.setSpacing(Spacing.COMPACT)
+        loop_controls_row.addWidget(QLabel("A (s):"))
+        loop_controls_row.addWidget(self.loop_a_spin)
+        loop_controls_row.addWidget(self.set_loop_a_from_playhead_button)
+        loop_controls_row.addWidget(QLabel("B (s):"))
+        loop_controls_row.addWidget(self.loop_b_spin)
+        loop_controls_row.addWidget(self.set_loop_b_from_playhead_button)
+        loop_controls_row.addWidget(self.play_loop_button)
+        loop_controls_row.addWidget(self.clear_loop_button)
+        preview_loop_layout.addLayout(loop_controls_row)
+
+        center_layout.addWidget(preview_loop_container)
 
         # OCR Action Pipeline Section in Center Pane (DOG-002 action hierarchy)
         ocr_container = QWidget()
@@ -578,10 +669,84 @@ class PathAMediaPane:
         # loaded so far (which can lag behind `load()` returning).
         self._video_duration_seconds = metadata.duration_seconds
         self.position_slider.setRange(0, round(metadata.duration_seconds * 1000))
+        self.loop_a_spin.setRange(0.0, metadata.duration_seconds)
+        self.loop_b_spin.setRange(0.0, metadata.duration_seconds)
+        self.loop_a_spin.setValue(0.0)
+        self.loop_b_spin.setValue(0.0)
+        self.preview_loop_checkbox.setChecked(False)
+        self.controller.clear_ab_loop()
+        self._update_preview_loop_status()
         self._refresh_timeline()
         self._refresh_current_cue_relationship(0.0)
         self._refresh_ocr_range_summary()
         self._update_ocr_button_enabled()
+
+    def _on_set_range_start_from_playhead_clicked(self) -> None:
+        pos = max(0.0, round(self.controller.position_seconds, 2))
+        self.limit_processing_range_checkbox.setChecked(True)
+        self.processing_range_start_spin.setValue(pos)
+        self._refresh_context_label()
+        self._refresh_ocr_range_summary()
+
+    def _on_set_range_end_from_playhead_clicked(self) -> None:
+        pos = max(0.0, round(self.controller.position_seconds, 2))
+        self.limit_processing_range_checkbox.setChecked(True)
+        self.processing_range_end_spin.setValue(pos)
+        self._refresh_context_label()
+        self._refresh_ocr_range_summary()
+
+    def _on_set_loop_a_from_playhead_clicked(self) -> None:
+        pos = max(0.0, round(self.controller.position_seconds, 2))
+        self.loop_a_spin.setValue(pos)
+        self._on_preview_loop_changed()
+
+    def _on_set_loop_b_from_playhead_clicked(self) -> None:
+        pos = max(0.0, round(self.controller.position_seconds, 2))
+        self.loop_b_spin.setValue(pos)
+        self._on_preview_loop_changed()
+
+    def _on_play_loop_clicked(self) -> None:
+        start = self.loop_a_spin.value()
+        end = self.loop_b_spin.value()
+        if end > start:
+            self.preview_loop_checkbox.setChecked(True)
+            self.controller.set_ab_loop(start, end, enabled=True)
+            self.controller.seek(start)
+            self.controller.play()
+            self._update_preview_loop_status()
+        else:
+            self.controller.set_loop_enabled(False)
+            self.preview_loop_status_label.setText("Invalid Loop: B must be > A (Preview only)")
+
+    def _on_clear_loop_clicked(self) -> None:
+        self.preview_loop_checkbox.setChecked(False)
+        self.loop_a_spin.setValue(0.0)
+        self.loop_b_spin.setValue(0.0)
+        self.controller.clear_ab_loop()
+        self._update_preview_loop_status()
+
+    def _on_preview_loop_changed(self) -> None:
+        if not self.preview_loop_checkbox.isChecked():
+            self.controller.set_loop_enabled(False)
+            self._update_preview_loop_status()
+            return
+        start = self.loop_a_spin.value()
+        end = self.loop_b_spin.value()
+        if end > start:
+            self.controller.set_ab_loop(start, end, enabled=True)
+            self._update_preview_loop_status()
+        else:
+            self.controller.set_loop_enabled(False)
+            self.preview_loop_status_label.setText("Invalid Loop: B must be > A (Preview only)")
+
+    def _update_preview_loop_status(self) -> None:
+        if self.controller.is_loop_enabled and self.controller.loop_range is not None:
+            start, end = self.controller.loop_range
+            self.preview_loop_status_label.setText(
+                f"A-B Loop: {start:.2f}s – {end:.2f}s · {end - start:.2f}s (Preview only)"
+            )
+        else:
+            self.preview_loop_status_label.setText("A-B Loop: Off · Preview only")
 
     def current_roi(self) -> ROI:
         x = min(1.0, max(0.0, self.roi_x_spin.value()))
