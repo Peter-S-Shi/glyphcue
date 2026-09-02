@@ -30,6 +30,25 @@ once, declared in advance:
   same scheduler-produced observations. Any held-out failure is a STOP;
   the threshold may not be adjusted to accommodate it.
 
+RESULT ON FROZEN GROUND TRUTH. sample_d calibration yields
+S95 = 0.2530, D05 = 0.3569 and therefore a threshold of 0.300. Under
+ground truth that has since passed both a boundary integrity audit and a
+state-list integrity audit -- the latter resolving sample_a's three
+ambiguous windows by human adjudication as progressive reveal between
+adjacent states rather than hidden states or blanks -- validation gives:
+
+    sample_d (calibration)  7/7, zero swallowed, all 8 ROI variants
+    sample_a (held out)     6/6, zero swallowed, all 8 ROI variants
+    sample_b (held out)     5/5 on 6 of 8; 4/5 on hand_drawn_tight and
+                            tight_070, both losing only its 0.265s tail
+                            state -- shorter than the 1.0s sentinel, the
+                            residual SCHEDULING risk already documented
+                            in `hybrid_evidence_job`, not a distance one
+
+No distance-layer failure survives on either held-out fixture. The one
+open item is that sub-sentinel tail state, which belongs to the
+scheduler and is out of this gate's scope.
+
 Requires the `[ocr]` extra (detection only, no recognition):
     python -m benchmarks.m11_detector_assisted_beta.run_robust_calibration_gate
 """
