@@ -56,6 +56,12 @@ class PipelineMetrics:
     rejected_transition_episodes: int = 0
     transition_episodes: int = 0
     suppressed_candidate_triggers: int = 0
+    # Text DETECTION, as distinct from recognition: only the hybrid
+    # profile pays this, and the honest cost of that profile is the two
+    # together. Left at zero by the production trigger path, which never
+    # runs a detector of its own.
+    detector_calls: int = 0
+    detector_seconds: float = 0.0
     invocation_records: list[OcrInvocationRecord] = field(default_factory=list)
 
     def record_invocation(
@@ -149,6 +155,8 @@ class PipelineMetrics:
                 "rejected_transition_episodes": self.rejected_transition_episodes,
                 "transition_episodes": self.transition_episodes or self.confirmed_transition_episodes,
                 "suppressed_candidate_triggers": self.suppressed_candidate_triggers,
+                "detector_calls": self.detector_calls,
+                "detector_seconds": round(self.detector_seconds, 3),
                 "ocr_calls_per_media_minute": round(self.ocr_calls_per_media_minute, 2),
                 "effective_processing_speed": round(self.effective_processing_speed, 3),
                 "wall_media_ratio": round(self.wall_media_ratio, 3),

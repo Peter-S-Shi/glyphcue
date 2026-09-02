@@ -38,7 +38,10 @@ from glyphcue.application.multilingual_ocr_evidence_job import build_multilingua
 from glyphcue.application.multilingual_reconstruction import (
     reconstruct_multilingual_cues_for_track_group,
 )
-from glyphcue.application.ocr_evidence_job import build_ocr_evidence_job
+from glyphcue.application.evidence_job_profile import (
+    EvidenceJobProfile,
+    build_evidence_job_for_profile,
+)
 from glyphcue.application.pipeline_metrics import PipelineMetrics
 from glyphcue.application.processing_range import ProcessingRange
 from glyphcue.application.review_priority import (
@@ -751,7 +754,13 @@ class PathAMediaPane:
                 if self._ocr_engine_factory is not None
                 else self._ocr_engine
             )
-            self.current_ocr_job = build_ocr_evidence_job(
+            # The profile is named explicitly rather than implied: a
+            # second Path A strategy now exists (M11's hybrid), and a
+            # reader of this call site should be able to tell which
+            # pipeline produced a user's evidence. The UI stays on the
+            # shipped production trigger path.
+            self.current_ocr_job = build_evidence_job_for_profile(
+                EvidenceJobProfile.PRODUCTION_TRIGGER,
                 self._video_path,
                 self._processing_range,
                 track_group.roi,

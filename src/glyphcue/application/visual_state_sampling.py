@@ -153,6 +153,70 @@ def _close_group(
     )
 
 
+class IncrementalVisualStateGrouper:
+    """`group_visual_states` as a streaming state machine.
+
+    Same rules, same anchor semantics, same representative selection --
+    but a group is emitted the moment the frame that ends it arrives,
+    instead of after the whole sequence is known. That is what lets a
+    real job act on a finished subtitle state (recognize it, persist it)
+    while the run is still going, rather than holding everything to the
+    end and losing it all on cancellation.
+    """
+
+    def __init__(
+        self,
+        group_distance_threshold: float = _DEFAULT_GROUP_DISTANCE_THRESHOLD,
+        distance: Callable[[np.ndarray, np.ndarray], float] = signature_distance,
+        representative: Callable[[list[SampledFrame]], SampledFrame] = middle_member,
+    ) -> None:
+        self._threshold = group_distance_threshold
+        self._distance = distance
+        self._representative = representative
+        self._kind: str | None = None
+        self._anchor: np.ndarray | None = None
+        self._members: list[SampledFrame] = []
+
+    def push(self, frame: SampledFrame) -> tuple[VisualStateGroup, list[SampledFrame]] | None:
+        """Adds one frame; returns the group that just CLOSED (with its
+        members), or None if the current group is still open."""
+        if not self._members:
+            self._start(frame)
+            return None
+
+        if frame.is_blank:
+            belongs = self._kind == "blank"
+        elif self._kind == "blank":
+            belongs = False
+        else:
+            belongs = self._distance(frame.signature, self._anchor) <= self._threshold
+
+        if belongs:
+            self._members.append(frame)
+            return None
+
+        closed = self._close()
+        self._start(frame)
+        return closed
+
+    def flush(self) -> tuple[VisualStateGroup, list[SampledFrame]] | None:
+        """Closes the final open group at end of stream."""
+        if not self._members:
+            return None
+        closed = self._close()
+        self._kind, self._anchor, self._members = None, None, []
+        return closed
+
+    def _start(self, frame: SampledFrame) -> None:
+        self._kind = "blank" if frame.is_blank else "subtitle"
+        self._anchor = frame.signature
+        self._members = [frame]
+
+    def _close(self) -> tuple[VisualStateGroup, list[SampledFrame]]:
+        members = self._members
+        return _close_group(self._kind, members, self._representative), members
+
+
 def group_visual_states(
     sampled_frames: list[SampledFrame],
     group_distance_threshold: float = _DEFAULT_GROUP_DISTANCE_THRESHOLD,
@@ -177,26 +241,17 @@ def group_visual_states(
     if not sampled_frames:
         return VisualStateGroupingResult()
 
+    grouper = IncrementalVisualStateGrouper(
+        group_distance_threshold=group_distance_threshold,
+        distance=distance,
+        representative=representative,
+    )
     groups: list[VisualStateGroup] = []
-    current_kind = "blank" if sampled_frames[0].is_blank else "subtitle"
-    current_anchor = sampled_frames[0].signature
-    current_members = [sampled_frames[0]]
-
-    for frame in sampled_frames[1:]:
-        if frame.is_blank:
-            belongs = current_kind == "blank"
-        elif current_kind == "blank":
-            belongs = False
-        else:
-            belongs = distance(frame.signature, current_anchor) <= group_distance_threshold
-
-        if belongs:
-            current_members.append(frame)
-        else:
-            groups.append(_close_group(current_kind, current_members, representative))
-            current_kind = "blank" if frame.is_blank else "subtitle"
-            current_anchor = frame.signature
-            current_members = [frame]
-
-    groups.append(_close_group(current_kind, current_members, representative))
+    for frame in sampled_frames:
+        closed = grouper.push(frame)
+        if closed is not None:
+            groups.append(closed[0])
+    final = grouper.flush()
+    if final is not None:
+        groups.append(final[0])
     return VisualStateGroupingResult(groups=groups)
