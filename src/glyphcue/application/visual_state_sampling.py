@@ -130,8 +130,19 @@ class VisualStateGroupingResult:
         return sum(1 for g in self.groups if g.state_kind == "blank")
 
 
-def _close_group(state_kind: str, members: list[SampledFrame]) -> VisualStateGroup:
-    representative = members[len(members) // 2]
+def middle_member(members: list[SampledFrame]) -> SampledFrame:
+    """The original representative rule: the temporally middle member,
+    chosen to avoid the transition-adjacent frames at either edge of a
+    densely sampled run."""
+    return members[len(members) // 2]
+
+
+def _close_group(
+    state_kind: str,
+    members: list[SampledFrame],
+    representative_fn: Callable[[list[SampledFrame]], SampledFrame] = middle_member,
+) -> VisualStateGroup:
+    representative = representative_fn(members)
     return VisualStateGroup(
         state_kind=state_kind,
         start_timestamp=members[0].timestamp,
@@ -146,6 +157,7 @@ def group_visual_states(
     sampled_frames: list[SampledFrame],
     group_distance_threshold: float = _DEFAULT_GROUP_DISTANCE_THRESHOLD,
     distance: Callable[[np.ndarray, np.ndarray], float] = signature_distance,
+    representative: Callable[[list[SampledFrame]], SampledFrame] = middle_member,
 ) -> VisualStateGroupingResult:
     """Groups consecutive sampled frames into runs of one visual subtitle
     state, with blank treated as its own explicit state rather than "just
@@ -181,10 +193,10 @@ def group_visual_states(
         if belongs:
             current_members.append(frame)
         else:
-            groups.append(_close_group(current_kind, current_members))
+            groups.append(_close_group(current_kind, current_members, representative))
             current_kind = "blank" if frame.is_blank else "subtitle"
             current_anchor = frame.signature
             current_members = [frame]
 
-    groups.append(_close_group(current_kind, current_members))
+    groups.append(_close_group(current_kind, current_members, representative))
     return VisualStateGroupingResult(groups=groups)

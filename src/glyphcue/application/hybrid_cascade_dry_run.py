@@ -66,6 +66,7 @@ from glyphcue.application.visual_state_sampling import (
     SampledFrame,
     VisualStateGroup,
     group_visual_states,
+    middle_member,
     signature_distance,
 )
 from glyphcue.domain.roi import ROI
@@ -206,6 +207,8 @@ def run_hybrid_cascade_dry_run(
     cheap_region_mask: CheapRegionMask | None = None,
     candidate_distance_threshold: float = CASCADE_CANDIDATE_DISTANCE_THRESHOLD,
     max_detector_gap_seconds: float = MAX_DETECTOR_GAP_SECONDS,
+    representative: Callable[[list[SampledFrame]], SampledFrame] = middle_member,
+    guarantee_tail: bool = False,
 ) -> HybridCascadeResult:
     """Beta-S state identity, scheduled instead of exhaustive.
 
@@ -239,6 +242,43 @@ def run_hybrid_cascade_dry_run(
 
     detector_latencies: list[float] = []
     observed: list[SampledFrame] = []
+    # The most recent grid point the scheduler declined, kept so the tail
+    # guarantee can observe it without a second decode pass.
+    pending_tail: tuple[float, np.ndarray, np.ndarray] | None = None
+
+    def observe(
+        timestamp: float,
+        roi_frame: np.ndarray,
+        edge_mask: np.ndarray,
+        cheap: np.ndarray,
+        reason: str,
+    ):
+        detector_start = time.monotonic()
+        polygons = detect(roi_frame)
+        detector_latencies.append(time.monotonic() - detector_start)
+
+        polygons = list(polygons) if polygons is not None else []
+        if cheap_region_mask is not None:
+            # The mask follows the newest confirmed text, and the anchor
+            # is re-taken THROUGH it -- anchor and future comparisons
+            # must live in the same masked space, or the first comparison
+            # after a mask change would register as a change caused by
+            # the mask itself.
+            cheap_region_mask.update(polygons, roi_frame.shape[:2])
+            cheap = cheap_region_mask.apply(cheap_signature_fn(edge_mask, stability))
+        observed.append(
+            SampledFrame(
+                index=len(observed),
+                timestamp=timestamp,
+                signature=signature_fn(roi_frame, polygons),
+                # The detector, not a pixel-density threshold, decides
+                # blank: no detected text means no text.
+                is_blank=not polygons,
+            )
+        )
+        result.observations.append((timestamp, reason))
+        return cheap
+
     source = PyAvMediaFrameSource()
     source.open(path)
     wall_start = time.monotonic()
@@ -289,32 +329,30 @@ def run_hybrid_cascade_dry_run(
             force_next_observation = reason == "candidate"
 
             if reason is None:
+                pending_tail = (timestamp, roi_frame, edge_mask)
                 continue
 
-            detector_start = time.monotonic()
-            polygons = detect(roi_frame)
-            detector_latencies.append(time.monotonic() - detector_start)
-
-            polygons = list(polygons) if polygons is not None else []
-            if cheap_region_mask is not None:
-                # The mask follows the newest confirmed text, and the
-                # anchor is re-taken THROUGH it -- anchor and future
-                # comparisons must live in the same masked space, or the
-                # first comparison after a mask change would register as
-                # a change caused by the mask itself.
-                cheap_region_mask.update(polygons, roi_frame.shape[:2])
-                cheap = cheap_region_mask.apply(cheap_signature_fn(edge_mask, stability))
-            observed.append(
-                SampledFrame(
-                    index=len(observed),
-                    timestamp=timestamp,
-                    signature=signature_fn(roi_frame, polygons),
-                    is_blank=not polygons,
-                )
-            )
-            result.observations.append((timestamp, reason))
-            cheap_anchor = cheap
+            cheap_anchor = observe(timestamp, roi_frame, edge_mask, cheap, reason)
             last_observed_time = timestamp
+            pending_tail = None
+
+        # A processing range has two boundaries and the scheduler only
+        # protects one: the first grid point is always observed by the
+        # bootstrap, while the last is protected by nothing -- a sentinel
+        # due after the range ends never fires. A real state living
+        # entirely in that final stretch (sample_b state 5: 0.23s, at the
+        # very end) is then never observed at all. Observing the last
+        # sampled frame closes the range symmetrically for at most one
+        # extra detector call, and without shortening the global sentinel
+        # or raising the sampling rate.
+        if guarantee_tail and pending_tail is not None:
+            tail_timestamp, tail_frame, tail_edges = pending_tail
+            cheap_start = time.monotonic()
+            tail_cheap = cheap_signature_fn(tail_edges, stability)
+            if cheap_region_mask is not None:
+                tail_cheap = cheap_region_mask.apply(tail_cheap)
+            result.cheap_gate_wall_seconds += time.monotonic() - cheap_start
+            observe(tail_timestamp, tail_frame, tail_edges, tail_cheap, "boundary")
     finally:
         source.close()
         result.elapsed_wall_seconds = time.monotonic() - wall_start
@@ -330,5 +368,6 @@ def run_hybrid_cascade_dry_run(
         observed,
         group_distance_threshold=group_distance_threshold,
         distance=signature_distance,
+        representative=representative,
     ).groups
     return result
