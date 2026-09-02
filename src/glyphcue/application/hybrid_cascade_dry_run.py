@@ -42,7 +42,7 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Protocol
 
 import numpy as np
 
@@ -87,6 +87,25 @@ CASCADE_CANDIDATE_DISTANCE_THRESHOLD = ALPHA_GROUP_DISTANCE_THRESHOLD / 2.0
 MAX_DETECTOR_GAP_SECONDS = 1.0
 
 CheapSignature = Callable[[np.ndarray, EdgeStabilityBuffer], np.ndarray]
+
+
+class CheapRegionMask(Protocol):
+    """Restricts WHERE the cheap scheduler looks.
+
+    The baseline cascade compares cheap evidence over the whole ROI,
+    which on a talking-head shot means the scheduler is mostly watching a
+    face. A region mask narrows that to somewhere the detector has
+    actually confirmed text. It is a scheduling concern only: it can
+    change how often the detector runs, never what the detector or
+    Beta-S concludes.
+    """
+
+    def update(self, polygons: Any, roi_shape: tuple[int, int]) -> None:
+        """Called after every detector observation with that frame's
+        polygons, so the mask follows the latest confirmed text."""
+
+    def apply(self, cheap_signature: np.ndarray) -> np.ndarray:
+        """Returns the cheap signature restricted to the current region."""
 
 
 @dataclass
@@ -184,6 +203,7 @@ def run_hybrid_cascade_dry_run(
     group_distance_threshold: float = BETA_GROUP_DISTANCE_THRESHOLD,
     signature_fn: Callable[[np.ndarray, Any], np.ndarray] = beta_s_signature,
     cheap_signature_fn: CheapSignature = subtitle_stable_signature,
+    cheap_region_mask: CheapRegionMask | None = None,
     candidate_distance_threshold: float = CASCADE_CANDIDATE_DISTANCE_THRESHOLD,
     max_detector_gap_seconds: float = MAX_DETECTOR_GAP_SECONDS,
 ) -> HybridCascadeResult:
@@ -243,6 +263,8 @@ def run_hybrid_cascade_dry_run(
 
             cheap_start = time.monotonic()
             cheap = cheap_signature_fn(edge_mask, stability)
+            if cheap_region_mask is not None:
+                cheap = cheap_region_mask.apply(cheap)
             changed = cheap_anchor is None or (
                 signature_distance(cheap, cheap_anchor) > candidate_distance_threshold
             )
@@ -274,6 +296,14 @@ def run_hybrid_cascade_dry_run(
             detector_latencies.append(time.monotonic() - detector_start)
 
             polygons = list(polygons) if polygons is not None else []
+            if cheap_region_mask is not None:
+                # The mask follows the newest confirmed text, and the
+                # anchor is re-taken THROUGH it -- anchor and future
+                # comparisons must live in the same masked space, or the
+                # first comparison after a mask change would register as
+                # a change caused by the mask itself.
+                cheap_region_mask.update(polygons, roi_frame.shape[:2])
+                cheap = cheap_region_mask.apply(cheap_signature_fn(edge_mask, stability))
             observed.append(
                 SampledFrame(
                     index=len(observed),
