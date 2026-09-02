@@ -3,7 +3,7 @@
 **Document type:** Authoritative V1 milestone roadmap  
 **Project:** GlyphCue  
 **Repository:** `Peter-S-Shi/glyphcue`  
-**Lifecycle phase:** Production Development in progress → Milestone 10 complete (evidence/evaluation closure accepted; representative-video gate transferred to Milestone 11, not waived — see §17's gate audit disposition), Feature Freeze ACTIVE, **Milestone 11 (Product Hardening & Full Regression) IN PROGRESS — stage ④ Targeted Regression CLOSED (automated evidence accepted at the human gate, see `docs/m11_targeted_regression.md`), currently at stage ⑤ Representative Evaluation** (see `docs/m11_representative_evaluation.md`); M11 is NOT complete and its acceptance gate, including the transferred representative-video evaluation, is still open  
+**Lifecycle phase:** Production Development in progress → Milestone 10 complete (evidence/evaluation closure accepted; representative-video gate transferred to Milestone 11, not waived — see §17's gate audit disposition), Feature Freeze ACTIVE, **Milestone 11 (Product Hardening & Full Regression) IN PROGRESS — stage ④ Targeted Regression CLOSED (automated evidence accepted at the human gate, see `docs/m11_targeted_regression.md`), currently at stage ⑤ Representative Evaluation, step ⑤-B Evaluation Preparation** (see `docs/m11_representative_evaluation.md`); M11 is NOT complete and its acceptance gate, including the transferred representative-video evaluation, is still open  
 **Status:** Current V1 execution roadmap  
 **Last updated:** 2026-09-02
 
@@ -1999,11 +1999,13 @@ three findings recorded and deliberately left unfixed) passed the human
 gate on 2026-09-02.
 
 Stage ⑤ **Representative Evaluation is IN PROGRESS** — this is the
-transferred M10 gate (§18 acceptance gate 9). Its corpus selection step is
-complete and recorded in `docs/m11_representative_evaluation.md`: a
-read-only inventory of the eight private sample videos and a recommended
-five-window evaluation corpus. The evaluation runs themselves have not
-been started.
+transferred M10 gate (§18 acceptance gate 9), recorded in
+`docs/m11_representative_evaluation.md`. Step ⑤-A corpus selection is
+CLOSED and the corpus is frozen at five windows. Step ⑤-B evaluation
+preparation is under way: one measured ROI proposal per window, and a
+sparse ground-truth *candidate* worksheet with frame evidence for each of
+the four new samples, awaiting human confirmation. Step ⑤-C — the harness
+runs themselves — has not been started.
 
 The remaining M11 stages — packaging hardening, formal Manual QA, and the
 Full Regression itself — have not been started.
