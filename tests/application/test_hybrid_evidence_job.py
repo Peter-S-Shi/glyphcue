@@ -296,6 +296,61 @@ def test_observations_keep_the_production_shape(two_caption_video, tmp_path):
         assert STATE_TRIGGER_DETAIL_KEY in observation.provenance.detail
 
 
+def test_the_job_analyzes_exactly_the_users_roi_with_no_context_expansion(
+    two_caption_video, tmp_path
+):
+    """Pins the verdict of the M11 bounded ROI Normalization / Context
+    Expansion Gate: NO normalization rule was adopted, so the pixels the
+    detector and the engine see are exactly the user's own ROI crop.
+
+    The gate asked whether one uniform, fixture-independent expansion of
+    the user's ROI (a fixed fraction of the ROI's own height on all four
+    sides -- the only fixture-independent scale available at this seam)
+    could make plausibly tighter or looser hand-drawn ROIs behave like
+    the frozen research ROI, whose signature margins the whole gate was
+    decided on. Replaying the frozen ROI, the real hand-drawn tighter
+    ROI and six systematic perturbations under that one rule showed it
+    is NOT a stable improvement: it did recover the short state that a
+    too-tight ROI swallows, but it also cost a different real state on
+    the frozen research ROI itself, and on one perturbation -- trading
+    one state for another rather than removing the sensitivity. So the
+    rule was rejected rather than tuned, since tuning it per fixture is
+    exactly what would invalidate the frozen gate.
+
+    This test therefore guards a DECISION, not a mechanism: if a future
+    round adds an expansion here, this fails and forces that round to
+    argue for it on its own evidence rather than inherit silence.
+    """
+    seen_shapes: list[tuple[int, int]] = []
+    roi = ROI(x=0.0, y=0.5, width=1.0, height=0.5)
+
+    def recording_detector(roi_frame: np.ndarray):
+        seen_shapes.append(roi_frame.shape[:2])
+        return []
+
+    engine = _FakeOcrEngine()
+    db_path = tmp_path / "roi.db"
+    _run_job(
+        build_hybrid_ocr_evidence_job(
+            two_caption_video,
+            ProcessingRange(),
+            roi,
+            engine,
+            db_path,
+            PipelineMetrics(),
+            "run-hybrid",
+            detect=recording_detector,
+        )
+    )
+
+    assert seen_shapes
+    # The user asked for the lower half and got the lower half. Any
+    # padding rule would grow this crop (and, clamped at the frame's
+    # bottom edge, shift its top).
+    assert set(seen_shapes) == {(_HEIGHT // 2, _WIDTH)}
+    assert all(observation.roi == roi for observation in _observations(db_path))
+
+
 def test_evidence_is_persisted_per_state_so_a_cancel_keeps_what_was_found(
     two_caption_video, tmp_path
 ):
