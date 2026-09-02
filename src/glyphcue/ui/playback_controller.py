@@ -58,6 +58,12 @@ class PlaybackController(QObject):
         self._player.play()
 
     def pause(self) -> None:
+        # A pause ends an in-flight cue-span replay, whatever caused it
+        # -- the span reaching its own end, or the user interrupting the
+        # replay by hand. Both have to hand the A-B preview loop back;
+        # only restoring it on the "ran to completion" path left a
+        # hand-paused replay with the loop silently suspended forever.
+        self._finish_span()
         self._player.pause()
 
     def toggle_play_pause(self) -> None:
@@ -89,8 +95,12 @@ class PlaybackController(QObject):
             self._suspended_loop_enabled = True
             self._loop_enabled = False
 
+        # Re-targeting a replay that is still running (clicking Replay on
+        # a second Cue) must move the span's end, not stack a second
+        # connection on the same slot.
+        if self._span_end_ms is None:
+            self._player.positionChanged.connect(self._on_position_changed_during_span)
         self._span_end_ms = round(end_seconds * 1000)
-        self._player.positionChanged.connect(self._on_position_changed_during_span)
         self.play()
         self.seek(start_seconds)
 
@@ -154,14 +164,22 @@ class PlaybackController(QObject):
                 if was_playing:
                     self._player.play()
 
+    def _finish_span(self) -> None:
+        """Ends an in-flight cue-span replay and restores whatever A-B
+        preview loop `play_span` suspended for it. Idempotent, so it is
+        safe on every `pause()` including the ones that have no span
+        running at all."""
+        if self._span_end_ms is None:
+            return
+        self._span_end_ms = None
+        try:
+            self._player.positionChanged.disconnect(self._on_position_changed_during_span)
+        except (RuntimeError, TypeError):
+            pass
+        if self._suspended_loop_enabled:
+            self._loop_enabled = True
+        self._suspended_loop_enabled = None
+
     def _on_position_changed_during_span(self, position_ms: int) -> None:
         if self._span_end_ms is not None and position_ms >= self._span_end_ms:
             self.pause()
-            try:
-                self._player.positionChanged.disconnect(self._on_position_changed_during_span)
-            except (RuntimeError, TypeError):
-                pass
-            self._span_end_ms = None
-            if self._suspended_loop_enabled:
-                self._loop_enabled = True
-                self._suspended_loop_enabled = None

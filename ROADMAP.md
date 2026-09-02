@@ -3,9 +3,9 @@
 **Document type:** Authoritative V1 milestone roadmap  
 **Project:** GlyphCue  
 **Repository:** `Peter-S-Shi/glyphcue`  
-**Lifecycle phase:** Production Development in progress → Milestone 10 complete (evidence/evaluation closure accepted; representative-video gate transferred to Milestone 11, not waived — see §17's gate audit disposition), Feature Freeze ACTIVE, Milestone 11 (Product Hardening & Full Regression) next  
+**Lifecycle phase:** Production Development in progress → Milestone 10 complete (evidence/evaluation closure accepted; representative-video gate transferred to Milestone 11, not waived — see §17's gate audit disposition), Feature Freeze ACTIVE, **Milestone 11 (Product Hardening & Full Regression) IN PROGRESS — currently at stage ④ Targeted Regression** (see `docs/m11_targeted_regression.md`); M11 is NOT complete and its acceptance gate, including the transferred representative-video evaluation, is still open  
 **Status:** Current V1 execution roadmap  
-**Last updated:** 2026-08-31
+**Last updated:** 2026-09-02
 
 ---
 
@@ -1989,7 +1989,14 @@ Feature Freeze                          ACTIVE
 
 The next engineering action is:
 
-> **Milestone 11 — Product Hardening & Full Regression**
+> **Milestone 11 — Product Hardening & Full Regression** (in progress)
+
+Milestone 11 is under way, not queued: stage ④ Targeted Regression is
+complete and recorded in `docs/m11_targeted_regression.md` (two defects
+reproduced and fixed, three findings recorded and deliberately left
+unfixed). The remaining M11 stages — packaging hardening, formal Manual
+QA, the transferred representative-video evaluation, and the Full
+Regression itself — have not been started.
 
 Do not ask AG2.0 to implement the whole roadmap.
 

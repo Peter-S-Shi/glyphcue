@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QFormLayout,
     QFrame,
+    QGridLayout,
     QHBoxLayout,
     QLabel,
     QMessageBox,
@@ -483,15 +484,22 @@ class PathAMediaPane:
         if self.dev_ocr_profile_combo is not None:
             ocr_box_layout.addWidget(self.dev_ocr_profile_combo)
 
-        ocr_controls = QHBoxLayout()
+        # Two rows of two, not one row of four. The four buttons' own
+        # minimum widths add up to more than the center pane is ever
+        # guaranteed, and this pane's scroll area has horizontal
+        # scrolling switched off on purpose -- so a single row does not
+        # squeeze, it silently puts the last button (Discard Latest OCR
+        # Run) outside the viewport entirely at the window size the app
+        # actually opens at.
+        ocr_controls = QGridLayout()
         self.run_ocr_button.setObjectName("runOcrBtn")
         self.dry_run_policy_button.setObjectName("secondaryBtn")
         self.cancel_ocr_button.setObjectName("secondaryBtn")
         self.discard_latest_run_button.setObjectName("subtleDangerBtn")
-        ocr_controls.addWidget(self.run_ocr_button)
-        ocr_controls.addWidget(self.dry_run_policy_button)
-        ocr_controls.addWidget(self.cancel_ocr_button)
-        ocr_controls.addWidget(self.discard_latest_run_button)
+        ocr_controls.addWidget(self.run_ocr_button, 0, 0)
+        ocr_controls.addWidget(self.dry_run_policy_button, 0, 1)
+        ocr_controls.addWidget(self.cancel_ocr_button, 1, 0)
+        ocr_controls.addWidget(self.discard_latest_run_button, 1, 1)
         ocr_box_layout.addLayout(ocr_controls)
         ocr_box_layout.addWidget(self.ocr_progress_bar)
         ocr_box_layout.addWidget(self.ocr_status_label)
