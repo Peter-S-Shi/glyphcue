@@ -74,3 +74,58 @@ def test_supported_languages_and_runtime_info_are_reported():
     assert info.version != "unknown"
     assert info.backend_version is not None
     assert info.backend_version != "unknown"
+
+
+def test_recognize_regions_matches_full_recognize_and_bypasses_detection():
+    # Multi-line image to verify transcription, line ordering, and geometry
+    image = Image.new("RGB", (400, 140), color=(20, 20, 20))
+    draw = ImageDraw.Draw(image)
+    font = ImageFont.load_default(size=24)
+    draw.text((10, 10), "First Line Hello", font=font, fill=(255, 255, 255))
+
+    draw.text((10, 55), "Second Line World", font=font, fill=(255, 255, 255))
+    draw.text((10, 100), "Third Line GlyphCue", font=font, fill=(255, 255, 255))
+    img_arr = np.array(image)
+
+    engine = PaddleOcrEngine(language="en")
+    engine.initialize()
+    try:
+        full_regions = engine.recognize(img_arr)
+        assert len(full_regions) == 3
+
+        polygons = [r.geometry for r in full_regions]
+        assert all(poly is not None for poly in polygons)
+
+        # Guard: detector MUST NOT be invoked during recognition-only
+        pipeline = engine._engine.paddlex_pipeline
+        det_called = False
+
+        def _forbidden_det(*args, **kwargs):
+            nonlocal det_called
+            det_called = True
+            raise AssertionError("text_det_model was called during recognize_regions")
+
+        pipeline._pipeline.text_det_model = _forbidden_det
+
+        rec_regions = engine.recognize_regions(img_arr, polygons)
+
+        assert not det_called
+        assert len(rec_regions) == len(full_regions)
+        for full, rec in zip(full_regions, rec_regions):
+            assert rec.text == full.text
+            assert rec.geometry == full.geometry
+            assert rec.language == full.language
+            assert rec.confidence == pytest.approx(full.confidence, rel=1e-3)
+    finally:
+        engine.shutdown()
+
+
+def test_recognize_regions_empty_polygons_returns_empty_list():
+    engine = PaddleOcrEngine(language="en")
+    engine.initialize()
+    try:
+        res = engine.recognize_regions(_text_image("test"), [])
+        assert res == []
+    finally:
+        engine.shutdown()
+

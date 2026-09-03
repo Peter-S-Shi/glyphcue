@@ -118,6 +118,70 @@ class PaddleOcrEngine:
             )
         return regions
 
+    def recognize_regions(
+        self, image: object, regions: object
+    ) -> list[OcrTextRegion]:
+        if self._engine is None:
+            raise OcrRecognitionError("PaddleOcrEngine.initialize() must be called first")
+        if not regions:
+            return []
+        try:
+            return self._recognize_regions(image, regions)
+        except Exception as exc:
+            raise OcrRecognitionError(str(exc)) from exc
+
+    def _recognize_regions(self, image: object, regions: object) -> list[OcrTextRegion]:
+        import numpy as np
+
+        pipeline = getattr(self._engine, "paddlex_pipeline", None)
+        if pipeline is None:
+            raise RuntimeError("PaddleOcrEngine underlying pipeline does not support region recognition")
+
+
+        poly_list = [np.asarray(poly, dtype=np.float32) for poly in regions]
+        if not poly_list:
+            return []
+
+        sorted_polygons = pipeline._sort_boxes(poly_list)
+        crops = list(pipeline._crop_by_polys(image, sorted_polygons))
+        valid = [
+            (crop, poly)
+            for crop, poly in zip(crops, sorted_polygons)
+            if crop.size and crop.shape[0] and crop.shape[1]
+        ]
+        if not valid:
+            return []
+
+        ratios = sorted(
+            range(len(valid)),
+            key=lambda i: valid[i][0].shape[1] / float(valid[i][0].shape[0]),
+        )
+        sorted_crops = [valid[i][0] for i in ratios]
+        rec_results = list(pipeline.text_rec_model(sorted_crops, return_word_box=False))
+        if len(rec_results) != len(valid):
+            raise RuntimeError("Recognizer output count does not match valid crop count")
+
+        restored = [None] * len(valid)
+        for i, rec_res in zip(ratios, rec_results):
+            restored[i] = rec_res
+
+        score_thresh = getattr(pipeline, "text_rec_score_thresh", 0.0)
+        output_regions = []
+        for (crop, poly), rec in zip(valid, restored):
+            score = float(rec.get("rec_score", 0.0))
+            if score >= score_thresh:
+                geometry = tuple((float(x), float(y)) for x, y in poly)
+                output_regions.append(
+                    OcrTextRegion(
+                        text=rec.get("rec_text", ""),
+                        confidence=score,
+                        language=self._language,
+                        geometry=geometry,
+                    )
+                )
+        return output_regions
+
+
     def supported_languages(self) -> tuple[str, ...]:
         return CANONICAL_LANGUAGES
 

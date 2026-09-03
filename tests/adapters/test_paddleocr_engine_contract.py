@@ -119,3 +119,62 @@ def test_runtime_info_reports_paddleocr_and_paddlepaddle_versions_distinctly(mon
     assert info.engine_name == "PaddleOCR"
     assert info.version == "3.7.0"
     assert info.backend_version == "3.3.1"
+
+
+def test_paddleocr_engine_satisfies_region_ocr_engine_protocol():
+    from glyphcue.adapters.ocr_engine import RegionOcrEngine
+
+    engine = PaddleOcrEngine()
+    assert isinstance(engine, RegionOcrEngine)
+
+
+def test_recognize_regions_before_initialize_raises_a_normalized_error():
+    engine = PaddleOcrEngine()
+
+    with pytest.raises(module.OcrRecognitionError):
+        engine.recognize_regions(image=object(), regions=[[0, 0], [10, 0], [10, 5], [0, 5]])
+
+
+def test_recognize_regions_with_empty_regions_returns_empty_list_immediately():
+    engine = PaddleOcrEngine()
+    engine.initialize()
+
+    regions = engine.recognize_regions(image=object(), regions=[])
+
+    assert regions == []
+
+
+def test_recognize_regions_uses_underlying_recognizer_and_maps_geometry(monkeypatch):
+    class _FakePipeline:
+        def __init__(self):
+            self.text_rec_score_thresh = 0.5
+            self.called_det = False
+
+        def _sort_boxes(self, boxes):
+            return boxes
+
+        def _crop_by_polys(self, img, boxes):
+            import numpy as np
+            for _ in boxes:
+                yield np.ones((10, 20, 3), dtype=np.uint8)
+
+        def text_rec_model(self, crops, return_word_box=False):
+            return [{"rec_text": "hello region", "rec_score": 0.92}]
+
+    class _FakeEngineWithPipeline:
+        def __init__(self):
+            self.paddlex_pipeline = _FakePipeline()
+
+    monkeypatch.setattr(module, "_construct_paddleocr", lambda **_: _FakeEngineWithPipeline())
+    engine = PaddleOcrEngine(language="en")
+    engine.initialize()
+
+    polys = [((1.0, 2.0), (10.0, 2.0), (10.0, 20.0), (1.0, 20.0))]
+    regions = engine.recognize_regions(image=object(), regions=polys)
+
+    assert len(regions) == 1
+    assert regions[0].text == "hello region"
+    assert regions[0].confidence == 0.92
+    assert regions[0].language == "en"
+    assert regions[0].geometry == ((1.0, 2.0), (10.0, 2.0), (10.0, 20.0), (1.0, 20.0))
+

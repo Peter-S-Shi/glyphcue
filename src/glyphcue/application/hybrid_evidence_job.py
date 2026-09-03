@@ -21,8 +21,9 @@ from typing import Any, Callable
 
 import numpy as np
 
-from glyphcue.adapters.ocr_engine import OcrEngine
+from glyphcue.adapters.ocr_engine import OcrEngine, RegionOcrEngine
 from glyphcue.adapters.pyav_media_source import PyAvMediaFrameSource, probe_media
+
 from glyphcue.application.beta_stroke_structural import beta_s_signature
 from glyphcue.application.hybrid_cascade_dry_run import (
     CASCADE_CANDIDATE_DISTANCE_THRESHOLD,
@@ -143,6 +144,7 @@ def build_hybrid_ocr_evidence_job(
             # closes -- recognition needs the medoid frame's pixels, and
             # which frame that is is not known until then.
             observed_frames: dict[int, np.ndarray] = {}
+            observed_polygons: dict[int, list[Any]] = {}
             observed_count = 0
 
             def persist(observation: Observation) -> None:
@@ -185,10 +187,15 @@ def build_hybrid_ocr_evidence_job(
                         regions = []
                     else:
                         frame = observed_frames[ref.index]
+                        polygons = observed_polygons.get(ref.index)
                         call_start = time.monotonic()
                         try:
-                            regions = list(ocr_engine.recognize(frame))
+                            if isinstance(ocr_engine, RegionOcrEngine) and polygons is not None:
+                                regions = list(ocr_engine.recognize_regions(frame, polygons))
+                            else:
+                                regions = list(ocr_engine.recognize(frame))
                         except Exception as error:
+
                             raise CaptionProbeReadError("OCR probe failed") from error
                         metrics.record_invocation(
                             timestamp=ref.pts, trigger_reason="hybrid_caption_probe",
@@ -218,6 +225,8 @@ def build_hybrid_ocr_evidence_job(
                 finally:
                     for member in members:
                         observed_frames.pop(member.index, None)
+                        observed_polygons.pop(member.index, None)
+
 
             next_sample_time = range_start
             cheap_anchor: np.ndarray | None = None
@@ -247,6 +256,7 @@ def build_hybrid_ocr_evidence_job(
                 )
 
                 observed_frames[observed_count] = roi_frame
+                observed_polygons[observed_count] = polygons
                 closed = grouper.push(
                     SampledFrame(
                         index=observed_count,
