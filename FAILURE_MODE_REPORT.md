@@ -194,6 +194,27 @@ to fuller coverage (open item in `docs/m11_representative_evaluation.md`
 §15/§16's Human Adjudication list) is what would actually close this gap;
 not attempted this round.
 
+**Update (Milestone 11 Architecture B integration)**: the layer-assignment
+algorithm itself gained a fourth corrective pass fixing four more real
+bugs (silent elimination of a script-less line, pure-Han zh/ja getting a
+fabricated winner, a single stray Han character misreading corrupted
+English as confident Chinese, and a false Cue boundary plus cross-language
+vote mixing from a subtitle's layers swapping screen position between
+frames) — see `docs/multilingual/track_group_reconstruction.md`'s
+Architecture B section. This is a correctness improvement, formally
+gated (12/12 acceptance cases), independent of the runtime change below.
+The *runtime* was also replaced (one shared detector + one universal
+recognizer instead of one engine per language, item #7 below), and a
+real post-integration `sample_h`/`sample_f`/`sample_c` smoke surfaced a
+new, still-open finding: CPU Paddle stayed correct on real content but
+measured 7.4×–14.0× realtime (over the ≤5× Performance Corrective Gate
+target); the opt-in DirectML path met ≤5× but showed real layer-content
+errors on this same content (swapped/garbled text, more Cues than CPU
+for the identical window). See `PROJECT_STATUS.md` for exact numbers.
+This is a new, separate open item from the missing/wrong-layer gap
+above — it did not exist before Architecture B's runtime change (there
+was no DirectML path here previously) and is not yet adjudicated.
+
 ---
 
 ## 6. Private-corpus evaluation-harness crash: unbounded concurrent job execution
@@ -289,6 +310,18 @@ through M11's detector-anchored scheduling (reducing OCR call frequency by ~15×
 Legacy and multilingual `PRODUCTION_TRIGGER` still retains this historical trigger cost
 on bilingual windows (`sample_h`/`sample_f`/`sample_c`), so this limitation is now a
 profile-specific residual rather than an unaddressed pipeline-wide bottleneck.
+
+**Update (Architecture B)**: item #5's runtime change (one shared
+detector + one universal recognizer per triggered frame, instead of one
+full detect+recognize per language) cut per-trigger cost roughly in
+half for a 2-language Track Group, but did nothing to the trigger
+COUNT this section documents -- a 10s `sample_h` slice still invoked
+recognition 33 times. That trigger rate, not the per-call architecture,
+is now the dominant remaining candidate for why CPU Paddle still
+measured 7.4×–14.0× realtime after Architecture B (see item #5's
+update and `PROJECT_STATUS.md`); a controlled follow-up on the trigger
+policy itself, independent of backend, is one of the candidate next
+steps there.
 
 
 ---

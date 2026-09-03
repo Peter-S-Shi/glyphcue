@@ -32,6 +32,36 @@ results are recorded in [`docs/m11_representative_evaluation.md`](docs/m11_repre
 §15–§16, and folded into [`EVALUATION_REPORT.md`](EVALUATION_REPORT.md) and
 [`FAILURE_MODE_REPORT.md`](FAILURE_MODE_REPORT.md). M11 is **not** complete and that gate is still open.
 
+**Multilingual Architecture B integrated** (shared detection + universal
+recognition, corrective 12-case gate — see
+[`docs/multilingual/track_group_reconstruction.md`](docs/multilingual/track_group_reconstruction.md)'s
+Milestone 11 Architecture B section). **Stage ⑤ representative evaluation
+still open pending post-integration `sample_h`/`sample_f`/`sample_c`
+confirmation** — Architecture B landing does not by itself close Stage ⑤.
+A real 10s-window post-integration smoke on all three surfaced a genuine,
+unresolved **speed/correctness trade-off, not a closed result**: on CPU
+Paddle (the shipped default), correctness/layer/timing/review semantics
+held (correct script separation, sensible multiline joins, missing/
+ambiguous diagnostics firing as documented) but wall time measured
+7.4×–14.0× realtime (`sample_h` 13.99×, `sample_f` 7.45×, `sample_c`
+9.25×) — a real ~7–15× improvement over the pre-Architecture-B baseline's
+~99–159×, but still over the ≤5× target. With the opt-in DirectML
+engine+detector (P2/P3/P4B), all three measured well under the ≤5×
+target (`sample_h` 2.11×, `sample_f` 2.93×, `sample_c` 3.12×), but that
+same run showed real correctness degradation not seen on CPU: multiple
+Cues with language content visibly swapped into the wrong layer (e.g.
+`sample_h`'s first Cue put an English sentence under `"zh"`), at least
+one garbled non-text reading (`sample_c`'s first Cue read `"zh": "3\n8"`
+where CPU Paddle read real Chinese text), and roughly 1.5–3× more Cues
+produced for the identical window (`sample_h`: 12 CPU vs 21 DirectML)
+from noisier per-frame recognition fragmenting otherwise-stable states.
+**The Multilingual Performance Corrective Gate is NOT closed**: neither
+measured configuration satisfies both the ≤5× target and correctness
+simultaneously. This needs human adjudication (e.g. DirectML recognition
+quality on this content, or whether the OCR trigger policy is
+over-invoking regardless of backend — `sample_h` alone triggered 33
+recognition calls in a 10s window) before the gate can close.
+
 Feature Freeze is ACTIVE. Milestones 0–10 are complete and merged
 (PRs #1–#12).
 
@@ -206,11 +236,20 @@ appears anywhere in the repository.
 
 ## Next action
 
-Human adjudication of the remaining representative evaluation items
-(`docs/m11_representative_evaluation.md` §15–§16), specifically whether
-`sample_h`/`sample_f`/`sample_c` receive a timeout extension or whether
-existing partial coverage suffices to close the representative gate. Following
-Stage ⑤ closure, the subsequent execution sequence is strictly **Stage ⑥ Full
-Regression → Stage ⑦ Formal Human QA** (alongside packaging hardening).
-Stage ⑤ remains OPEN. Do not treat M11 as complete, and do not advance to
+Human adjudication of the Multilingual Performance Corrective Gate's
+speed/correctness trade-off (above): CPU Paddle is correct but exceeds
+the ≤5× realtime target; opt-in DirectML meets the target but showed
+real layer-content errors on this content in the post-integration
+`sample_h`/`sample_f`/`sample_c` smoke. Candidate directions (none
+started): investigate whether the OCR trigger policy is over-invoking
+independent of backend (33 recognition calls on `sample_h`'s 10s
+window alone), investigate DirectML/RapidOCR recognition quality
+specifically, or re-scope the ≤5× target. Also pending: the remaining
+representative evaluation items (`docs/m11_representative_evaluation.md`
+§15–§16), specifically whether `sample_h`/`sample_f`/`sample_c` receive
+a timeout extension or whether existing partial coverage suffices to
+close the representative gate. Following Stage ⑤ closure, the
+subsequent execution sequence is strictly **Stage ⑥ Full Regression →
+Stage ⑦ Formal Human QA** (alongside packaging hardening). Stage ⑤
+remains OPEN. Do not treat M11 as complete, and do not advance to
 merge-readiness before its earlier stages are signed off. PR #13 stays Draft.

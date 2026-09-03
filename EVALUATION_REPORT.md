@@ -480,6 +480,22 @@ remains open; whether the above is sufficient to consider it, or whether
 fuller coverage is required first, is a human-gate decision, not made in
 this report.
 
+**Multilingual Architecture B integrated** (shared detection + universal
+recognition, see `docs/multilingual/track_group_reconstruction.md`'s
+Milestone 11 Architecture B section and `PROJECT_STATUS.md`).
+Architecture B landing does not close this section: a real 10s-window
+post-integration confirmation on all three of `sample_h`/`sample_f`/
+`sample_c` found CPU Paddle correct but 7.4×–14.0× realtime (over the
+≤5× Performance Corrective Gate target, though a real ~7–15×
+improvement over the pre-Architecture-B ~99–159× baseline), while the
+opt-in DirectML path met ≤5× (2.1×–3.1×) but showed real layer-content
+errors on this content (swapped/garbled text, ~1.5–3× more Cues for
+the same window than CPU produced). Neither measured configuration
+satisfies both correctness and the ≤5× target together, so **the
+Multilingual Performance Corrective Gate is not closed** — see
+`PROJECT_STATUS.md` for the exact per-sample numbers and candidate
+next steps.
+
 - Also open, restated from "Limitations" above: Path A Cue-level
   precision/recall, Path A timing start/end error, WER (any corpus), and
   CPU use / full-pipeline memory are all not empirically closed. None of
