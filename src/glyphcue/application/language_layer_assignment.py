@@ -73,7 +73,24 @@ def _y_range(observation: Observation) -> tuple[float, float] | None:
     return (min(ys), max(ys))
 
 
-def _cluster_by_visual_line(observations: list[Observation]) -> list[list[Observation]]:
+def _decisive_language(text: str, expected_languages: tuple[str, ...]) -> str | None:
+    """`text`'s own script, resolved to a single expected language --
+    None if its script carries no signal at all, or is genuinely
+    ambiguous between more than one expected language (e.g. Han between
+    zh/ja). Used only as a veto signal for `_cluster_by_visual_line`:
+    ambiguous/no-signal text is never treated as evidence AGAINST a
+    merge, only a text whose own script decisively picks one language
+    can veto merging with a decisively DIFFERENT one."""
+    script = _dominant_script(text)
+    if script is None:
+        return None
+    matches = _SCRIPT_CANDIDATE_LANGUAGES.get(script, set()) & set(expected_languages)
+    return next(iter(matches)) if len(matches) == 1 else None
+
+
+def _cluster_by_visual_line(
+    observations: list[Observation], expected_languages: tuple[str, ...]
+) -> list[list[Observation]]:
     """Groups `observations` into one cluster per real physical text
     line, using vertical geometry overlap -- the same "same visual
     thing, multiple boxes" signal `aggregate_same_frame_observations`
@@ -85,26 +102,55 @@ def _cluster_by_visual_line(observations: list[Observation]) -> list[list[Observ
     `assign_observations_to_languages`), not to join genuinely
     different lines. Observations with no geometry can't be matched
     this way and always become their own singleton cluster -- there is
-    no evidence they're duplicates of anything."""
+    no evidence they're duplicates of anything.
+
+    Real detector geometry (DirectML's own box_thresh included) is not
+    pixel-perfect: two visually and linguistically DIFFERENT physical
+    lines stacked close together can report Y-ranges that overlap by a
+    few pixels of detection/rounding noise, which pure Y-overlap alone
+    would merge into one cluster -- silently mixing one language's real
+    text into another's vote (see docs/multilingual/track_group_reconstruction.md's
+    Milestone 11 Architecture B corrective addendum). A DECISIVE script
+    veto closes this without adding any new numeric overlap threshold:
+    an incoming observation whose own script decisively picks one
+    expected language never merges into a cluster whose already-accumulated
+    decisive language is a DIFFERENT one, even when their Y-ranges
+    technically overlap -- it starts a new cluster instead. Real
+    same-line horizontal fragments (word-level boxes of one sentence)
+    share one script and are unaffected; ambiguous-or-no-signal text
+    (candidate count != 1, e.g. pure Han between zh/ja, or non-text
+    noise) never vetoes anything, since it isn't decisive evidence of
+    incompatibility either way -- it merges by geometry exactly as
+    before, and downstream classification handles the ambiguity."""
     ordered = sorted(observations, key=_reading_order_key)
     clusters: list[list[Observation]] = []
     cluster_ranges: list[tuple[float, float] | None] = []
+    cluster_decisive_languages: list[str | None] = []
     for observation in ordered:
         current_range = _y_range(observation)
+        current_decisive = _decisive_language(observation.text, expected_languages)
         if clusters and current_range is not None and cluster_ranges[-1] is not None:
             previous_range = cluster_ranges[-1]
             overlap = min(previous_range[1], current_range[1]) - max(
                 previous_range[0], current_range[0]
             )
-            if overlap > 0:
+            previous_decisive = cluster_decisive_languages[-1]
+            script_incompatible = (
+                previous_decisive is not None
+                and current_decisive is not None
+                and previous_decisive != current_decisive
+            )
+            if overlap > 0 and not script_incompatible:
                 clusters[-1].append(observation)
                 cluster_ranges[-1] = (
                     min(previous_range[0], current_range[0]),
                     max(previous_range[1], current_range[1]),
                 )
+                cluster_decisive_languages[-1] = previous_decisive or current_decisive
                 continue
         clusters.append([observation])
         cluster_ranges.append(current_range)
+        cluster_decisive_languages.append(current_decisive)
     return clusters
 
 
@@ -276,7 +322,7 @@ def assign_observations_to_languages(
       real ambiguity/degraded evidence for callers to surface as a
       diagnostic, not silently hidden inside a confident-looking result.
     """
-    clusters = _cluster_by_visual_line(observations)
+    clusters = _cluster_by_visual_line(observations, expected_languages)
     resolved, unresolved = _classify_clusters(clusters, expected_languages)
 
     ambiguous_languages: set[str] = set()

@@ -314,3 +314,87 @@ def test_duplicate_universal_reads_add_votes_but_no_new_classification_informati
     assert sum(len(_ids(v)) for v in dup_buckets.values()) == 2 * sum(
         len(_ids(v)) for v in single_buckets.values()
     )
+
+
+# Visual-Line Clustering Corrective (M11 Architecture B, root cause of the
+# DirectML h/f/c speed-vs-correctness finding): real detector geometry is
+# not pixel-perfect, so two visually and linguistically DIFFERENT physical
+# lines stacked close together can report Y-ranges overlapping by a few
+# pixels of detection noise. Pure Y-overlap clustering merged them into one
+# cluster, and _cluster_script_candidates' first-decisive-member-wins rule
+# then silently attributed the WHOLE cluster (including the other line's
+# real text) to one language -- the exact "layer swap" / garbled-reading
+# pattern the DirectML smoke surfaced. The fix is a deterministic veto:
+# no new numeric overlap threshold, just refusing to merge across a
+# decisive script mismatch.
+
+
+def _box(y0: float, y1: float) -> tuple:
+    return ((0.0, y0), (100.0, y0), (100.0, y1), (0.0, y1))
+
+
+def test_script_incompatible_regions_with_tiny_y_overlap_are_not_merged():
+    # 2px of Y-overlap (28-30) between a decisively-English line and a
+    # decisively-Chinese line stacked right below it -- exactly the kind
+    # of detector rounding noise real geometry produces. Before the veto,
+    # pure Y-overlap merged these into one cluster and one language
+    # silently absorbed the other's text.
+    observations = [
+        _obs("en", "Hello there", geometry=_box(10, 30)),
+        _obs("zh", "你好朋友", geometry=_box(28, 48)),
+    ]
+
+    buckets, ambiguous = assign_observations_to_languages(observations, ("en", "zh"))
+
+    assert _ids(buckets["en"]) == ["en"]
+    assert _ids(buckets["zh"]) == ["zh"]
+    assert ambiguous == set()
+
+
+def test_same_script_horizontal_fragments_with_y_overlap_still_merge():
+    # Two word-level detector boxes of the SAME real English line,
+    # genuinely overlapping in Y (multi-box detection of one line) --
+    # the veto must not touch this: same decisive language, real overlap,
+    # still one cluster.
+    observations = [
+        _obs("frag-1", "Hello", geometry=_box(10, 30)),
+        _obs("frag-2", "there", geometry=_box(15, 35)),
+    ]
+
+    buckets, ambiguous = assign_observations_to_languages(observations, ("en", "zh"))
+
+    assert set(_ids(buckets["en"])) == {"frag-1", "frag-2"}
+    assert buckets["zh"] == []
+    assert ambiguous == set()
+
+
+def test_same_language_multiline_with_no_overlap_stays_separated():
+    # Two real, physically separate English lines (no Y-overlap at all) --
+    # governed by the overlap check exactly as before the veto existed;
+    # the veto (same decisive language on both sides) never even applies.
+    observations = [
+        _obs("line-1", "First line", geometry=_box(10, 30)),
+        _obs("line-2", "Second line", geometry=_box(50, 70)),
+    ]
+
+    buckets, ambiguous = assign_observations_to_languages(observations, ("en", "zh"))
+
+    assert len(buckets["en"]) == 2
+    assert _ids(buckets["en"]) == ["line-1", "line-2"]
+    assert ambiguous == set()
+
+
+def test_non_decisive_neighbor_never_triggers_a_false_veto():
+    # A decisively-English region overlapping with a region carrying NO
+    # script signal at all (bare digits) -- the veto only fires between
+    # two DECISIVE, DIFFERENT languages; ambiguous-or-no-signal text is
+    # never itself evidence of incompatibility, so this still merges by
+    # geometry exactly as before the veto existed.
+    observations = [
+        _obs("en", "Hello there", geometry=_box(10, 30)),
+        _obs("digits", "42", geometry=_box(28, 48)),
+    ]
+
+    buckets, _ambiguous = assign_observations_to_languages(observations, ("en", "zh"))
+
+    assert set(_ids(buckets["en"])) == {"en", "digits"}
