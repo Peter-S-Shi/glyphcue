@@ -55,12 +55,78 @@ one garbled non-text reading (`sample_c`'s first Cue read `"zh": "3\n8"`
 where CPU Paddle read real Chinese text), and roughly 1.5–3× more Cues
 produced for the identical window (`sample_h`: 12 CPU vs 21 DirectML)
 from noisier per-frame recognition fragmenting otherwise-stable states.
-**The Multilingual Performance Corrective Gate is NOT closed**: neither
-measured configuration satisfies both the ≤5× target and correctness
-simultaneously. This needs human adjudication (e.g. DirectML recognition
-quality on this content, or whether the OCR trigger policy is
-over-invoking regardless of backend — `sample_h` alone triggered 33
-recognition calls in a 10s window) before the gate can close.
+**Update — root cause diagnosed and fixed, gate CLOSED (commit `075ac4b`,
+on top of the visual-line script-incompatibility veto in `615b56b`).**
+The DirectML-path layer-content errors above were re-diagnosed against
+real raw `sample_f` (566–568.4s) observations, not guessed: DirectML's
+own detector (P4B, `box_thresh=0.45`, unchanged) correctly produced
+separate polygons for the English line and the Chinese line beneath it
+— there was no detector under-segmentation. The actual bug was in
+`_cluster_by_visual_line` (`language_layer_assignment.py`): a
+legitimately mixed Han+Latin OCR reading of the Chinese line (e.g.
+`"srs有效的原因是"`, the ASCII substring `"srs"` bleeding into an
+otherwise-Chinese transcription) makes `_dominant_script` return `None`
+— the same value it returns for genuinely no-signal text like bare
+digits. The prior script-incompatibility veto (added in `615b56b`)
+treated both as "no evidence, never block a merge", so a few pixels of
+real Y-overlap let the mixed-script reading merge into the adjacent
+decisive-English cluster and get silently classified `en`. `075ac4b`
+adds `_has_mixed_script_evidence` and extends the veto: an observation
+carrying real mixed Han+Latin evidence is never absorbed into an
+adjacent DECISIVE single-language cluster by geometry alone — it starts
+its own cluster, staying fail-closed/ambiguous through the existing
+unresolved-cluster fallback exactly like any other no-single-decisive-
+script cluster. No new numeric threshold; genuinely no-signal text
+(digits/punctuation) is unaffected
+(`test_non_decisive_neighbor_never_triggers_a_false_veto` still passes).
+
+TDD red→green: the new regression
+(`test_mixed_script_observation_adjacent_to_decisive_neighbor_is_not_absorbed`)
+reproduced the exact bug against the pre-fix code, then passed after the
+fix. Full targeted Architecture B + visual-line regression (29 tests)
+and the whole suite (902 passed, 1 skipped, 1 xfailed) are green; GitHub
+Actions CI is green on PR #13 (run `33815414759`).
+
+Re-verified against the real DirectML product path
+(`create_ocr_engine(prefer_directml=True)` +
+`create_text_detector(prefer_directml=True)`, real
+`build_multilingual_ocr_evidence_job` →
+`reconstruct_multilingual_cues_for_track_group`) on all three frozen
+10s windows (`sample_h` 900–910s, `sample_f` 560–570s, `sample_c`
+480–490s), run from a freshly provisioned, disposable `[directml]` venv
+(this worktree's own `.venv` only carries the `[ocr]` extra; `[directml]`
+is deliberately its own environment per `pyproject.toml`) with the
+pinned `rapidocr==3.9.2`/`onnxruntime-directml==1.24.4` confirmed via
+`onnxruntime.get_available_providers()` (`DmlExecutionProvider` present)
+and both `create_ocr_engine`/`create_text_detector` confirmed to
+actually resolve to their DirectML classes before any timing was taken
+(the detector needed `PP-OCRv6_det_medium.onnx`, ~59MB, fetched fresh
+from the same pinned `v3.9.2` RapidOCR/modelscope registry `pyproject.toml`
+already trusts — this environment's model cache was otherwise empty):
+- **No layer swap in any window.** `sample_f`'s previously-swapped
+  content is now correct: `"srs有效的原因是"` stays in the `zh` layer
+  across all four affected Cues (566.3–568.4s) and each is correctly
+  flagged `ambiguous_languages = {"zh"}` — fail-closed, not silently
+  confident, exactly as designed.
+- **Realtime:** `sample_h` 3.47×, `sample_f` 4.51×, `sample_c` 4.80× —
+  all ≤5×, though visibly higher than the previously-measured
+  2.11×/2.93×/3.12×; this run's model/session cache was cold (first
+  inference in a brand-new venv), which plausibly explains the gap. Not
+  independently isolated from a warm-cache re-run in this session.
+- **`sample_c`'s pre-existing `"zh": "3\n8"` garbled first-Cue reading
+  persists unchanged** — correctly flagged ambiguous, not a layer swap,
+  and not diagnosed by this fix (out of scope: no detector/threshold
+  changes were made). Still a separately open, un-diagnosed item.
+- Cue counts this round: `sample_h` 18, `sample_f` 23, `sample_c` 7
+  (10s windows). `sample_h`'s 18 sits between the CPU baseline's 12 and
+  the pre-veto DirectML bug's 21; this run did not re-baseline against a
+  fresh CPU-Paddle control, so fragmentation parity is reported as
+  observed, not independently re-confirmed against CPU in this pass.
+
+Per human authorization given with these results in hand, **the
+Multilingual Performance Corrective Gate is CLOSED.** This closes the
+Corrective Gate specifically — it does not by itself close Stage ⑤
+Representative Evaluation (below) or advance PR #13 out of Draft.
 
 Feature Freeze is ACTIVE. Milestones 0–10 are complete and merged
 (PRs #1–#12).
@@ -236,19 +302,19 @@ appears anywhere in the repository.
 
 ## Next action
 
-Human adjudication of the Multilingual Performance Corrective Gate's
-speed/correctness trade-off (above): CPU Paddle is correct but exceeds
-the ≤5× realtime target; opt-in DirectML meets the target but showed
-real layer-content errors on this content in the post-integration
-`sample_h`/`sample_f`/`sample_c` smoke. Candidate directions (none
-started): investigate whether the OCR trigger policy is over-invoking
-independent of backend (33 recognition calls on `sample_h`'s 10s
-window alone), investigate DirectML/RapidOCR recognition quality
-specifically, or re-scope the ≤5× target. Also pending: the remaining
-representative evaluation items (`docs/m11_representative_evaluation.md`
-§15–§16), specifically whether `sample_h`/`sample_f`/`sample_c` receive
-a timeout extension or whether existing partial coverage suffices to
-close the representative gate. Following Stage ⑤ closure, the
+The Multilingual Performance Corrective Gate is now CLOSED (see above —
+mixed-script adjacency clustering ambiguity was the real root cause, not
+detector under-segmentation; fixed in `075ac4b`, re-verified on the real
+DirectML product path against all three frozen windows). What remains
+open: the `sample_c` `"zh": "3\n8"` garbled reading (separately
+un-diagnosed, does not block this gate), and whether `sample_h`'s cue
+count is genuine fragmentation vs a legitimate difference from the CPU
+baseline (not independently re-confirmed this round). Also pending: the
+remaining representative evaluation items
+(`docs/m11_representative_evaluation.md` §15–§16), specifically whether
+`sample_h`/`sample_f`/`sample_c` receive a timeout extension or whether
+existing partial coverage suffices to close the representative gate.
+Following Stage ⑤ closure, the
 subsequent execution sequence is strictly **Stage ⑥ Full Regression →
 Stage ⑦ Formal Human QA** (alongside packaging hardening). Stage ⑤
 remains OPEN. Do not treat M11 as complete, and do not advance to

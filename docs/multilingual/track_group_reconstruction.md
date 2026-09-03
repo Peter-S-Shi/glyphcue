@@ -144,6 +144,27 @@ Corrective Gate -- see `PROJECT_STATUS.md` and
 `docs/m11_representative_evaluation.md` for current status. Architecture
 B landing here does not by itself close Stage ⑤.
 
+**Corrective addendum (`615b56b`, `075ac4b`).** Post-integration
+`sample_f` smoke found real DirectML detector geometry (P4B,
+`box_thresh=0.45`, unchanged) producing a few pixels of Y-overlap
+between two genuinely different physical lines -- `_cluster_by_visual_line`
+now vetoes a merge when either side's own script is DECISIVE and the two
+disagree (`615b56b`), closing the general case without any new numeric
+threshold. A narrower case survived that veto: a legitimately mixed
+Han+Latin OCR reading (e.g. `"srs有效的原因是"`) makes `_dominant_script`
+return `None` -- the same value it returns for genuinely no-signal text
+(bare digits/punctuation) -- so the original veto treated it as "no
+evidence, never block a merge" and let it absorb into an adjacent
+decisive-English cluster. `075ac4b` adds `_has_mixed_script_evidence`
+and extends the veto to this case too: such a reading now starts its own
+cluster and stays fail-closed/ambiguous through the existing unresolved-
+cluster fallback, rather than being silently classified into the wrong
+language. Real DirectML product-path re-verification on all three frozen
+windows found no layer swap and all three ≤5× realtime; the Multilingual
+Performance Corrective Gate is now CLOSED -- see `PROJECT_STATUS.md` for
+the full evidence and remaining open items (`sample_c`'s unrelated
+garbled-reading finding is not addressed by this fix).
+
 ## Missing / asymmetric layers
 
 Rare inconsistent source material — one language's OCR engine finding nothing at all in a run other languages have real text for — produces an explicit, empty-text `LanguageLayer` for that language plus a `MultilingualDiagnostics.missing_languages` entry naming it. No fabricated text, no schema expansion: the same `LanguageLayer.text` field V1 already has, just empty, with the diagnostic as the explicit signal (`test_missing_layer_in_one_run_produces_explicit_diagnostic_not_fabricated_text`, and the real M4-analogous end-to-end regression `test_asymmetric_evidence_produces_a_missing_layer_diagnostic`).

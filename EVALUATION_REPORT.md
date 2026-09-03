@@ -490,11 +490,20 @@ post-integration confirmation on all three of `sample_h`/`sample_f`/
 improvement over the pre-Architecture-B ~99–159× baseline), while the
 opt-in DirectML path met ≤5× (2.1×–3.1×) but showed real layer-content
 errors on this content (swapped/garbled text, ~1.5–3× more Cues for
-the same window than CPU produced). Neither measured configuration
-satisfies both correctness and the ≤5× target together, so **the
-Multilingual Performance Corrective Gate is not closed** — see
-`PROJECT_STATUS.md` for the exact per-sample numbers and candidate
-next steps.
+the same window than CPU produced).
+
+**Update: root cause diagnosed (mixed-script adjacency clustering
+ambiguity in `_cluster_by_visual_line`, not detector under-segmentation
+— DirectML's own detector produced correctly separated polygons) and
+fixed (`075ac4b`).** Re-verified on the real DirectML product path
+against all three frozen 10s windows: no layer swap in any window
+(`sample_f`'s previously-swapped mixed Han+Latin line now stays in `zh`,
+correctly flagged ambiguous), all three ≤5× realtime (3.47×/4.51×/4.80×,
+measured from a freshly provisioned `[directml]` venv with a cold model
+cache). `sample_c`'s unrelated `"zh": "3\n8"` garbled reading persists,
+un-diagnosed, and does not block this gate. **The Multilingual
+Performance Corrective Gate is CLOSED** — see `PROJECT_STATUS.md` for
+full per-sample numbers and remaining open items.
 
 - Also open, restated from "Limitations" above: Path A Cue-level
   precision/recall, Path A timing start/end error, WER (any corpus), and

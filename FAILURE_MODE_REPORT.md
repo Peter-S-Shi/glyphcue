@@ -211,9 +211,21 @@ measured 7.4×–14.0× realtime (over the ≤5× Performance Corrective Gate
 target); the opt-in DirectML path met ≤5× but showed real layer-content
 errors on this same content (swapped/garbled text, more Cues than CPU
 for the identical window). See `PROJECT_STATUS.md` for exact numbers.
-This is a new, separate open item from the missing/wrong-layer gap
-above — it did not exist before Architecture B's runtime change (there
-was no DirectML path here previously) and is not yet adjudicated.
+
+**Update: root-caused and fixed (`075ac4b`).** Real raw `sample_f`
+observation dumps (not guesswork) showed DirectML's own detector
+produced correctly separated polygons — no detector under-segmentation.
+The actual bug: `_cluster_by_visual_line` treated a legitimately mixed
+Han+Latin OCR reading the same as genuinely no-signal text (both make
+`_dominant_script` return `None`), letting it merge by geometry alone
+into an adjacent decisive-English cluster and get silently classified
+`en`. Fixed with a `_has_mixed_script_evidence` veto that keeps such a
+reading in its own fail-closed/ambiguous cluster instead. Re-verified
+on the real DirectML product path against all three frozen 10s windows:
+no layer swap anywhere, all three ≤5× realtime. The Multilingual
+Performance Corrective Gate is now CLOSED — see `PROJECT_STATUS.md`.
+`sample_c`'s unrelated `"zh": "3\n8"` garbled reading remains a
+separate, un-diagnosed open item.
 
 ---
 
