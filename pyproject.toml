@@ -38,6 +38,11 @@ dev = [
 ocr = [
     "paddleocr==3.7.0",
     "paddlepaddle==3.3.1",
+    # PaddleOcrEngine._crop_polygon_region (P2 recognition-only path)
+    # imports cv2 directly for perspective-warp cropping. Not reliably
+    # pulled transitively by paddleocr/paddlepaddle -- declare it as our
+    # own direct dependency rather than relying on vendor internals.
+    "opencv-python-headless>=4.8",
 ]
 
 [tool.setuptools.packages.find]

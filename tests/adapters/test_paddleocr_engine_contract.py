@@ -2,17 +2,27 @@
 
 Deliberately NOT gated by pytest.importorskip("paddleocr"): these only
 exercise language-code mapping, result-shape conversion, and version
-reporting, all monkeypatched at the `_construct_paddleocr` seam, so they
-never import the real paddleocr/paddlepaddle packages. This lets normal
-Python 3.12 CI (which does not install the ~590MB [ocr] extra) still
-cover the normalized contract. Tests that exercise the real vendor
-runtime live in test_paddleocr_engine.py, gated by importorskip.
+reporting, all monkeypatched at the `_construct_paddleocr` /
+`_construct_text_recognition` seams, so they never import the real
+paddleocr/paddlepaddle packages or cv2. This lets normal Python 3.12 CI
+(which does not install the ~590MB [ocr] extra) still cover the
+normalized contract. Tests that exercise the real vendor runtime live
+in test_paddleocr_engine.py, gated by importorskip.
 """
 
 import pytest
 
 import glyphcue.adapters.paddleocr_engine as module
 from glyphcue.adapters.paddleocr_engine import PaddleOcrEngine
+
+
+@pytest.fixture(autouse=True)
+def _stub_text_recognition_construction(monkeypatch):
+    """initialize() always constructs the standalone TextRecognition
+    recognizer alongside the detection pipeline. Stub it here so these
+    pure contract tests never require paddleocr installed; tests that
+    care about the recognizer's own behaviour override this seam."""
+    monkeypatch.setattr(module, "_construct_text_recognition", lambda **_: object())
 
 
 class _FakePaddleModel:
@@ -135,7 +145,8 @@ def test_recognize_regions_before_initialize_raises_a_normalized_error():
         engine.recognize_regions(image=object(), regions=[[0, 0], [10, 0], [10, 5], [0, 5]])
 
 
-def test_recognize_regions_with_empty_regions_returns_empty_list_immediately():
+def test_recognize_regions_with_empty_regions_returns_empty_list_immediately(monkeypatch):
+    monkeypatch.setattr(module, "_construct_paddleocr", lambda **_: object())
     engine = PaddleOcrEngine()
     engine.initialize()
 
@@ -160,6 +171,10 @@ def test_recognize_regions_uses_underlying_recognizer_and_maps_geometry(monkeypa
     fake_recognizer = _FakeRecognizer()
     monkeypatch.setattr(module, "_construct_paddleocr", lambda **_: object())
     monkeypatch.setattr(module, "_construct_text_recognition", lambda **_: fake_recognizer)
+    # Cropping is real cv2 perspective-warp geometry, exercised separately in
+    # test_paddleocr_engine.py; stub it here so this pure contract test isn't
+    # gated on cv2 being installed. Identity passthrough keeps shape valid.
+    monkeypatch.setattr(module, "_crop_polygon_region", lambda img, poly: img)
 
     engine = PaddleOcrEngine(language="en")
     engine.initialize()
