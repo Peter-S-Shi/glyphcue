@@ -55,7 +55,7 @@ Every result below is tagged along four axes that must not be conflated:
 | Multilingual reconstruction corpus (`benchmarks/multilingual_reconstruction/`) | Generated, controlled/synthetic (bilingual + trilingual single-frame blocks, real PaddleOCR) | Independently known | Complete; both scenarios show 0 missing/wrong layers — see "Multilingual" below for why this is a coverage gap, not a clean bill of health |
 | Review Priority evaluation corpus (`benchmarks/review_priority/`) | Generated, controlled/synthetic (200 synthetic Cues, noisy Observations, real reconstruction) | Derived automatically post-hoc from the synthetic ground truth (label-leak-free methodology) | Complete, comparative (Review Priority vs. random baseline) |
 | M10 controlled video corpus (`benchmarks/m10_controlled_video_corpus/`) | Generated, controlled/synthetic (3 fixtures, 5.9s each) | Not applicable — used for performance diagnosis, not text accuracy | Complete for its stated purpose: reproducible performance-diagnosis only |
-| **Realistic-private corpus** (`private_samples/m10_video_corpus/`) | **Real, private, copyrighted video** — the repo owner's own material | Independently verified point-samples (real captions read directly from extracted frames, not reverse-engineered from GlyphCue's own output) | **Incomplete.** The one real attempt crashed after ~40 minutes on an evaluation-harness bug before any entry finished (`docs/m10_private_corpus_incident.md`). Recovered partial evidence exists (trigger counts, coverage windows) but no entry produced a scored result. |
+| **Realistic-private corpus** (`private_samples/m10_video_corpus/`) | **Real, private, copyrighted video** — the repo owner's own material | Independently verified point-samples (real captions read directly from extracted frames, not reverse-engineered from GlyphCue's own output) | **Incomplete — improved from M10.** M10's one attempt crashed after ~40 minutes on an evaluation-harness bug before any entry finished (`docs/m10_private_corpus_incident.md`). M11 stage 5 fixed that bug and ran a five-window split-profile evaluation to real completion (no exception): all five windows finished `partial_timeout` under a 600 s cap. A scoped completion supplement then re-ran three Hybrid-eligible windows at 1800 s, all of which finished — see "M11 stage 5" below. `sample_h`/`sample_f`/`sample_c` remain partial; ROADMAP §17's full target is still open. |
 
 **ROADMAP §17's target envelope — "3–5 representative videos × 2–5 minute
 segments" — was not closed by any corpus in this report.** M10's gate
@@ -377,8 +377,14 @@ this report.
   most cases, the same corpus its implementation was built and corrected
   against** — reproducible regression evidence, not a generalization
   claim, stated explicitly at each corpus's own entry above.
-- **The realistic-private corpus never produced a scored result** — see
-  "Corpus" and the unresolved item below.
+- **The realistic-private corpus produced only partial scored results.**
+  M11 stage 5 (below) closed the evaluation-harness gap that blocked M10
+  entirely, and real scored data now exists for a subset of the target
+  corpus — but three of the five frozen windows (`sample_h`, `sample_f`,
+  `sample_c`) are still timeout-limited to under 4% window coverage, and
+  the two windows that did complete surfaced a new, unresolved
+  correctness question (see "M11 stage 5" below). This is progress on
+  the gap, not closure of it.
 
 ---
 
@@ -394,22 +400,66 @@ this report.
   (`benchmarks/m10_controlled_video_corpus/`) satisfies **reproducible
   performance diagnosis only** — it does not satisfy the
   representative-video target and is not presented as equivalent to it.
-  The one real attempt against the repo owner's realistic-private corpus
-  supplies **partial external-realistic evidence** (real OCR-trigger-rate
-  signal, real coverage/timing data for the fraction of each entry that
-  ran) but is **not a completed representative-video evaluation** — it
-  crashed before any entry finished scoring.
-- **This report is not updated to reflect the transferred evaluation's
-  eventual results.** Per ROADMAP.md §17's gate audit disposition, M12
-  must not begin until Milestone 11 completes the transferred evaluation
-  and its results — whatever they are — are folded back into this
-  document and, where relevant, `FAILURE_MODE_REPORT.md`.
+  M10's one real attempt against the repo owner's realistic-private
+  corpus supplied only partial external-realistic evidence before
+  crashing on an evaluation-harness bug (`docs/m10_private_corpus_incident.md`)
+  — see "M11 stage 5" immediately below for what has since run.
+
+### M11 stage 5 — Representative-Video Evaluation (partial; gate 9 still open)
+
+Full detail, per-window numbers and the human-adjudication list:
+`docs/m11_representative_evaluation.md` §15–§16. Summarized here per the
+disposition above: fold results back into this report as they are
+produced, whatever they are.
+
+**Five-window split-profile stress run** (all five ⑤-A/⑤-B frozen
+windows, 600 s per-entry timeout, no exception, harness bug from M10
+confirmed fixed): every window finished `partial_timeout` —
+`ChangeTriggeredOcrPolicy` ("Production Trigger", run on the three
+bilingual windows `sample_h`/`sample_f`/`sample_c`) covered only
+2.2%–3.5% of its 180 s window before the timeout; `EXPERIMENTAL_HYBRID`
+(run on the two single-language windows `sample_g`/`sample_e`) covered
+50.2%–60.9%. This is the M10 performance-cost finding (see
+`docs/m10_performance_diagnosis.md`, and `FAILURE_MODE_REPORT.md` #7)
+reproduced directly on five real windows rather than inferred from one
+crash-truncated entry, and the Hybrid/Production coverage gap is
+reported as a signal, not a conclusion — the two groups also differ in
+content (single- vs. multi-language), so this run cannot separate
+"Hybrid is faster" from "these two windows are easier."
+
+**Completion supplement** (`sample_g`, `sample_e` at their unchanged
+window/ROI, plus the pre-existing M10 `sample_a` clean-baseline reserve
+reused verbatim — Hybrid only, 1800 s timeout, human-gate-approved):
+**all three completed** (real `succeeded` state, not a timeout
+cancellation), with point recall 90–100% across 31 verified instants.
+**But mean CER on the two Chinese-language entries measured above 1.0**
+(`sample_e`: 1.166, `sample_a`: 1.679) — by definition of
+`character_error_rate` (edit distance / reference length, unbounded
+above 1), the recovered text at matched instants diverges from the
+short verified reference by more edits than the reference itself
+contains. `sample_g`'s English CER (0.163) is unaffected and in a normal
+range. This is a **new correctness finding, not previously measurable**
+(Hybrid had never before run to completion on real Chinese-language
+content) and is reported exactly as measured — not diagnosed, not fixed,
+and not investigated further this round, per the scope this evaluation
+was run under.
+
+**Not yet attempted:** a longer-timeout supplement for `sample_h`,
+`sample_f` or `sample_c` (still open — see the human-adjudication list
+in `docs/m11_representative_evaluation.md` §15/§16), and any
+investigation of the CER finding above. ROADMAP §18's acceptance gate 9
+remains open; whether the above is sufficient to consider it, or whether
+fuller coverage is required first, is a human-gate decision, not made in
+this report.
+
 - Also open, restated from "Limitations" above: Path A Cue-level
-  precision/recall, Path A timing start/end error, WER (any corpus),
-  multilingual layer-assignment correctness on real material, CPU use,
-  and full-pipeline memory are all not empirically closed. None of these
-  gaps were filled by generating new evidence for this report, per this
-  report's own stated discipline.
+  precision/recall, Path A timing start/end error, WER (any corpus), and
+  CPU use / full-pipeline memory are all not empirically closed. None of
+  these gaps were filled by generating new evidence for this report,
+  per this report's own stated discipline. Multilingual layer-assignment
+  correctness on real material is now narrowed, not closed — see
+  `FAILURE_MODE_REPORT.md` #5's update.
 - No production algorithm, OCR policy, or Review Priority logic was
-  changed to produce this report. No M11 (Product Hardening) work has
-  begun.
+  changed to produce this report. M11 (Product Hardening) work to date
+  is confined to `benchmarks/private_video_corpus/run_evaluation.py`
+  (the evaluation harness) and this document set — no `src/` change.

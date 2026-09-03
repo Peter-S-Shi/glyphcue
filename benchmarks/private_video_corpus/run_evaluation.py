@@ -119,6 +119,11 @@ from glyphcue.persistence.observation_repository import ObservationRepository
 REPO_ROOT = Path(__file__).parent.parent.parent
 MANIFEST_PATH = REPO_ROOT / "private_samples" / "m10_video_corpus" / "manifest.json"
 PRIVATE_RESULTS_PATH = MANIFEST_PATH.parent / "evaluation_results.json"
+# M10's own manifest -- read-only here, never written. Exists only so the
+# completion supplement (run_completion_supplement) can reuse sample_a's
+# already-defined M10 window/ROI/ground truth verbatim, without a copy of
+# that data drifting into the stage 5 manifest above.
+M10_EXPORT_MANIFEST_PATH = MANIFEST_PATH.parent / "export docu" / "manifest.json"
 
 # Not part of the tracked corpus schema (glyphcue.evaluation.corpus has no
 # ROI field) -- kept here, keyed by entry id, so the schema stays generic
@@ -179,10 +184,24 @@ def _profile_for(entry: CorpusEntry) -> EvidenceJobProfile:
         raise PreflightError(f"{entry.id}: no profile assigned in _PROFILE_BY_ENTRY_ID") from error
 
 
+_JOB_TIMEOUT_SECONDS = 600.0
+
+
 def _run_single_language_job(
-    video_path: Path, entry: CorpusEntry, db_path: Path
+    video_path: Path,
+    entry: CorpusEntry,
+    db_path: Path,
+    *,
+    profile: EvidenceJobProfile | None = None,
+    timeout_seconds: float = _JOB_TIMEOUT_SECONDS,
 ) -> tuple[PipelineMetrics, list, str, EvidenceJobProfile]:
-    profile = _profile_for(entry)
+    """`profile` defaults to the entry's `_PROFILE_BY_ENTRY_ID` assignment;
+    an explicit override exists only for the completion supplement
+    (`run_completion_supplement`), which deliberately runs a fixed set of
+    entries under Hybrid regardless of what the main split-profile table
+    says for them. `timeout_seconds` likewise only differs from the main
+    run's default there."""
+    profile = profile if profile is not None else _profile_for(entry)
     engine = PaddleOcrEngine(language=entry.languages[0])
     metrics = PipelineMetrics()
     evidence_run_id = str(uuid.uuid4())
@@ -203,7 +222,7 @@ def _run_single_language_job(
             evidence_run_id,
             detect=detector,
         )
-        state = run_job_or_cancel(job, timeout_seconds=_JOB_TIMEOUT_SECONDS)
+        state = run_job_or_cancel(job, timeout_seconds=timeout_seconds)
     finally:
         # The detector holds a real model; release it before the next entry
         # constructs its own, rather than leaving one per entry alive for
@@ -245,9 +264,6 @@ def _run_multilingual_job(
     read_conn.close()
     cues, _diagnostics = reconstruct_multilingual_cues_for_track_group(observations, track_group)
     return metrics, cues, state, profile
-
-
-_JOB_TIMEOUT_SECONDS = 600.0
 
 
 def _cue_covering(cues: list, timestamp: float):
@@ -616,6 +632,117 @@ def run() -> dict | None:
     return results
 
 
+# --- M11 stage 5-C completion supplement (2026-09-02 human gate) ----------
+#
+# The five-window stress run above (`run()`) is COMPLETE and its results
+# (`evaluation_results.json`) are final: every window came back
+# `partial_timeout` under the 600s per-entry cap, and that finding is kept
+# exactly as produced -- nothing below reopens, rewrites, or reruns it.
+#
+# This supplement asks a narrower, explicitly scoped question: given more
+# wall-clock budget, do the two windows already approved for Experimental
+# Hybrid (`sample_g`, `sample_e` -- unchanged window and ROI) and the
+# pre-existing M10 `sample_a` clean-baseline reserve (reused verbatim, not
+# a newly hand-picked segment) actually finish? Hybrid only; the 600s
+# five-window run is not touched or repeated; if an entry still times out
+# at 1800s, that is reported exactly like any other partial result -- this
+# function makes exactly one attempt per entry and does not escalate.
+
+_COMPLETION_SUPPLEMENT_ENTRY_IDS = (
+    "private-g-english-handheld",
+    "private-e-chinese-screenshare",
+    "private-a-clean-zh",
+)
+_COMPLETION_SUPPLEMENT_TIMEOUT_SECONDS = 1800.0
+SUPPLEMENT_RESULTS_PATH = MANIFEST_PATH.parent / "evaluation_results_completion_supplement.json"
+
+
+class CompletionSupplementPreflightError(RuntimeError):
+    """Mirrors `PreflightError` for the completion supplement's own,
+    smaller entry set and its two manifest sources."""
+
+
+def _load_completion_supplement_entries() -> list[CorpusEntry]:
+    by_id: dict[str, CorpusEntry] = {}
+    if MANIFEST_PATH.exists():
+        for entry in load_corpus_manifest(MANIFEST_PATH):
+            by_id.setdefault(entry.id, entry)
+    if M10_EXPORT_MANIFEST_PATH.exists():
+        for entry in load_corpus_manifest(M10_EXPORT_MANIFEST_PATH):
+            by_id.setdefault(entry.id, entry)
+
+    entries: list[CorpusEntry] = []
+    problems: list[str] = []
+    for entry_id in _COMPLETION_SUPPLEMENT_ENTRY_IDS:
+        entry = by_id.get(entry_id)
+        if entry is None:
+            problems.append(
+                f"{entry_id}: not found in {MANIFEST_PATH.name} or {M10_EXPORT_MANIFEST_PATH}"
+            )
+            continue
+        if len(entry.languages) != 1:
+            problems.append(
+                f"{entry_id}: the completion supplement runs Experimental Hybrid, which is "
+                f"single-language by construction, but this entry declares {list(entry.languages)}"
+            )
+        if entry.id not in _ROI_BY_ENTRY_ID:
+            problems.append(f"{entry_id}: no ROI in _ROI_BY_ENTRY_ID")
+        entries.append(entry)
+
+    if problems:
+        bullets = "".join(f"{chr(10)}  - {problem}" for problem in problems)
+        raise CompletionSupplementPreflightError(
+            "completion supplement preflight failed; nothing was run:" + bullets
+        )
+    return entries
+
+
+def run_completion_supplement(
+    *, timeout_seconds: float = _COMPLETION_SUPPLEMENT_TIMEOUT_SECONDS
+) -> dict | None:
+    if not MANIFEST_PATH.exists() or not M10_EXPORT_MANIFEST_PATH.exists():
+        print(
+            "No private corpus manifest(s) -- skipping the completion supplement "
+            "(expected on any machine without the repo owner's local private_samples/)."
+        )
+        return None
+
+    QApplication.instance() or QApplication([])
+    entries = _load_completion_supplement_entries()
+
+    entry_results = []
+    with tempfile.TemporaryDirectory() as tmpdir:
+        for entry in entries:
+            video_path = MANIFEST_PATH.parent / entry.video_path
+            db_path = Path(tmpdir) / f"supplement-{entry.id}.sqlite3"
+            metrics, cues, state, profile = _run_single_language_job(
+                video_path,
+                entry,
+                db_path,
+                profile=EvidenceJobProfile.EXPERIMENTAL_HYBRID,
+                timeout_seconds=timeout_seconds,
+            )
+            entry_results.append(_evaluate_entry(entry, metrics, cues, state, profile))
+
+    results = {
+        "kind": "completion_supplement",
+        "relationship_to_main_run": (
+            "Supplements, does not replace, the five-window stress run in "
+            f"{PRIVATE_RESULTS_PATH.name}. That file's five entries -- including this "
+            "supplement's sample_g and sample_e as they ran under the 600s timeout -- "
+            "are unchanged and untouched by this function."
+        ),
+        "timeout_seconds": timeout_seconds,
+        "entries": entry_results,
+        "summary_by_profile": _summarize_by_profile(entry_results),
+    }
+    SUPPLEMENT_RESULTS_PATH.write_text(
+        json.dumps(results, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    print(f"Wrote {SUPPLEMENT_RESULTS_PATH} (private, gitignored)")
+    return results
+
+
 if __name__ == "__main__":
     import sys
 
@@ -623,6 +750,10 @@ if __name__ == "__main__":
         print(json.dumps(preflight(), ensure_ascii=False, indent=2))
     elif "--crash-check" in sys.argv:
         print(json.dumps(crash_condition_check(), ensure_ascii=False, indent=2))
+    elif "--completion-supplement" in sys.argv:
+        supplement_results = run_completion_supplement()
+        if supplement_results is not None:
+            print(json.dumps(supplement_results, ensure_ascii=False, indent=2))
     else:
         run_results = run()
         if run_results is not None:

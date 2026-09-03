@@ -9,15 +9,23 @@ Stage ④ **Targeted Regression is CLOSED** — its automated evidence passed
 the human gate on 2026-09-02. Currently at stage ⑤ **Representative
 Evaluation**, which is the M10 gate transferred by §17's gate audit
 (ROADMAP §18 acceptance gate 9). Steps **⑤-A and ⑤-B are CLOSED**.
-**⑤-C has been executed**: the split-profile evaluation approved at its
-human gate (Option A — `EXPERIMENTAL_HYBRID` for the two single-language
-windows, `PRODUCTION_TRIGGER` for the three bilingual ones) ran against
-all five frozen windows with no exceptions. **Every window finished
-partial** — each hit the 600 s per-entry timeout before covering its
-full 180 s — so **stage ⑤ is NOT closed**; results and a Human
-Adjudication list are recorded in
+**⑤-C has been executed, twice.** The split-profile stress run approved
+at its human gate (Option A — `EXPERIMENTAL_HYBRID` for the two
+single-language windows, `PRODUCTION_TRIGGER` for the three bilingual
+ones) ran against all five frozen windows with no exceptions; **every
+window finished partial** at the 600 s per-entry timeout. A subsequent,
+narrowly-scoped **completion supplement** (human-gate approved) then gave
+`sample_g`, `sample_e` and the pre-existing M10 `sample_a` reserve a
+1800 s timeout under Hybrid only — **all three completed** — but
+surfaced a new, undiagnosed correctness finding (Chinese-language CER
+above 1.0). `sample_h`/`sample_f`/`sample_c` were not re-attempted and
+remain partial. **Stage ⑤ is still NOT closed**; both runs' results and
+Human Adjudication lists are recorded in
 [`docs/m11_representative_evaluation.md`](docs/m11_representative_evaluation.md)
-§15. M11 is **not** complete and that gate is still open.
+§15–§16, and folded into
+[`EVALUATION_REPORT.md`](EVALUATION_REPORT.md) and
+[`FAILURE_MODE_REPORT.md`](FAILURE_MODE_REPORT.md). M11 is **not**
+complete and that gate is still open.
 
 Feature Freeze is ACTIVE. Milestones 0–10 are complete and merged
 (PRs #1–#12).
@@ -79,6 +87,39 @@ illegible in the frame and was left untranscribed rather than guessed.
 - Full per-window table and the Human Adjudication list are in
   `docs/m11_representative_evaluation.md` §15.
 
+**Completion supplement (human-gate approved, strictly scoped) — RUN
+COMPLETE:**
+
+- New `run_completion_supplement()` / `--completion-supplement`: Hybrid
+  only, 1800 s per-entry timeout, exactly three entries —
+  `sample_g`/`sample_e` at their unchanged ⑤-A/⑤-B window and ROI, plus
+  the pre-existing M10 `sample_a` clean-baseline reserve reused verbatim
+  (window, ROI, ground truth all from the M10 export manifest,
+  unchanged). A dedicated preflight-equivalent check refuses to run any
+  entry not single-language or missing a manifest/ROI. Writes to a
+  **separate** results file
+  (`evaluation_results_completion_supplement.json`) — the five-window
+  stress run's own results file is never opened or touched by this path.
+- **All three completed** (`succeeded`, not a timeout cancellation):
+  point recall 90–100% across 31 verified instants. Total wall clock
+  74.5 min; no exceptions.
+- **New finding, reported as measured:** mean CER on the two
+  Chinese-language entries exceeded 1.0 (`sample_e` 1.166, `sample_a`
+  1.679) — the recovered text at matched instants diverges from the
+  short verified reference by more edits than the reference contains.
+  `sample_g`'s English CER (0.163) is normal. A plausible mechanism is
+  noted (Hybrid's "one recognition per state" possibly merging a wider
+  span than one caption) but explicitly **not investigated or diagnosed**
+  this round, per the instruction not to reopen OCR/temporal work.
+- `sample_h`/`sample_f`/`sample_c` were **not** re-attempted; their
+  stress-run partial results are unchanged.
+- Full breakdown, the explicit stress-run-vs-supplement distinction, and
+  an extended Human Adjudication list are in
+  `docs/m11_representative_evaluation.md` §16.
+- Findings folded into `EVALUATION_REPORT.md` ("M11 stage 5 —
+  Representative-Video Evaluation") and `FAILURE_MODE_REPORT.md`
+  (updated #5, #7; new #12 for the CER finding; addendum to #6).
+
 No OCR or temporal pipeline code changed; nothing under `src/` has been
 touched by stage ⑤ — all of the above is `benchmarks/` harness code plus
 untracked private-corpus artifacts.
@@ -121,17 +162,20 @@ appears anywhere in the repository.
 ## Unresolved
 
 - ROADMAP §18 acceptance gate is open, including gate 9 (the transferred
-  representative-video evaluation) — stage ⑤'s ⑤-C run is complete but
-  every window is partial; four items need human adjudication before
-  stage ⑤ can close (`docs/m11_representative_evaluation.md` §15):
-  whether to re-run with a longer per-entry timeout (a harness
-  parameter, not an algorithm change) given none of the five windows
-  finished; `sample_h`'s duplicate-cue risk is inconclusive at only 2.7%
-  window coverage; whether the measured Hybrid/Production performance
-  gap warrants a controlled follow-up before informing any roadmap
-  decision; and whether these partial results are sufficient to fold
-  into `EVALUATION_REPORT.md` as reported, or the gate wants fuller
-  coverage first.
+  representative-video evaluation). `sample_g`/`sample_e`/`sample_a` are
+  now fully evaluated (completion supplement); `sample_h`/`sample_f`/
+  `sample_c` remain partial at 2.2%–3.5% window coverage. Human
+  adjudication needed (`docs/m11_representative_evaluation.md` §15–§16):
+  (1) whether to extend the timeout for `sample_h`/`sample_f`/`sample_c`
+  too (a harness parameter, not an algorithm change), and if so how far,
+  given Production's measured ~99–159× realtime cost; (2) `sample_h`'s
+  duplicate-cue risk is still inconclusive; (3) whether the
+  Hybrid/Production performance gap warrants a controlled follow-up;
+  (4) whether the current partial + supplement results are sufficient
+  for `EVALUATION_REPORT.md` as reported, or fuller coverage is required
+  first; (5) **new** — the Chinese-language CER > 1.0 finding from the
+  completion supplement needs a priority/timeline decision (investigate
+  now vs. defer), since nothing in this pass diagnosed or fixed it.
 - `sample_f`'s one illegible Chinese layer would change if the gate
   chooses to re-read that frame by hand.
 - Packaging hardening (Qt plugins, FFmpeg path, OCR model assets, runtime
@@ -141,9 +185,10 @@ appears anywhere in the repository.
 
 ## Next action
 
-Human adjudication of the four items above
-(`docs/m11_representative_evaluation.md` §15), starting with whether the
-per-entry timeout should be raised for a fuller-coverage re-run. Do not
+Human adjudication of the five items above
+(`docs/m11_representative_evaluation.md` §15–§16), starting with the
+Chinese-language CER finding's priority and whether
+`sample_h`/`sample_f`/`sample_c` get their own timeout extension. Do not
 treat M11 as complete, and do not advance to Full Regression or
 merge-readiness before its earlier stages are signed off. PR #13 stays
 Draft.

@@ -1,16 +1,21 @@
 # Milestone 11 — Representative Evaluation (stage ⑤)
 
 **Status:** IN PROGRESS. The step ⑤-C split-profile evaluation has been
-**executed** against all five frozen windows and its results are
-reported in §15 — **but stage ⑤ is NOT closed**: the run is
-timeout-limited (every window partial), and several items in §15's
-Human Adjudication list are still open.
+**executed** against all five frozen windows (§15), and a scoped
+**completion supplement** (§16) then gave three of those windows —
+`sample_g`, `sample_e`, plus the pre-existing M10 `sample_a` reserve — a
+longer timeout under Hybrid only, at which all three completed. **Stage
+⑤ is still NOT closed**: `sample_h`/`sample_f`/`sample_c` remain
+partial, and the completion supplement surfaced a new, unresolved
+correctness finding (Chinese-language CER > 1.0 under Hybrid) rather
+than closing the question. Several items in §15 and §16's Human
+Adjudication lists are still open.
 
 | Step | State |
 |---|---|
 | ⑤-A Corpus selection | **CLOSED** — accepted at the human gate; the corpus below is frozen |
 | ⑤-B Evaluation preparation | **CLOSED** — five ROI proposals approved unchanged (§6); all 44 ground-truth candidates confirmed with no corrections (§7, §9) |
-| ⑤-C Split-profile evaluation | **RUN COMPLETE, awaiting human adjudication** — manifest and harness wired (§10), preflight and crash-check re-verified 5/5 runnable under the approved split profile (§11–§13), the real run executed with no exceptions (§15), all five windows partial due to the 600 s per-entry timeout. |
+| ⑤-C Split-profile evaluation | **RUN COMPLETE + completion supplement RUN COMPLETE, awaiting human adjudication** — the five-window stress run (§15, 600 s/entry) is final and unchanged: all five partial. The completion supplement (§16, 1800 s/entry, Hybrid-only, `g`/`e`/`a`) is also final: all three completed, with a new CER anomaly on the two Chinese entries. `sample_h`/`sample_f`/`sample_c` were not re-attempted. |
 
 **Frozen corpus (⑤-A):** `sample_g` 90–270 s, `sample_e` 150–330 s,
 `sample_h` 900–1080 s, `sample_f` 560–740 s, `sample_c` 480–660 s.
@@ -663,3 +668,117 @@ crash-check), no Python traceback anywhere in the run log.
 verdict on the product; it is evidence, reported exactly as produced,
 for the gate to read.
 
+
+---
+
+## 16. Completion supplement (2026-09-02 human gate) — results
+
+**This section is additive to §15, not a replacement for it.** §15's
+five-window stress run (`evaluation_results.json`) is unchanged and
+untouched — every one of its five entries stays recorded exactly as
+produced, `partial_timeout`, at the 600 s per-entry cap. This section
+covers a separate, narrower run
+(`evaluation_results_completion_supplement.json`, written by
+`run_completion_supplement()`) that asks only: given more wall-clock
+budget, do the two already-Hybrid-eligible stage 5 windows and the
+pre-existing M10 clean-baseline reserve actually finish?
+
+**Scope, exactly as approved:** `sample_g` and `sample_e` at their
+unchanged ⑤-A/⑤-B window and ROI (loaded from the same
+`manifest.json` used by the main run — byte-identical, not re-specified),
+plus `sample_a` reusing M10's own window (15.0–192.0 s, 177 s — inside
+the 2–5 minute contract), ROI and 10 verified ground-truth instants
+verbatim, not a newly hand-picked segment. All three under
+`EXPERIMENTAL_HYBRID` only. The one parameter changed from the main run
+is the per-entry timeout: 1800 s instead of 600 s. Nothing under `src/`
+was touched; `sample_h`, `sample_f` and `sample_c` were not re-attempted.
+
+### Result: all three completed
+
+| Entry | Window | Completion | Coverage | Point recall | Mean CER | Cues / Obs | Realtime ratio | Wall clock |
+|---|---|---|---|---|---|---|---|---|
+| `sample_g` (en, handheld) | 90–270 s | **completed** | 180/180 s (100%) | **11/11 (100%)** | en 0.163 | 37 / 110 | 7.2× | 1296.0 s |
+| `sample_e` (zh, screen-share) | 150–330 s | **completed** | 180/180 s (100%) | **10/10 (100%)** | zh **1.166** | 89 / 215 | 7.7× | 1388.6 s |
+| `sample_a` (zh, clean baseline, M10) | 15–192 s | **completed** | 177/177 s (100%) | **9/10 (90%)** | zh **1.679** | 92 / 635 | 10.1× | 1786.9 s |
+
+Total wall clock: 4471.4 s (74.5 min). All three reached `succeeded`
+(not a timeout cancellation) — the extra budget was sufficient this time,
+and none of the three needed the full 1800 s.
+
+### Reading these numbers correctly
+
+**Recall is strong across the board** — once given enough time to finish
+its window, Hybrid found a Cue covering 30 of the 31 verified instants
+across all three entries. This is a real, positive result and stands
+independent of the CER finding below.
+
+**Mean CER is a serious, unresolved correctness finding, reported exactly
+as measured — not smoothed over.** `sample_g`'s English CER (0.163) is in
+a normal range. **Both Chinese-language entries measure CER above 1.0**
+(`sample_e`: 1.166, `sample_a`: 1.679) — by definition (`character_error_rate`
+= Levenshtein edit distance / reference length, unbounded above), this
+means the reconstructed text at matched instants diverges from the
+short, verified ground-truth line by *more* edits than the reference
+itself contains — consistent with the recovered text being substantially
+longer than, or substantially different in content from, the reference,
+not merely containing a few wrong characters.
+
+**A plausible mechanism exists but is explicitly NOT verified this
+round, and no further investigation was done, per this run's scope:**
+Hybrid performs "ONE recognition per state"
+(`hybrid_evidence_job.py`'s own module docstring) — if the state-grouping
+step merges a wider visual span than one caption's worth of text (a real
+risk on `sample_a`'s dense-cadence source, where `sample_a` alone
+produced 635 observations across only 92 Cues, a much higher
+observations-per-Cue ratio than `sample_g` or `sample_e`), the single
+recognized block could span content from more than one real caption,
+making it much longer than any one verified instant's reference text.
+This is a hypothesis, not a diagnosis — the underlying observation data
+was not re-inspected to confirm it, per the instruction not to reopen
+OCR/temporal research this round.
+
+**What this does and does not affect:** it does not change point recall
+(a Cue was still found covering the right timestamp) or the §15
+Hybrid-vs-Production realtime-ratio finding (unaffected, both concern
+timing/coverage, not recognized-text accuracy). It is a new, previously
+unmeasured signal about Hybrid's text *correctness* on Chinese content
+specifically at full-window coverage — §15's stress run only ever
+matched Hybrid to Chinese content at 60.9% coverage (`sample_e`) with a
+much lower CER (0.492) than this supplement's full-coverage run (1.166)
+on the *same* entry, suggesting CER got markedly worse, not better, as
+more of the window was actually processed — the opposite of what
+partial-coverage undersampling would predict if the effect were random.
+
+### Explicit distinction from the original five-window stress run
+
+| | §15 stress run | §16 completion supplement |
+|---|---|---|
+| Entries | 5 (`g`, `e`, `h`, `f`, `c`) | 3 (`g`, `e`, `a`) |
+| Profile | Split (Hybrid: g/e; Production: h/f/c) | Hybrid only |
+| Timeout | 600 s | 1800 s |
+| Result file | `evaluation_results.json` | `evaluation_results_completion_supplement.json` |
+| Outcome | All 5 `partial_timeout` | All 3 `completed` |
+| Status | Final, unchanged by this section | Final, additive |
+
+`sample_h`, `sample_f`, `sample_c` remain exactly as §15 reported them —
+partial, un-supplemented. This section does not close that gap.
+
+### Human Adjudication — carried forward and added to
+
+Items 1–4 from §15 stand unchanged (the timeout decision for `h`/`f`/`c`,
+`sample_h`'s inconclusive duplicate-cue check, the Hybrid/Production
+performance-gap confound, and how to fold partial results into
+`EVALUATION_REPORT.md`). Add:
+
+5. **The CER > 1.0 finding on Hybrid's Chinese-language output is new and
+   unresolved.** It was not present as clearly in §15's partial-coverage
+   Hybrid data and is now measured twice (`sample_e`, `sample_a`) at full
+   coverage. This is a correctness question, not a coverage question —
+   whether it warrants investigation, and on what timeline relative to
+   M11's other stages, is for the gate to decide. Nothing about it was
+   investigated, diagnosed, or fixed in this round.
+
+**Stage ⑤ is still NOT closed.** This supplement answers "can these three
+finish with more time" (yes) but opens a new correctness question in
+doing so; it does not resolve items 1–4 from §15, and it does not stand
+in for `sample_h`/`sample_f`/`sample_c` ever finishing.

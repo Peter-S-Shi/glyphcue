@@ -3,7 +3,7 @@
 **Document type:** Authoritative V1 milestone roadmap  
 **Project:** GlyphCue  
 **Repository:** `Peter-S-Shi/glyphcue`  
-**Lifecycle phase:** Production Development in progress → Milestone 10 complete (evidence/evaluation closure accepted; representative-video gate transferred to Milestone 11, not waived — see §17's gate audit disposition), Feature Freeze ACTIVE, **Milestone 11 (Product Hardening & Full Regression) IN PROGRESS — stage ④ Targeted Regression CLOSED (automated evidence accepted at the human gate, see `docs/m11_targeted_regression.md`), currently at stage ⑤ Representative Evaluation, step ⑤-C RUN COMPLETE (all five windows partial, awaiting human adjudication)** (see `docs/m11_representative_evaluation.md`); M11 is NOT complete and its acceptance gate, including the transferred representative-video evaluation, is still open  
+**Lifecycle phase:** Production Development in progress → Milestone 10 complete (evidence/evaluation closure accepted; representative-video gate transferred to Milestone 11, not waived — see §17's gate audit disposition), Feature Freeze ACTIVE, **Milestone 11 (Product Hardening & Full Regression) IN PROGRESS — stage ④ Targeted Regression CLOSED (automated evidence accepted at the human gate, see `docs/m11_targeted_regression.md`), currently at stage ⑤ Representative Evaluation, step ⑤-C RUN COMPLETE + completion supplement RUN COMPLETE (3 of 5 windows now fully evaluated with a new unresolved correctness finding, 3 remain partial, awaiting human adjudication)** (see `docs/m11_representative_evaluation.md`); M11 is NOT complete and its acceptance gate, including the transferred representative-video evaluation, is still open  
 **Status:** Current V1 execution roadmap  
 **Last updated:** 2026-09-02
 
@@ -2011,11 +2011,24 @@ Production Trigger on the three bilingual ones), and **the real
 five-window evaluation has been run**: no exceptions, but every window
 came back partial (2.2%–60.9% of its 180 s covered) against the 600 s
 per-entry timeout, reproducing on real footage the performance cost
-`docs/m10_performance_diagnosis.md` diagnosed. **Stage ⑤ does not close
-on this run** — a short list of human-adjudication items (timeout
-extension, `sample_h`'s inconclusive duplicate-cue check, and how to
-fold partial results into `EVALUATION_REPORT.md`) is recorded in
-`docs/m11_representative_evaluation.md` §15.
+`docs/m10_performance_diagnosis.md` diagnosed.
+
+A subsequent, narrowly-scoped **completion supplement** (human-gate
+approved) then gave `sample_g`, `sample_e` and the pre-existing M10
+`sample_a` clean-baseline reserve a 1800 s timeout under Hybrid only,
+reusing each window/ROI/ground-truth unchanged — **all three completed**
+(point recall 90–100%), but surfaced a new, undiagnosed correctness
+finding: Chinese-language CER measured above 1.0 on both Chinese entries
+(`sample_e`, `sample_a`), while the English entry (`sample_g`) stayed
+normal. `sample_h`/`sample_f`/`sample_c` were not re-attempted and
+remain partial. **Stage ⑤ still does not close on this run** — both
+runs' results are folded into `EVALUATION_REPORT.md` and
+`FAILURE_MODE_REPORT.md`, and an expanded human-adjudication list
+(timeout extension for the three remaining windows, `sample_h`'s
+inconclusive duplicate-cue check, the Hybrid/Production performance-gap
+confound, whether/when to investigate the CER finding, and whether
+current results are sufficient for the gate) is recorded in
+`docs/m11_representative_evaluation.md` §15–§16.
 
 The remaining M11 stages — packaging hardening, formal Manual QA, and the
 Full Regression itself — have not been started.
