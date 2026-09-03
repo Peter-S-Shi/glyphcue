@@ -18,6 +18,8 @@ from glyphcue.application.ocr_evidence_job import (
 from glyphcue.application.pipeline_metrics import PipelineMetrics
 from glyphcue.application.processing_range import ProcessingRange
 from glyphcue.domain.roi import ROI
+from glyphcue.domain.caption_identity import ROLE_KEY, caption_identity_evidence
+from glyphcue.application.consensus_reconstruction import reconstruct_cues_with_consensus
 from glyphcue.persistence.database import connect
 from glyphcue.persistence.observation_repository import ObservationRepository
 
@@ -183,16 +185,19 @@ def _observations(db_path: Path, run_id: str = "run-hybrid"):
 # --- the saving this profile exists for ---------------------------------
 
 
-def test_recognition_runs_once_per_subtitle_state_not_once_per_trigger(
+def test_recognition_is_bounded_per_coarse_envelope_and_metrics_count_probes(
     two_caption_video, tmp_path
 ):
-    metrics, detector, engine = _run_hybrid(two_caption_video, tmp_path / "hybrid.db")
+    db_path = tmp_path / "hybrid.db"
+    metrics, detector, engine = _run_hybrid(two_caption_video, db_path)
 
     # Two real captions over four seconds: recognition should cost a
     # handful of calls, far below both the detector's own call count and
     # the analyzed frame count.
-    assert engine.recognize_calls <= 4
-    assert engine.recognize_calls < detector.calls
+    evidence = [e for o in _observations(db_path) if (e := caption_identity_evidence(o)) is not None]
+    assert all(len(e.probes) <= e.probe_budget for e in evidence)
+    assert engine.recognize_calls <= sum(e.probe_budget for e in evidence)
+    assert engine.recognize_calls <= detector.calls
     assert detector.calls < metrics.frames_analyzed
     assert metrics.ocr_calls == engine.recognize_calls
 
@@ -205,10 +210,14 @@ def test_the_hybrid_profile_reads_both_captions_correctly(two_caption_video, tmp
 
     # The fake engine encodes each caption's own stroke spacing, so this
     # fails if a state's representative frame came from the wrong state.
-    assert texts == {"caption-6", "caption-13"}
+    assert {"caption-6", "caption-13"} <= texts
+    # Non-medoid probes expose a compressed-frame fake-OCR misread that the
+    # former medoid-only path hid. Keep it as raw evidence, not a winning span.
+    cues, diagnostics = reconstruct_cues_with_consensus(_observations(db_path))
+    assert cues and any(d.had_disagreement for d in diagnostics)
 
 
-def test_the_hybrid_profile_costs_less_recognition_than_the_production_path(
+def test_bounded_verification_reports_its_extra_calls_without_claiming_a_saving(
     two_caption_video, tmp_path
 ):
     production_engine = _FakeOcrEngine()
@@ -229,11 +238,10 @@ def test_the_hybrid_profile_costs_less_recognition_than_the_production_path(
         two_caption_video, tmp_path / "hybrid.db"
     )
 
-    # On a two-caption toy clip the production trigger path is already
-    # near-optimal, so this fixture can only show NO REGRESSION plus the
-    # cost the hybrid profile adds; the real saving is a corpus
-    # question, measured in benchmarks/m11_production_integration.
-    assert hybrid_engine.recognize_calls <= production_engine.recognize_calls
+    # Correctness probing replaces the old once-per-state cost promise. This
+    # fixture records its real extra calls; it is not a performance acceptance.
+    assert hybrid_engine.recognize_calls > production_engine.recognize_calls
+    assert hybrid_metrics.ocr_calls == hybrid_engine.recognize_calls
     assert hybrid_metrics.detector_calls > 0
     assert production_metrics.detector_calls == 0
 
@@ -245,7 +253,7 @@ def test_a_detector_confirmed_blank_state_costs_no_recognition_call(
     _metrics, _detector, engine = _run_hybrid(caption_then_blank_video, db_path)
 
     observations = _observations(db_path)
-    blank_markers = [o for o in observations if not o.text]
+    blank_markers = [o for o in observations if not o.text and o.provenance.detail.get(ROLE_KEY) == "raw_probe"]
 
     # The blank state is still recorded as evidence (M5 needs to know
     # the subtitle went away, not merely that nothing was OCR'd) --
@@ -254,7 +262,9 @@ def test_a_detector_confirmed_blank_state_costs_no_recognition_call(
     assert all(
         o.provenance.detail[STATE_TRIGGER_DETAIL_KEY] == "blank" for o in blank_markers
     )
-    assert engine.recognize_calls <= 2
+    text_evidence = [e for o in observations if (e := caption_identity_evidence(o)) is not None
+                     and o.provenance.detail[STATE_TRIGGER_DETAIL_KEY] != "blank"]
+    assert engine.recognize_calls == sum(len(e.probes) for e in text_evidence)
 
 
 # --- the contracts it must not break ------------------------------------

@@ -35,6 +35,7 @@ from glyphcue.adapters.ocr_engine import OcrEngine
 from glyphcue.adapters.paddleocr_engine import CANONICAL_LANGUAGES
 from glyphcue.adapters.pyav_media_source import probe_media
 from glyphcue.application.consensus_reconstruction import reconstruct_cues_with_consensus
+from glyphcue.application.caption_identity_review import restored_caption_review_priority
 from glyphcue.application.cue_merge import merge_incremental_cues
 from glyphcue.application.multilingual_ocr_evidence_job import build_multilingual_ocr_evidence_job
 from glyphcue.application.multilingual_reconstruction import (
@@ -689,7 +690,7 @@ class PathAMediaPane:
                     else {}
                 )
                 priorities = {
-                    c.id: ReviewPriority(cue_id=c.id, score=0.0, level="None", components=())
+                    c.id: restored_caption_review_priority(c, obs_map)
                     for c in persisted_cues
                 }
                 self.qa.set_cues_and_priorities(persisted_cues, obs_map, priorities)
@@ -1200,7 +1201,7 @@ class PathAMediaPane:
 
             for c in cues:
                 if c.id not in priorities:
-                    priorities[c.id] = ReviewPriority(cue_id=c.id, score=0.0, level="None", components=())
+                    priorities[c.id] = restored_caption_review_priority(c, observations_by_id)
 
             self.qa.set_cues_and_priorities(cues, observations_by_id, priorities)
             self._refresh_timeline()
@@ -1282,7 +1283,7 @@ class PathAMediaPane:
             else {}
         )
         priorities = {
-            c.id: ReviewPriority(cue_id=c.id, score=0.0, level="None", components=())
+            c.id: restored_caption_review_priority(c, obs_map)
             for c in restored_cues
         }
         self.qa.set_cues_and_priorities(restored_cues, obs_map, priorities)

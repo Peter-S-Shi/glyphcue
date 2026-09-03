@@ -1,69 +1,15 @@
-"""Path A OCR evidence job, experimental HYBRID profile.
+"""Experimental Hybrid: frozen visual envelopes, bounded caption verification.
 
-This is the M11 Research Gate's surviving candidate wired into the real
-Path A job, unchanged. Every algorithmic constant below is imported from
-the module that won its own gate rather than restated here, so this file
-cannot silently drift from the研究 result it integrates:
+The 5fps grid, detector scheduler, Beta-S, occupancy_normalized_distance,
+0.300 grouping and medoid are unchanged. Grouping is visual evidence only.
+OCR probes happen before member pixels are released. Every raw region is
+persisted at its actual PTS; a versioned envelope companion preserves refs,
+blocks, identity support and unresolved coverage for reconstruction/review.
 
-    5 fps evidence grid                 frozen research profile
-    detector-anchored cheap scheduler   text_anchored_region_mask
-    1.0s safety sentinel                hybrid_cascade_dry_run
-    bootstrap + tail boundary rule      hybrid_cascade_dry_run
-    Beta-S stroke-structural signature  beta_stroke_structural
-    occupancy-normalized distance       occupancy_normalized_distance
-    0.300 state grouping threshold      occupancy_normalized_distance
-    stable medoid representative        sparse_observation_semantics
-
-What the research runs never did is call recognition. The shape of the
-saving is: the detector observes a sparse subset of the 5 fps grid, those
-observations are grouped into subtitle states, and RECOGNITION runs once
-per state -- on the state's medoid frame -- instead of once per triggered
-frame. A state the detector confirmed as blank costs no recognition call
-at all: the detector already answered the question, so the job records
-the same empty-text observation the production job records for an
-OCR-empty candidate, without paying for the call.
-
-Deliberately identical to `build_ocr_evidence_job` in every respect that
-is visible downstream:
-
-  * one Observation per recognized text region, plus the empty-text
-    marker for a blank state, with the same instant span
-    (`INSTANT_SPAN_SECONDS`) and the same provenance shape;
-  * persisted as soon as each state closes, so a cancel partway through
-    keeps the evidence already found (ROADMAP M4);
-  * the same run tagging, the same source identity, the same metrics
-    object, the same progress reporting and cancellation contract.
-
-So Cue reconstruction, review state, workspace persistence and the UI
-see the same kind of evidence they already see -- fewer, more
-deliberately chosen observations, not a different contract.
-
-RESIDUAL RISK, measured and NOT solved here. It is not a scheduling
-gap: a state shorter than the sentinel is still covered, by the
-bootstrap at the head of the range and the boundary rule at its tail,
-and replaying the corpus confirms such a state is observed inside its
-own span on every ROI tested.
-
-The real exposure is spatial. If the user's ROI does not cover the area
-an unusually wide or tall caption occupies, the detector finds nothing
-there on ANY frame for that caption's whole duration, so it is never
-observed as text at all and produces no cue. Measured on the corpus: a
-caption spanning 81% and 76% of frame width across two lines was
-detected on every frame of its span under a generous ROI and on ZERO
-frames under a tighter hand-drawn one, while the neighbouring 32-35%
-wide captions survived both. No sampling rate, sentinel or grouping
-change can recover it -- there is no frame in which the text is
-visible to the detector.
-
-V1 accepts this deliberately: the ROI stays a coarse, user-drawn search
-envelope. Uniform ROI padding was tried and rejected (it cost real
-states on the frozen research framing), and software-proposed ROIs were
-tried and rejected (probing the full frame under-resolves captions, so
-the proposals cropped real captions on held-out fixtures). The UI asks
-the user to leave margin for wider and taller captions instead.
-
-`detect` is injected, so this module never imports PaddleOCR's detector
-and the job stays testable without the heavy `[ocr]` extra.
+The default call cap is four per envelope: first/medoid/last plus one interior
+refinement. This is a resource policy, NOT a calibrated production constant or
+a guarantee of caption recall. Callers may explicitly raise it; performance
+validation is pending. No text is extrapolated through unqueried time.
 """
 
 from __future__ import annotations
@@ -81,6 +27,12 @@ from glyphcue.application.beta_stroke_structural import beta_s_signature
 from glyphcue.application.hybrid_cascade_dry_run import (
     CASCADE_CANDIDATE_DISTANCE_THRESHOLD,
     MAX_DETECTOR_GAP_SECONDS,
+)
+from glyphcue.application.caption_identity_verification import CaptionProbeReadError, verify_caption_identity
+from glyphcue.domain.caption_identity import (
+    CAPTION_IDENTITY_VERSION, CONTRACT_KEY, ENVELOPE_KEY, PAYLOAD_KEY, ROLE_KEY,
+    CoarseEnvelope, FrameObservationRef, REPRESENTATIVE_PTS_KEY,
+    OBSERVED_STATE_START_KEY, OBSERVED_STATE_END_KEY,
 )
 from glyphcue.application.occupancy_normalized_distance import (
     OCCUPANCY_GROUP_DISTANCE_THRESHOLD,
@@ -142,12 +94,13 @@ def build_hybrid_ocr_evidence_job(
     *,
     detect: TextDetector,
     sampling_fps: float = HYBRID_EVIDENCE_GRID_FPS,
+    caption_probe_budget: int = 4,
 ) -> Job:
     """The experimental hybrid Path A evidence job.
 
         decoded frames -> 5 fps grid -> cheap scheduler (detector-anchored)
           -> sparse text DETECTION -> Beta-S signature
-          -> subtitle-state grouping -> ONE recognition per state
+          -> coarse visual envelopes -> bounded full-OCR identity probes
 
     Same job/DB/cancellation/progress contract as
     `build_ocr_evidence_job`; see the module docstring for what is
@@ -156,6 +109,8 @@ def build_hybrid_ocr_evidence_job(
     """
     if sampling_fps <= 0:
         raise ValueError("sampling_fps must be positive")
+    if isinstance(caption_probe_budget, bool) or not isinstance(caption_probe_budget, int) or caption_probe_budget < 3:
+        raise ValueError("caption_probe_budget must be an integer >= 3 (first/medoid/last)")
 
     def work(context: JobContext) -> None:
         wall_start = time.monotonic()
@@ -196,67 +151,73 @@ def build_hybrid_ocr_evidence_job(
 
             def emit_state(group, members: list[SampledFrame]) -> None:
                 representative = _state_representative(members)
-                for member in members:
-                    if member.index != representative.index:
-                        observed_frames.pop(member.index, None)
-                frame = observed_frames.pop(representative.index, None)
-                timestamp = representative.timestamp
-                runtime_info = ocr_engine.runtime_info()
+                envelope = CoarseEnvelope(
+                    str(uuid.uuid4()), group.start_timestamp, group.end_timestamp,
+                    representative.timestamp,
+                    tuple(FrameObservationRef(m.index, m.timestamp, f"{path}@{m.timestamp:.6f}s")
+                          for m in members),
+                )
+                runtime = ocr_engine.runtime_info()
                 detail = {
-                    "engine_version": runtime_info.version,
-                    "backend": runtime_info.backend,
-                    "backend_version": runtime_info.backend_version or "",
+                    "engine_version": runtime.version,
+                    "backend": runtime.backend,
+                    "backend_version": runtime.backend_version or "",
                     STATE_TRIGGER_DETAIL_KEY: group.state_kind,
+                    CONTRACT_KEY: CAPTION_IDENTITY_VERSION,
+                    ENVELOPE_KEY: envelope.id,
+                    REPRESENTATIVE_PTS_KEY: str(envelope.representative_pts),
+                    OBSERVED_STATE_START_KEY: str(envelope.observed_start),
+                    OBSERVED_STATE_END_KEY: str(envelope.observed_end),
                 }
 
-                def observation_for(text, language, confidence, geometry) -> Observation:
+                def observation_for(text, language, confidence, geometry, ref, extra):
                     return Observation(
-                        id=str(uuid.uuid4()),
-                        text=text,
-                        start_time=timestamp,
-                        end_time=timestamp + INSTANT_SPAN_SECONDS,
-                        provenance=Provenance(
-                            kind=ProvenanceKind.OCR_ENGINE,
-                            source=runtime_info.engine_name,
-                            detail=detail,
-                        ),
-                        language=language,
-                        confidence=confidence,
-                        roi=roi,
-                        geometry=geometry,
-                        frame_reference=f"{path}@{timestamp:.6f}s",
+                        id=str(uuid.uuid4()), text=text, start_time=ref.pts,
+                        end_time=ref.pts + INSTANT_SPAN_SECONDS,
+                        provenance=Provenance(ProvenanceKind.OCR_ENGINE, runtime.engine_name,
+                                              {**detail, **extra}),
+                        language=language, confidence=confidence, roi=roi,
+                        geometry=geometry, frame_reference=ref.frame_reference,
                     )
 
-                if group.state_kind == "blank" or frame is None:
-                    # The detector already established there is no text
-                    # here. Recording the same empty-text marker the
-                    # production job records for an OCR-empty candidate
-                    # keeps M5's "went blank" evidence intact, and costs
-                    # no recognition call.
-                    persist(observation_for("", None, None, None))
-                    return
-
-                height, width = frame.shape[:2]
-                call_start = time.monotonic()
-                regions = ocr_engine.recognize(frame)
-                metrics.record_invocation(
-                    timestamp=timestamp,
-                    trigger_reason=f"hybrid_state_{group.state_kind}",
-                    difference_score=None,
-                    dimensions=(width, height),
-                    latency_seconds=time.monotonic() - call_start,
-                )
-
-                non_empty = [region for region in regions if region.text]
-                if not non_empty:
-                    persist(observation_for("", None, None, None))
-                    return
-                for region in non_empty:
-                    persist(
-                        observation_for(
-                            region.text, region.language, region.confidence, region.geometry
+                def recognize(ref, reason):
+                    if group.state_kind == "blank":
+                        regions = []
+                    else:
+                        frame = observed_frames[ref.index]
+                        call_start = time.monotonic()
+                        try:
+                            regions = list(ocr_engine.recognize(frame))
+                        except Exception as error:
+                            raise CaptionProbeReadError("OCR probe failed") from error
+                        metrics.record_invocation(
+                            timestamp=ref.pts, trigger_reason="hybrid_caption_probe",
+                            difference_score=None, dimensions=(frame.shape[1], frame.shape[0]),
+                            latency_seconds=time.monotonic() - call_start,
                         )
+                    extra = {ROLE_KEY: "raw_probe", "probe_reason": reason,
+                             "probe_observation_index": str(ref.index)}
+                    raw = tuple(observation_for(r.text, r.language, r.confidence, r.geometry, ref, extra)
+                                for r in regions)
+                    if not raw:
+                        raw = (observation_for("", None, None, None, ref, extra),)
+                    for observation in raw:
+                        persist(observation)
+                    return raw
+
+                try:
+                    evidence = verify_caption_identity(
+                        envelope, recognize, probe_budget=caption_probe_budget,
+                        is_cancel_requested=context.is_cancel_requested,
                     )
+                    ref = next(r for r in envelope.observations if r.pts == envelope.representative_pts)
+                    persist(observation_for("", None, None, None, ref,
+                                            {ROLE_KEY: "envelope", PAYLOAD_KEY: evidence.to_json()}))
+                    if evidence.stop_reason == "ocr_failed":
+                        raise CaptionProbeReadError("OCR failed; partial envelope evidence was preserved")
+                finally:
+                    for member in members:
+                        observed_frames.pop(member.index, None)
 
             next_sample_time = range_start
             cheap_anchor: np.ndarray | None = None
@@ -303,6 +264,9 @@ def build_hybrid_ocr_evidence_job(
 
             for timestamp, frame in source.frames(range_start, range_end):
                 if context.is_cancel_requested():
+                    partial = grouper.flush()
+                    if partial is not None:
+                        emit_state(*partial)
                     return
                 metrics.frames_analyzed += 1
                 roi_frame = crop_to_roi(frame, roi)

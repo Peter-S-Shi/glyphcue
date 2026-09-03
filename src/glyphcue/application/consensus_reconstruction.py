@@ -12,6 +12,7 @@ from glyphcue.application.text_similarity import character_similarity
 from glyphcue.domain.cue import Cue
 from glyphcue.domain.language_layer import LanguageLayer
 from glyphcue.domain.observation import Observation
+from glyphcue.domain.caption_identity import CONTRACT_KEY, CaptionIdentityEvidence
 
 _UNDETERMINED_LANGUAGE = "und"
 _DEFAULT_SIMILARITY_THRESHOLD = 0.5
@@ -64,6 +65,9 @@ class ConsensusDiagnostics:
     distinct_text_count: int
     agreement_ratio: float
     had_disagreement: bool
+    caption_alternatives: tuple[str, ...] = ()
+    disagreement_detail: tuple[str, str] | None = None
+    caption_identity: CaptionIdentityEvidence | None = None
 
 
 def _state_trigger(observation: Observation) -> str | None:
@@ -460,7 +464,11 @@ def reconstruct_cues_with_consensus(
     """Path A multi-frame consensus reconstruction: noisy OCR Observations
     -> stable, single-language Cues (ROADMAP.md Milestone 5).
     """
-    ordered = sorted(observations, key=lambda observation: observation.start_time)
+    from glyphcue.application.caption_identity_reconstruction import reconstruct_caption_identity
+
+    identity_cues, identity_diagnostics = reconstruct_caption_identity(observations, processing_end_time)
+    ordered = sorted((o for o in observations if CONTRACT_KEY not in o.provenance.detail),
+                     key=lambda observation: observation.start_time)
     aggregated = aggregate_same_frame_observations(ordered)
     # Re-sort: aggregation can reorder within a frame group but
     # start_time ordering across frames must hold for grouping.
@@ -476,4 +484,9 @@ def reconstruct_cues_with_consensus(
         cues.append(cue)
         diagnostics.append(cue_diagnostics)
 
-    return _consolidate_adjacent_same_text_cues(cues, diagnostics)
+    cues, diagnostics = _consolidate_adjacent_same_text_cues(cues, diagnostics)
+    # Identity probes and unresolved intervals must NEVER pass through legacy
+    # same-text consolidation, similarity voting or processing-end extension.
+    pairs = sorted(zip(cues + identity_cues, diagnostics + identity_diagnostics),
+                   key=lambda pair: pair[0].start_time)
+    return [p[0] for p in pairs], [p[1] for p in pairs]

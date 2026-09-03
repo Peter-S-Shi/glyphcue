@@ -33,6 +33,7 @@ from glyphcue.application.cue_review_actions import (
     split_cue,
 )
 from glyphcue.application.curated_evidence import select_curated_evidence
+from glyphcue.application.caption_identity_review import caption_evidence_summary
 from glyphcue.application.review_priority import ReviewPriority
 from glyphcue.domain.cue import Cue
 from glyphcue.domain.observation import Observation
@@ -776,7 +777,8 @@ class ReconstructionQaWorkspace:
             shown.sort(key=lambda observation: observation.start_time)
 
         self.evidence_view.setPlainText(
-            "\n".join(f"{observation.start_time:.3f}s  {observation.text}" for observation in shown)
+            "\n".join(caption_evidence_summary(observation) or
+                      f"{observation.start_time:.3f}s  {observation.text}" for observation in shown)
         )
 
     def approve_and_advance(self) -> None:

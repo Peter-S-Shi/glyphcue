@@ -3,6 +3,7 @@ from __future__ import annotations
 from PySide6.QtWidgets import QHBoxLayout, QListWidget, QTextEdit, QVBoxLayout, QWidget
 
 from glyphcue.domain.observation import Observation
+from glyphcue.application.caption_identity_review import caption_evidence_summary
 from glyphcue.ui.design_tokens import Spacing
 
 
@@ -25,6 +26,9 @@ def _detail(observation: Observation) -> str:
         f"provenance.source: {observation.provenance.source}",
         f"provenance.detail: {dict(observation.provenance.detail)}",
     ]
+    identity = caption_evidence_summary(observation)
+    if identity:
+        lines.append(identity)
     return "\n".join(lines)
 
 
