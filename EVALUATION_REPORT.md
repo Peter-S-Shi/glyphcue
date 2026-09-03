@@ -83,11 +83,11 @@ generated/rendered fixtures already listed above (per
   methodology and the specific label-leak it replaced.
 - **Independently verified point-samples** (realistic-private corpus):
   a small number of specific verified instants where the real on-screen
-  caption text was read directly from extracted video frames — this
-  supports point-recall and per-point CER *only*, not Cue-level
-  precision or timing start/end error (see "Cue recovery" and "Timing"
-  below for exactly why, and note this corpus never produced a scored
-  run regardless).
+  caption text was read directly from extracted video frames — M11 Stage ⑤
+  has produced completed Hybrid scored point-sample results, but this GT
+  methodology still cannot support Cue-level precision or start/end
+  timing-error claims (see "Cue recovery" and "Timing" below for exactly why).
+
 
 ## Metrics
 
@@ -341,10 +341,15 @@ honestly at the time they were produced and preserved here unchanged:
    distinct from the separate, real production finding it partially
    confounded (elevated real-world OCR-trigger rate). `FAILURE_MODE_REPORT.md`
    #6–#7, `docs/m10_private_corpus_incident.md`.
-6. **Even the best-case (selective) policy runs slower than realtime**
-   on small, mostly-static synthetic clips (1.92×–6.44×), driven by
-   PaddleOCR's ~3s/call structural cost, not decode/persistence/harness
-   overhead. `FAILURE_MODE_REPORT.md` #8, `docs/m10_performance_diagnosis.md`.
+6. **Historical M10 baseline: Even the best-case (selective) policy ran slower
+   than realtime** on small, mostly-static synthetic clips (1.92×–6.44×), driven
+   by PaddleOCR's ~3s/full-call structural cost, not decode/persistence/harness
+   overhead (`FAILURE_MODE_REPORT.md` #8, `docs/m10_performance_diagnosis.md`).
+   This historical negative baseline has been materially superseded by M11
+   Hybrid, P2 recognition-only, P3 Windows DirectML recognizer, and P4B Windows
+   DirectML same-detector text detector performance hardening, and cannot be used
+   to describe current pipeline performance.
+
 7. **ADR 0005's multilingual timing simplification has no dedicated
    benchmark behind it** — a design-time claim from ROADMAP §4, not a
    measured comparison. `FAILURE_MODE_REPORT.md` #10 (design
@@ -380,9 +385,10 @@ this report.
 - **WER has no empirically-closed result on any corpus** — implemented,
   unit-tested, never applied to a real evaluation corpus.
 - **Multilingual layer-assignment correctness against real, non-synthetic
-  material is unverified in either direction** — the only real-PaddleOCR
-  evidence is two clean synthetic scenarios with zero observed failures,
-  which is a coverage gap, not a robustness finding.
+  material**: M11 has observed 1 real miss + 2 real non-misses (n=3), so
+  the failure mode has real evidence, but the sample is too thin and
+  robustness/failure rate is not yet empirically closed.
+
 - **CPU use and full-pipeline memory are not measured anywhere in M10** —
   only OCR-engine-in-isolation memory/startup (M3) and wall-clock
   performance (M10 controlled corpus) exist.
