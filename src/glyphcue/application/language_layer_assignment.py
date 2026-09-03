@@ -54,6 +54,31 @@ def _dominant_script(text: str) -> str | None:
     return None
 
 
+def _has_mixed_script_evidence(text: str) -> bool:
+    """True when `text` contains both Han and Latin alphabetic characters
+    with no Hiragana/Katakana -- the exact character-level condition
+    `_dominant_script` reports as None ("no decisive signal"). That None
+    collapses two different real cases: text with NO recognized script at
+    all (bare digits/punctuation/noise), and text that DOES carry real
+    script evidence, just evidence for two scripts at once (e.g. a
+    legitimate Han+Latin line, or genuine OCR-corruption garbling).
+    `_cluster_by_visual_line`'s veto needs to tell them apart: only the
+    former is safe to treat as no evidence at all when deciding whether
+    an adjacent DECISIVE cluster may absorb it by geometry alone."""
+    has_kana = False
+    has_han = False
+    has_latin = False
+    for character in text:
+        code = ord(character)
+        if 0x3040 <= code <= 0x30FF:
+            has_kana = True
+        elif 0x4E00 <= code <= 0x9FFF:
+            has_han = True
+        elif character.isascii() and character.isalpha():
+            has_latin = True
+    return has_han and has_latin and not has_kana
+
+
 def _reading_order_key(observation: Observation) -> tuple[float, float]:
     if observation.geometry:
         xs = [point[0] for point in observation.geometry]
@@ -121,24 +146,42 @@ def _cluster_by_visual_line(
     (candidate count != 1, e.g. pure Han between zh/ja, or non-text
     noise) never vetoes anything, since it isn't decisive evidence of
     incompatibility either way -- it merges by geometry exactly as
-    before, and downstream classification handles the ambiguity."""
+    before, and downstream classification handles the ambiguity.
+
+    A second, narrower veto (see `_has_mixed_script_evidence`) catches a
+    case real DirectML geometry produced: an observation whose own text
+    legitimately mixes Han and Latin (e.g. a Chinese line an engine read
+    with a few bled-in Latin characters) sits right next to a decisively
+    single-language cluster with a few pixels of Y-overlap. That
+    observation has no single decisive language of its own -- but unlike
+    genuinely no-signal text (bare digits/punctuation), it carries real,
+    if dual, script evidence, so it must not be silently absorbed into
+    the neighboring decisive cluster by geometry alone either. It starts
+    its own cluster instead, staying fail-closed/ambiguous for
+    `assign_observations_to_languages` to resolve, exactly like any other
+    unresolved cluster with no single decisive script."""
     ordered = sorted(observations, key=_reading_order_key)
     clusters: list[list[Observation]] = []
     cluster_ranges: list[tuple[float, float] | None] = []
     cluster_decisive_languages: list[str | None] = []
+    cluster_has_mixed_script: list[bool] = []
     for observation in ordered:
         current_range = _y_range(observation)
         current_decisive = _decisive_language(observation.text, expected_languages)
+        current_mixed = _has_mixed_script_evidence(observation.text)
         if clusters and current_range is not None and cluster_ranges[-1] is not None:
             previous_range = cluster_ranges[-1]
             overlap = min(previous_range[1], current_range[1]) - max(
                 previous_range[0], current_range[0]
             )
             previous_decisive = cluster_decisive_languages[-1]
+            previous_mixed = cluster_has_mixed_script[-1]
             script_incompatible = (
                 previous_decisive is not None
                 and current_decisive is not None
                 and previous_decisive != current_decisive
+            ) or (previous_decisive is not None and current_mixed) or (
+                current_decisive is not None and previous_mixed
             )
             if overlap > 0 and not script_incompatible:
                 clusters[-1].append(observation)
@@ -147,10 +190,12 @@ def _cluster_by_visual_line(
                     max(previous_range[1], current_range[1]),
                 )
                 cluster_decisive_languages[-1] = previous_decisive or current_decisive
+                cluster_has_mixed_script[-1] = previous_mixed or current_mixed
                 continue
         clusters.append([observation])
         cluster_ranges.append(current_range)
         cluster_decisive_languages.append(current_decisive)
+        cluster_has_mixed_script.append(current_mixed)
     return clusters
 
 

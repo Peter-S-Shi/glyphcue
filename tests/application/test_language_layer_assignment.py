@@ -398,3 +398,30 @@ def test_non_decisive_neighbor_never_triggers_a_false_veto():
     buckets, _ambiguous = assign_observations_to_languages(observations, ("en", "zh"))
 
     assert set(_ids(buckets["en"])) == {"en", "digits"}
+
+
+def test_mixed_script_observation_adjacent_to_decisive_neighbor_is_not_absorbed():
+    # Real DirectML sample_f 566-568.4s observation: a legitimate mixed
+    # Han+Latin reading of a Chinese line ("srs有效的原因是") whose
+    # detector box has a few pixels of Y-overlap with the decisively-
+    # English line stacked above it. `_dominant_script` correctly reports
+    # None for text that mixes han and latin with no kana (see its own
+    # docstring) -- but that None means two DIFFERENT real things: bare
+    # digits/punctuation with NO script evidence at all, and a
+    # genuinely mixed-script line that DOES carry real (if ambiguous)
+    # evidence. Only the former is safe to treat as "no signal" for the
+    # visual-line veto; treating the latter the same way let it merge
+    # into the neighboring decisive English cluster and lose the real
+    # Chinese content into the en layer. The mixed-script evidence must
+    # veto the merge on its own, keeping the line its own cluster --
+    # fail-closed/ambiguous, never silently classified as English.
+    observations = [
+        _obs("en", "and the reason why srs works is", geometry=_box(69, 154)),
+        _obs("mixed", "srs有效的原因是", geometry=_box(149, 218)),
+    ]
+
+    buckets, ambiguous = assign_observations_to_languages(observations, ("en", "zh"))
+
+    assert _ids(buckets["en"]) == ["en"]
+    assert _ids(buckets["zh"]) == ["mixed"]
+    assert "zh" in ambiguous
