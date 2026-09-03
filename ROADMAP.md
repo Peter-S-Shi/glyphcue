@@ -3,9 +3,11 @@
 **Document type:** Authoritative V1 milestone roadmap  
 **Project:** GlyphCue  
 **Repository:** `Peter-S-Shi/glyphcue`  
-**Lifecycle phase:** Production Development in progress → Milestone 10 complete (evidence/evaluation closure accepted; representative-video gate transferred to Milestone 11, not waived — see §17's gate audit disposition), Feature Freeze ACTIVE, **Milestone 11 (Product Hardening & Full Regression) IN PROGRESS — stage ④ Targeted Regression CLOSED (automated evidence accepted at the human gate, see `docs/m11_targeted_regression.md`), currently at stage ⑤ Representative Evaluation, step ⑤-C RUN COMPLETE + completion supplement RUN COMPLETE (3 of 5 windows now fully evaluated with a new unresolved correctness finding, 3 remain partial, awaiting human adjudication)** (see `docs/m11_representative_evaluation.md`); M11 is NOT complete and its acceptance gate, including the transferred representative-video evaluation, is still open  
+**Lifecycle phase:** Production Development in progress → Milestone 10 complete (evidence/evaluation closure accepted; representative-video gate transferred to Milestone 11, not waived — see §17's gate audit disposition), Feature Freeze ACTIVE, **Milestone 11 (Product Hardening & Full Regression) IN PROGRESS — stage ④ Targeted Regression CLOSED (automated evidence accepted at the human gate, see `docs/m11_targeted_regression.md`), stage ⑤ Representative Evaluation step ⑤-C stress run + completion supplement RUN COMPLETE (of the frozen five windows, `sample_g`/`sample_e` completed to full coverage while `sample_h`/`sample_f`/`sample_c` remain partial; reserve `sample_a` was run as an additional completion supplement). The Chinese-CER finding has been investigated and CLOSED by the Caption Identity Corrective Gate; performance hardening passes P2 (recognition-only), P3 (Windows DirectML OCR recognizer), and P4B (Windows DirectML same-detector text detector) are INTEGRATED; Parallel Chunking was evaluated via evidence gate and REJECTED; stage ⑤ remains OPEN awaiting final representative gate closure, and M11 acceptance gates are still open** (see `docs/m11_representative_evaluation.md`)
 **Status:** Current V1 execution roadmap  
-**Last updated:** 2026-09-02
+
+**Last updated:** 2026-09-03
+
 
 ---
 

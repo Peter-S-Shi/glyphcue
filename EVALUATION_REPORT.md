@@ -1,12 +1,11 @@
 # Evaluation Report
 
-Required by ROADMAP.md §17. This report **assembles already-committed
-M3–M10 evidence** — every number below already exists in a benchmark
-result file, QA/ADR doc, or incident report that was produced by a real
-run of real code. No benchmark was re-run and no new evidence was
-generated to fill a gap for this report; where §17 asks for a metric
-that has no valid empirical result on any relevant corpus, this report
-says so explicitly rather than approximating one.
+Required by ROADMAP.md §17. This report **compiles committed M3–M10
+benchmark evidence alongside M11 Stage ⑤ representative evaluation
+outcomes** — numbers originate from real benchmark runs, QA/ADR records,
+incident investigations, and M11 Stage ⑤ evaluation runs. Where a metric
+lacks empirical closure on a given corpus, this report states that
+boundary explicitly rather than approximating one.
 
 ## How to read this report
 
@@ -17,9 +16,11 @@ Every result below is tagged along four axes that must not be conflated:
    degradation) are built and fully controlled by GlyphCue's own test
    authors. The realistic-private corpus (`private_samples/m10_video_corpus/`,
    gitignored, never committed) is the repo owner's own real, private
-   video material — the only source of genuinely external-realistic
-   evidence in this report, and the one corpus this report does **not**
-   have a completed run for (see "Corpus" below).
+   video material — the primary source of external-realistic evidence in
+   this report, for which M11 Stage ⑤ has completed full-window runs on
+   `sample_g`, `sample_e`, and reserve `sample_a`, while `sample_h`,
+   `sample_f`, and `sample_c` remain partial (see "Corpus" and "M11 stage 5" below).
+
 2. **TDD/non-held-out fixtures vs. comparative or external-realistic
    evidence.** Several corpora (Path B's 17-case fixture, the
    consensus/multilingual synthetic scenarios) are the *same* corpus the
@@ -106,10 +107,16 @@ Organized by ROADMAP §17's own named metric families.
     "Negative/mixed findings").
   - Multilingual reconstruction: CER 0.0 on every language layer in both
     the bilingual and trilingual synthetic scenarios.
-  - **Not measured on the realistic-private corpus** — no entry
-    completed (see "Corpus").
+  - **Measured on realistic-private corpus under M11 Stage ⑤ supplement (pre-corrective baseline):**
+    `sample_g` (EN) measured CER 0.163. `sample_e` (ZH) measured 1.166 and
+    reserve `sample_a` (ZH) measured 1.679. Note: these Chinese CER measurements
+    reflect the pre-corrective state that historically triggered the **Caption
+    Identity Corrective Gate**, which subsequently root-caused and resolved
+    the consensus/probe issue; they do not represent current post-fix quality.
+    `sample_h`/`sample_f`/`sample_c` remain partial/unmeasured.
 - **WER** (`glyphcue.evaluation.metrics.word_error_rate`): implemented
   and unit-tested (`tests/evaluation/test_metrics.py`) against known-good
+
   literal examples. **No benchmark applies it to any real or synthetic
   text corpus.** Stated per this report's own discipline: **not
   empirically closed** for any corpus — an implementation exists, no
@@ -141,12 +148,15 @@ each verified instant at all) but explicitly **cannot** support Cue-level
 precision (a sparse point sample cannot vouch for every real Cue GlyphCue
 produces — an unmatched real Cue is not evidence of a false positive) —
 this scope limitation is stated in the evaluation script's own docstring
-(`benchmarks/private_video_corpus/run_evaluation.py`). Regardless, no
-run of that corpus ever completed, so even point-recall has zero real
-data points from it.
+(`benchmarks/private_video_corpus/run_evaluation.py`). In M11 Stage ⑤'s
+completion supplement, point-recall was measured at 90–100% across 31
+verified instants on the completed windows (`sample_g`, `sample_e`, reserve
+`sample_a`). However, Cue-level precision remains unmeasured by design of
+the sparse point-sample methodology.
 
 **Stated per this report's own discipline: Path A Cue-level precision/
 recall is not empirically closed on any corpus.**
+
 
 ### Timing: start error / end error
 
@@ -183,14 +193,17 @@ was constructed to be hard to classify, so a zero-failure result does
 not establish the mechanism is robust against harder, real material. The
 realistic-private corpus's `_evaluate_entry` explicitly computes
 `multilingual_missing_layer_count` and `multilingual_wrong_assignment_count`
-per entry for exactly this reason — but that corpus never produced a
-completed run, so those fields have never been populated with a single
-real data point (`FAILURE_MODE_REPORT.md` #5 has the full analysis). The
-M6 implementation doc additionally states, as an already-known limitation
-independent of this report: script detection covers only Han/Kana/Latin
-(no claim for Cyrillic, Arabic, Devanagari, etc.), and a cluster with
-zero decisive/eliminated evidence falls back to geometry-only guessing,
-"not yet measured against a real target sample exhibiting this"
+per entry for exactly this reason. In M11 Stage ⑤'s stress run, the bilingual
+windows (`sample_h`, `sample_f`, `sample_c`) ran under `PRODUCTION_TRIGGER`
+
+and timed out at 2.2%–3.5% window coverage; they matched only 3 real bilingual
+instants (1 miss, 2 non-misses), leaving real-world multilingual layer
+separation narrowed but not yet closed at scale (`FAILURE_MODE_REPORT.md` #5
+has the full analysis). The M6 implementation doc additionally states,
+as an already-known limitation independent of this report: script detection
+covers only Han/Kana/Latin (no claim for Cyrillic, Arabic, Devanagari, etc.),
+and a cluster with zero decisive/eliminated evidence falls back to geometry-only
+guessing, "not yet measured against a real target sample exhibiting this"
 (`docs/multilingual/track_group_reconstruction.md`).
 
 **Stated per this report's own discipline: multilingual layer-assignment
@@ -382,9 +395,10 @@ this report.
   entirely, and real scored data now exists for a subset of the target
   corpus — but three of the five frozen windows (`sample_h`, `sample_f`,
   `sample_c`) are still timeout-limited to under 4% window coverage, and
-  the two windows that did complete surfaced a new, unresolved
-  correctness question (see "M11 stage 5" below). This is progress on
-  the gap, not closure of it.
+  the two Chinese windows that did complete surfaced a correctness finding
+  that historically triggered the Caption Identity Corrective Gate (subsequently
+  investigated and resolved; see "M11 stage 5" below). `sample_h`/`sample_f`/`sample_c`
+  coverage remains partial and Stage ⑤ remains open.
 
 ---
 
@@ -427,25 +441,28 @@ reported as a signal, not a conclusion — the two groups also differ in
 content (single- vs. multi-language), so this run cannot separate
 "Hybrid is faster" from "these two windows are easier."
 
-**Completion supplement** (`sample_g`, `sample_e` at their unchanged
-window/ROI, plus the pre-existing M10 `sample_a` clean-baseline reserve
-reused verbatim — Hybrid only, 1800 s timeout, human-gate-approved):
-**all three completed** (real `succeeded` state, not a timeout
-cancellation), with point recall 90–100% across 31 verified instants.
-**But mean CER on the two Chinese-language entries measured above 1.0**
-(`sample_e`: 1.166, `sample_a`: 1.679) — by definition of
-`character_error_rate` (edit distance / reference length, unbounded
-above 1), the recovered text at matched instants diverges from the
-short verified reference by more edits than the reference itself
-contains. `sample_g`'s English CER (0.163) is unaffected and in a normal
-range. This was reported as initially measured in the completion supplement
-before root-cause investigation. *(Reconciliation Note: This finding served as the
-historical trigger for the **Caption Identity Corrective Gate**, which successfully
-diagnosed the root cause in hybrid state transition / consensus disambiguation and
-integrated formal product fixes in `src/glyphcue/application/` with 843 tests passing.
-Subsequently, M11 completed P2 recognition-only, P3 Windows DirectML recognizer,
-and P4B Windows DirectML same-detector text detector acceleration (while parallel
-chunking was evaluated via evidence gate and formally rejected).*
+**Completion supplement (pre-corrective historical measurement)** (`sample_g`,
+`sample_e` at their unchanged window/ROI, plus the pre-existing M10 `sample_a`
+clean-baseline reserve reused verbatim — Hybrid only, 1800 s timeout,
+human-gate-approved): **all three completed** (real `succeeded` state,
+not a timeout cancellation), with point recall 90–100% across 31 verified
+instants. **Mean CER on the two Chinese-language entries measured above 1.0
+in this pre-corrective run** (`sample_e`: 1.166, `sample_a`: 1.679) —
+by definition of `character_error_rate` (edit distance / reference length,
+unbounded above 1), the recovered text at matched instants diverged from
+the short verified reference by more edits than the reference itself
+contained. `sample_g`'s English CER (0.163) was normal.
+**This pre-corrective measurement served as the historical trigger for the
+Caption Identity Corrective Gate**, which subsequently investigated the root cause
+(hybrid state transition timing and multi-frame consensus disambiguation),
+implemented formal product fixes in `src/glyphcue/application/`, and verified
+correctness across 843 passing regression tests. **These pre-corrective numbers
+are historical evidence and cannot masquerade as the current post-fix quality
+verdict.** Subsequent M11 performance hardening completed P2 recognition-only,
+P3 Windows DirectML recognizer, and P4B Windows DirectML same-detector text detector
+acceleration, while parallel chunking was evaluated via evidence gate and
+formally rejected.
+
 
 
 **Not yet attempted:** a longer-timeout supplement for `sample_h`,

@@ -149,7 +149,7 @@ deliberately left unfixed.
 4. **P4B Same-Detector DirectML Text Detector Acceleration (INTEGRATED):**
    - Pure execution-backend substitution using official `PP-OCRv6_det_medium.onnx` with exact-matching Paddle DBNet pre/post-processing (`limit_side_len=640`, `thresh=0.2`, `box_thresh=0.45`, `unclip_ratio=1.4`, ImageNet normalization).
    - Windows-only, opt-in via `GLYPHCUE_PREFER_DIRECTML_DETECTOR=1`, with safe CPU fallback.
-   - Zero geometry drift: 100% subtitle recall, 100% subtitle text and timing parity on `sample_g` and `sample_e`, delivering ~1.67–1.79× E2E speedup.
+   - No meaningful downstream geometry/evidence drift / sufficient geometry parity (100% subtitle recall, 0.835 mean IoU across 12 diverse frames): 100% subtitle text and timing parity on `sample_g` and `sample_e`, delivering ~1.67–1.79× E2E speedup.
 
 ### Architecture Direction Decisions
 
@@ -209,8 +209,8 @@ appears anywhere in the repository.
 Human adjudication of the remaining representative evaluation items
 (`docs/m11_representative_evaluation.md` §15–§16), specifically whether
 `sample_h`/`sample_f`/`sample_c` receive a timeout extension or whether
-existing partial coverage suffices to close the representative gate, followed
-by formal Manual QA and Full Regression. Stage ⑤ remains OPEN. Do not treat
-M11 as complete, and do not advance to merge-readiness before its earlier
-stages are signed off. PR #13 stays Draft.
-
+existing partial coverage suffices to close the representative gate. Following
+Stage ⑤ closure, the subsequent execution sequence is strictly **Stage ⑥ Full
+Regression → Stage ⑦ Formal Human QA** (alongside packaging hardening).
+Stage ⑤ remains OPEN. Do not treat M11 as complete, and do not advance to
+merge-readiness before its earlier stages are signed off. PR #13 stays Draft.

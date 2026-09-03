@@ -284,18 +284,17 @@ finding, kept distinct from the harness bug"), `docs/m10_performance_diagnosis.m
 ("Known cost of the choice"), `docs/m11_representative_evaluation.md`
 §15–§16 (per-window OCR/detector call counts and realtime ratios).
 
-**Disposition**: not fixed (production behavior change forbidden under
-Feature Freeze in M10; not attempted in M11 stage 5 either — this stage
-is evaluation only, no OCR/temporal algorithm or threshold change). Still
-ranked candidate #1 for a future M11 performance-hardening pass per
-`docs/m10_performance_diagnosis.md`: "lower unnecessary OCR-call
-frequency without changing reconstruction quality" — now backed by
-directly-measured real-footage evidence rather than one crash-truncated
-sample.
+**Disposition**: The Hybrid-eligible path has significantly alleviated this trigger rate
+through M11's detector-anchored scheduling (reducing OCR call frequency by ~15×–25×).
+Legacy and multilingual `PRODUCTION_TRIGGER` still retains this historical trigger cost
+on bilingual windows (`sample_h`/`sample_f`/`sample_c`), so this limitation is now a
+profile-specific residual rather than an unaddressed pipeline-wide bottleneck.
+
 
 ---
 
-## 8. PaddleOCR per-call latency is the dominant, structural cost of the whole pipeline
+## 8. Historical M10 Baseline: PaddleOCR full-call latency was the dominant, structural cost of the whole pipeline
+
 
 **Category: A — Dependency/runtime limitation.**
 
@@ -315,11 +314,13 @@ policy (production default) on small, mostly-static fixtures still ran
 `benchmarks/m10_controlled_video_corpus/performance_diagnosis_results.json`,
 `docs/adr/0001-ocr-runtime-selection.md`.
 
-**Disposition**: not fixed in M10 (no optimization implemented under
-Feature Freeze). Ranked candidates #2–#3 in `docs/m10_performance_diagnosis.md`
-(ROI size/downscale, runtime/model reuse across languages) target this
-cost directly; #1 above reduces how often it is paid, not its per-call
-cost.
+**Disposition**: Historical M10 baseline. Paddle full-call latency was previously
+the dominant cost of the pipeline (~2.9–3.3s per call). Following M11 performance
+hardening — specifically P2 recognition-only (eliminating duplicate detection when
+polygons are known, dropping recognition latency to ~0.5s) and P3 Windows DirectML
+recognition (~0.18–0.29s) — Paddle full-call latency is no longer the dominant pipeline
+bottleneck.
+
 
 ---
 
@@ -420,19 +421,18 @@ with recovered text substantially longer than, or substantially
 different in content from, the single caption line it was supposed to
 match.
 
-Two observations narrow, but do not confirm, where this came from:
-`sample_a` (CER 1.679, the worse of the two) also has the highest
-observations-per-Cue ratio of the three completed entries (635
-observations across 92 Cues, vs. `sample_e`'s 215/89 and `sample_g`'s
-110/37) — consistent with, but not proof of, `hybrid_evidence_job`'s
-"ONE recognition per state" design merging a wider span of real captions
-into a single recognized block than any one verified instant's reference
-text covers. Separately, `sample_e`'s own CER got *worse* going from
-partial coverage in the five-window stress run (0.492 at 60.9% window
-coverage, §15) to full coverage in the completion supplement (1.166 at
-100%, §16) on the *identical* entry — the opposite of what undersampling
-alone would predict, which argues against "just not enough data yet" as
-the explanation.
+*(Pre-corrective Historical Interpretation)*: Prior to root-cause diagnosis,
+two initial observations were noted: `sample_a` (CER 1.679, the worse of the two)
+also had the highest observations-per-Cue ratio of the three completed entries
+(635 observations across 92 Cues, vs. `sample_e`'s 215/89 and `sample_g`'s 110/37) —
+suggesting that `hybrid_evidence_job`'s earlier state transition merged a wider
+span of real captions into a single recognized block than any one verified instant's
+reference text covered. Separately, `sample_e`'s own CER worsened going from
+partial coverage in the stress run (0.492) to full coverage in the completion
+supplement (1.166). This historical hypothesis was subsequently validated and
+resolved when the Caption Identity Corrective Gate formally diagnosed state boundary
+and multi-frame consensus disambiguation defects.
+
 
 **Evidence**: `docs/m11_representative_evaluation.md` §15–§16 (full
 per-entry numbers, both the stress-run and completion-supplement
