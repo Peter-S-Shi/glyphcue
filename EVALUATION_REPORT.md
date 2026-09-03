@@ -206,10 +206,12 @@ and a cluster with zero decisive/eliminated evidence falls back to geometry-only
 guessing, "not yet measured against a real target sample exhibiting this"
 (`docs/multilingual/track_group_reconstruction.md`).
 
-**Stated per this report's own discipline: multilingual layer-assignment
+**Stated per this report's own discipline: Multilingual layer-assignment
 correctness against real, non-synthetic material is not empirically
-closed in either direction** — neither confirmed working nor confirmed
-failing.
+closed**: M11 has observed one real miss and two real non-misses across
+only three matched bilingual instants, establishing real evidence in
+both directions but leaving the sample far too small to characterize
+robustness or a failure rate.
 
 ### Path B: duplicate-removal / segmentation / timing normalization
 
