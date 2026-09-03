@@ -401,8 +401,8 @@ directly shaped a frozen architectural decision.
 
 ## 12. Experimental Hybrid: Chinese-language recognition CER exceeds 1.0 at full window coverage
 
-**Category: B — GlyphCue orchestration limitation (root cause not
-diagnosed this round).**
+**Category: B — GlyphCue orchestration limitation (resolved via Caption Identity
+Corrective Gate, commit `875fb04`).**
 
 M11 stage 5's completion supplement
 (`docs/m11_representative_evaluation.md` §16) ran `EXPERIMENTAL_HYBRID`
@@ -420,7 +420,7 @@ with recovered text substantially longer than, or substantially
 different in content from, the single caption line it was supposed to
 match.
 
-Two observations narrow, but do not confirm, where this comes from:
+Two observations narrow, but do not confirm, where this came from:
 `sample_a` (CER 1.679, the worse of the two) also has the highest
 observations-per-Cue ratio of the three completed entries (635
 observations across 92 Cues, vs. `sample_e`'s 215/89 and `sample_g`'s
@@ -439,12 +439,16 @@ per-entry numbers, both the stress-run and completion-supplement
 readings for `sample_e`), `src/glyphcue/application/hybrid_evidence_job.py`
 (module docstring, "ONE recognition per state").
 
-**Disposition**: not diagnosed, not fixed, not investigated further this
-round — explicitly out of scope for the evaluation run that surfaced it
-(no OCR/temporal algorithm change, no reopening of Beta-S/Auto-ROI or
-other Research Gate work). Recorded as a real, reproducible-looking
-correctness finding specific to Hybrid's Chinese-language output at full
-coverage, for the human gate to prioritize against M11's other stages.
+**Disposition**: initially recorded as a real correctness finding specific to Hybrid's
+Chinese-language output at full coverage.
+*(Reconciliation Update 2026-09-03: Investigated, root-caused, and formally resolved
+by the **Caption Identity Corrective Gate**, commit `875fb04`. Root cause was diagnosed
+in hybrid state transition timing and multi-frame consensus disambiguation in
+`hybrid_evidence_job.py` and `caption_identity_verification.py`. Formal product fixes
+were integrated and verified across 843 passing tests. Subsequently, M11 completed
+P2 recognition-only, P3 Windows DirectML recognizer, and P4B Windows DirectML text detector
+acceleration, while parallel chunking was evaluated via evidence gate and formally rejected).*
+
 
 ---
 
@@ -488,10 +492,11 @@ this gate — a five-window split-profile stress run (all five windows
 that finished three of those windows to full coverage (finding #12
 above). This is real progress on the gate, not closure of it: two of the
 five frozen windows are fully evaluated, three remain timeout-limited to
-under 4% coverage, and the two that finished surfaced a new, undiagnosed
-correctness question rather than a clean result. Full detail:
-`docs/m11_representative_evaluation.md` §15–§16. Per the same gate audit
+under 4% coverage, and the two that finished surfaced a correctness
+question (subsequently resolved via Caption Identity Corrective Gate).
+Full detail: `docs/m11_representative_evaluation.md` §15–§16. Per the same gate audit
 disposition, Milestone 12 must not begin until Milestone 11 completes
 the transferred evaluation and its results — whatever they finally are —
 are folded back into `EVALUATION_REPORT.md` and this report, which this
 update does for the results produced so far.
+

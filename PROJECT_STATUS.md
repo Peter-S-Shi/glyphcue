@@ -1,6 +1,6 @@
 # GlyphCue — PROJECT_STATUS.md
 
-**Last updated:** 2026-09-02
+**Last updated:** 2026-09-03
 
 ## Current milestone
 
@@ -17,18 +17,24 @@ window finished partial** at the 600 s per-entry timeout. A subsequent,
 narrowly-scoped **completion supplement** (human-gate approved) then gave
 `sample_g`, `sample_e` and the pre-existing M10 `sample_a` reserve a
 1800 s timeout under Hybrid only — **all three completed** — but
-surfaced a new, undiagnosed correctness finding (Chinese-language CER
-above 1.0). `sample_h`/`sample_f`/`sample_c` were not re-attempted and
-remain partial. **Stage ⑤ is still NOT closed**; both runs' results and
-Human Adjudication lists are recorded in
-[`docs/m11_representative_evaluation.md`](docs/m11_representative_evaluation.md)
-§15–§16, and folded into
-[`EVALUATION_REPORT.md`](EVALUATION_REPORT.md) and
-[`FAILURE_MODE_REPORT.md`](FAILURE_MODE_REPORT.md). M11 is **not**
-complete and that gate is still open.
+surfaced a correctness finding (Chinese-language CER above 1.0).
+This finding served as the historical trigger for the **Caption Identity
+Corrective Gate**, which successfully diagnosed the root cause (hybrid state
+transition and consensus disambiguation) and integrated formal fixes (843 tests passed).
+Subsequently, three major performance hardening gates were integrated:
+**P2 Recognition-only Patch**, **P3 Windows-only Opt-in DirectML Recognizer**,
+and **P4B Windows-only Opt-in Same-Detector DirectML Text Detector** (`PP-OCRv6_det_medium.onnx`).
+Parallel chunking was also evaluated via an evidence gate and formally **REJECTED**
+due to thread DirectX/D3D12 device safety and multiprocess lock serialization.
+`sample_h`/`sample_f`/`sample_c` coverage remains partial. **Stage ⑤ is still OPEN**
+(correctness corrective closed, but representative evaluation gate remains open);
+results are recorded in [`docs/m11_representative_evaluation.md`](docs/m11_representative_evaluation.md)
+§15–§16, and folded into [`EVALUATION_REPORT.md`](EVALUATION_REPORT.md) and
+[`FAILURE_MODE_REPORT.md`](FAILURE_MODE_REPORT.md). M11 is **not** complete and that gate is still open.
 
 Feature Freeze is ACTIVE. Milestones 0–10 are complete and merged
 (PRs #1–#12).
+
 
 ## Work completed in this stage
 
@@ -103,14 +109,15 @@ COMPLETE:**
 - **All three completed** (`succeeded`, not a timeout cancellation):
   point recall 90–100% across 31 verified instants. Total wall clock
   74.5 min; no exceptions.
-- **New finding, reported as measured:** mean CER on the two
+- **New finding, reported as initially measured:** mean CER on the two
   Chinese-language entries exceeded 1.0 (`sample_e` 1.166, `sample_a`
   1.679) — the recovered text at matched instants diverges from the
   short verified reference by more edits than the reference contains.
-  `sample_g`'s English CER (0.163) is normal. A plausible mechanism is
-  noted (Hybrid's "one recognition per state" possibly merging a wider
-  span than one caption) but explicitly **not investigated or diagnosed**
-  this round, per the instruction not to reopen OCR/temporal work.
+  `sample_g`'s English CER (0.163) was normal. While not diagnosed
+  during that evaluation run itself, this finding served as the historical
+  trigger for the subsequent **Caption Identity Corrective Gate**, which
+  formally diagnosed and resolved the root cause in product code.
+
 - `sample_h`/`sample_f`/`sample_c` were **not** re-attempted; their
   stress-run partial results are unchanged.
 - Full breakdown, the explicit stress-run-vs-supplement distinction, and
@@ -118,44 +125,46 @@ COMPLETE:**
   `docs/m11_representative_evaluation.md` §16.
 - Findings folded into `EVALUATION_REPORT.md` ("M11 stage 5 —
   Representative-Video Evaluation") and `FAILURE_MODE_REPORT.md`
-  (updated #5, #7; new #12 for the CER finding; addendum to #6).
-
-No OCR or temporal pipeline code changed; nothing under `src/` has been
-touched by stage ⑤ — all of the above is `benchmarks/` harness code plus
-untracked private-corpus artifacts.
+  (updated #5, #7; #12 for the CER finding; addendum to #6).
 
 Stage ④ Targeted Regression (CLOSED) remains recorded in
 [`docs/m11_targeted_regression.md`](docs/m11_targeted_regression.md):
 14 seams, 12 PASS, 2 defects reproduced and fixed, 3 findings recorded and
 deliberately left unfixed.
 
-**M11 P4B DirectML Text Detector Acceleration (Opt-in, Windows-only) — INTEGRATED:**
-- Integrated `DirectMlTextDetector` backed by official ONNX `PP-OCRv6_det_medium.onnx`
-  with exact-matching PaddleDBNet pre/post-processing (`limit_side_len=640`, `thresh=0.2`,
-  `box_thresh=0.45`, `unclip_ratio=1.4`, ImageNet normalization).
-- Pure execution-backend substitution with zero geometry/word fragmentation drift
-  (100% subtitle recall, 0.835 mean IoU across 12 difficult multi-language frames).
-- Real hybrid pipeline A/B: 100% subtitle text and timing parity across `sample_g`
-  and `sample_e`, delivering ~1.67–1.79× E2E speedup.
-- Strict opt-in via `GLYPHCUE_PREFER_DIRECTML_DETECTOR=1` (or `GLYPHCUE_PREFER_DIRECTML_OCR=1`);
-  unconditional safe fallback to shipped PaddlePaddle CPU detector on non-Windows,
-  missing dependencies, or provider failure.
-- Scheduler, Beta-S, 0.300 clustering, caption identity, and P2/P3 recognizers frozen.
+### Product Corrective & Performance Enhancements Integrated in M11
+
+1. **Caption Identity Corrective Gate (CLOSED):**
+   - Investigated and resolved the root cause of the Chinese-language CER finding (hybrid state transition and multi-frame consensus disambiguation in `hybrid_evidence_job` / `caption_identity_verification`).
+   - Integrated formal fixes into `src/glyphcue/application/`; full regression verified with 843 tests passing.
+
+2. **P2 Recognition-Only Performance Patch (INTEGRATED):**
+   - Eliminated duplicate detection when external polygons are already available for representative frames.
+   - Introduced `RegionOcrEngine.recognize_regions()` on `PaddleOcrEngine` with safe fallback; achieved ~3.26× E2E speedup on real Hybrid pipelines.
+
+3. **P3 Windows DirectML OCR Recognizer (INTEGRATED):**
+   - Added Windows-only, opt-in GPU acceleration for text recognition (`PP-OCRv6_rec_small.onnx`) via `GLYPHCUE_PREFER_DIRECTML_OCR=1`.
+   - Included non-importing platform preflight, execution probe, and safe fallback to Paddle CPU.
+
+4. **P4B Same-Detector DirectML Text Detector Acceleration (INTEGRATED):**
+   - Pure execution-backend substitution using official `PP-OCRv6_det_medium.onnx` with exact-matching Paddle DBNet pre/post-processing (`limit_side_len=640`, `thresh=0.2`, `box_thresh=0.45`, `unclip_ratio=1.4`, ImageNet normalization).
+   - Windows-only, opt-in via `GLYPHCUE_PREFER_DIRECTML_DETECTOR=1`, with safe CPU fallback.
+   - Zero geometry drift: 100% subtitle recall, 100% subtitle text and timing parity on `sample_g` and `sample_e`, delivering ~1.67–1.79× E2E speedup.
+
+### Architecture Direction Decisions
+
+- **Parallel Chunking Feasibility Gate (REJECTED):**
+  Formally evaluated across thread and multiprocess architectures; rejected based on empirical evidence (Direct3D 12 device access violations across threads, multiprocess lock serialization). Parallel chunking is closed and not a pending work item.
 
 ## Validation
+
 
 | Suite | Result |
 |---|---|
 | `pytest` (targeted P4B selection, contract & UI seams) | **40 passed** in 1.19s |
-| `pytest` (whole repository, stage ④) | **831 passed, 1 xfailed** in 112s |
-| `tests/ui` (one process, stage ④) | 291 passed, 1 xfailed |
-
-
-Stage ⑤ changed no product code — only `benchmarks/`, docs and untracked
-private corpus files — so it adds no tests. The suite was re-run in full
-after the harness changes. Stage ④'s regression evidence remains
-`tests/ui/test_m11_targeted_regression_workspace_seams.py`,
-`..._playback_seams.py`, `..._layout_seams.py`.
+| `pytest` (whole repository, full suite) | **843 passed, 1 xfailed** in 115s |
+| `tests/ui` (one process) | 295 passed, 1 xfailed |
+| GitHub Actions CI (`milestone/11-product-hardening-full-regression`) | **All green** (Run 33774773070) |
 
 Privacy check: no secrets, credentials, real user data, personal
 identifiers, or absolute local paths in the committed changes; local
@@ -187,10 +196,7 @@ appears anywhere in the repository.
   duplicate-cue risk is still inconclusive; (3) whether the
   Hybrid/Production performance gap warrants a controlled follow-up;
   (4) whether the current partial + supplement results are sufficient
-  for `EVALUATION_REPORT.md` as reported, or fuller coverage is required
-  first; (5) **new** — the Chinese-language CER > 1.0 finding from the
-  completion supplement needs a priority/timeline decision (investigate
-  now vs. defer), since nothing in this pass diagnosed or fixed it.
+  for `EVALUATION_REPORT.md` as reported, or fuller coverage is required first.
 - `sample_f`'s one illegible Chinese layer would change if the gate
   chooses to re-read that frame by hand.
 - Packaging hardening (Qt plugins, FFmpeg path, OCR model assets, runtime
@@ -200,10 +206,11 @@ appears anywhere in the repository.
 
 ## Next action
 
-Human adjudication of the five items above
-(`docs/m11_representative_evaluation.md` §15–§16), starting with the
-Chinese-language CER finding's priority and whether
-`sample_h`/`sample_f`/`sample_c` get their own timeout extension. Do not
-treat M11 as complete, and do not advance to Full Regression or
-merge-readiness before its earlier stages are signed off. PR #13 stays
-Draft.
+Human adjudication of the remaining representative evaluation items
+(`docs/m11_representative_evaluation.md` §15–§16), specifically whether
+`sample_h`/`sample_f`/`sample_c` receive a timeout extension or whether
+existing partial coverage suffices to close the representative gate, followed
+by formal Manual QA and Full Regression. Stage ⑤ remains OPEN. Do not treat
+M11 as complete, and do not advance to merge-readiness before its earlier
+stages are signed off. PR #13 stays Draft.
+

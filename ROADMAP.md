@@ -2017,21 +2017,24 @@ A subsequent, narrowly-scoped **completion supplement** (human-gate
 approved) then gave `sample_g`, `sample_e` and the pre-existing M10
 `sample_a` clean-baseline reserve a 1800 s timeout under Hybrid only,
 reusing each window/ROI/ground-truth unchanged — **all three completed**
-(point recall 90–100%), but surfaced a new, undiagnosed correctness
-finding: Chinese-language CER measured above 1.0 on both Chinese entries
-(`sample_e`, `sample_a`), while the English entry (`sample_g`) stayed
-normal. `sample_h`/`sample_f`/`sample_c` were not re-attempted and
-remain partial. **Stage ⑤ still does not close on this run** — both
-runs' results are folded into `EVALUATION_REPORT.md` and
-`FAILURE_MODE_REPORT.md`, and an expanded human-adjudication list
-(timeout extension for the three remaining windows, `sample_h`'s
-inconclusive duplicate-cue check, the Hybrid/Production performance-gap
-confound, whether/when to investigate the CER finding, and whether
-current results are sufficient for the gate) is recorded in
-`docs/m11_representative_evaluation.md` §15–§16.
+(point recall 90–100%), but surfaced a correctness finding: Chinese-language
+CER measured above 1.0 on both Chinese entries (`sample_e`, `sample_a`), while
+the English entry (`sample_g`) stayed normal. This finding served as the
+historical trigger for the **Caption Identity Corrective Gate**, which successfully
+diagnosed the root cause (hybrid state transition and multi-frame consensus
+disambiguation) and integrated formal fixes. M11 subsequently completed three
+performance hardening passes: P2 recognition-only, P3 Windows DirectML recognizer,
+and P4B Windows DirectML same-detector text detector (while parallel chunking was
+evaluated via evidence gate and formally rejected). `sample_h`/`sample_f`/`sample_c`
+were not re-attempted and remain partial. **Stage ⑤ still does not close on this run** —
+both runs' results are folded into `EVALUATION_REPORT.md` and `FAILURE_MODE_REPORT.md`,
+and the human-adjudication list (timeout extension for the three remaining windows,
+`sample_h`'s inconclusive duplicate-cue check, and whether current results are
+sufficient for the gate) is recorded in `docs/m11_representative_evaluation.md` §15–§16.
 
 The remaining M11 stages — packaging hardening, formal Manual QA, and the
 Full Regression itself — have not been started.
+
 
 Do not ask AG2.0 to implement the whole roadmap.
 

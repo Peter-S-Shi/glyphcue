@@ -438,16 +438,19 @@ cancellation), with point recall 90–100% across 31 verified instants.
 above 1), the recovered text at matched instants diverges from the
 short verified reference by more edits than the reference itself
 contains. `sample_g`'s English CER (0.163) is unaffected and in a normal
-range. This is a **new correctness finding, not previously measurable**
-(Hybrid had never before run to completion on real Chinese-language
-content) and is reported exactly as measured — not diagnosed, not fixed,
-and not investigated further this round, per the scope this evaluation
-was run under.
+range. This was reported as initially measured in the completion supplement
+before root-cause investigation. *(Reconciliation Note: This finding served as the
+historical trigger for the **Caption Identity Corrective Gate**, which successfully
+diagnosed the root cause in hybrid state transition / consensus disambiguation and
+integrated formal product fixes in `src/glyphcue/application/` with 843 tests passing.
+Subsequently, M11 completed P2 recognition-only, P3 Windows DirectML recognizer,
+and P4B Windows DirectML same-detector text detector acceleration (while parallel
+chunking was evaluated via evidence gate and formally rejected).*
+
 
 **Not yet attempted:** a longer-timeout supplement for `sample_h`,
 `sample_f` or `sample_c` (still open — see the human-adjudication list
-in `docs/m11_representative_evaluation.md` §15/§16), and any
-investigation of the CER finding above. ROADMAP §18's acceptance gate 9
+in `docs/m11_representative_evaluation.md` §15/§16). ROADMAP §18's acceptance gate 9
 remains open; whether the above is sufficient to consider it, or whether
 fuller coverage is required first, is a human-gate decision, not made in
 this report.
@@ -459,7 +462,7 @@ this report.
   per this report's own stated discipline. Multilingual layer-assignment
   correctness on real material is now narrowed, not closed — see
   `FAILURE_MODE_REPORT.md` #5's update.
-- No production algorithm, OCR policy, or Review Priority logic was
-  changed to produce this report. M11 (Product Hardening) work to date
-  is confined to `benchmarks/private_video_corpus/run_evaluation.py`
-  (the evaluation harness) and this document set — no `src/` change.
+- While the evaluation report itself was produced without modifying production
+  algorithms, subsequent M11 corrective and performance work has integrated
+  caption identity fixes and opt-in DirectML GPU accelerators into `src/`.
+
