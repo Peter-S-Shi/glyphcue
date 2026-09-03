@@ -20,23 +20,37 @@ own."""
 
 
 def _dominant_script(text: str) -> str | None:
-    """The first recognized script found in `text`'s characters, in
-    priority order (kana beats han: pure-kanji Japanese exists, but a
-    single kana character firmly rules out Chinese). None if nothing in
-    `text` matches a known range -- not a supported signal for that
-    region, callers fall through to another signal."""
+    """The recognized script `text`'s characters decisively belong to,
+    in priority order (kana beats han: pure-kanji Japanese exists, but a
+    single kana character firmly rules out Chinese -- real Japanese
+    text routinely mixes kana with han, and occasionally with latin
+    loanwords, so kana presence alone stays decisive regardless of what
+    else is in the string). None if nothing in `text` matches a known
+    range, OR if `text` mixes han and latin with no kana present: real
+    single-language OCR output doesn't interleave CJK ideographs with
+    Latin letters that way, so that specific combination is a signal of
+    OCR corruption (garbled mixed-script misread), not evidence for
+    either script -- callers must treat it as no decisive signal, never
+    silently pick the more "exotic" script found."""
+    has_kana = False
     has_han = False
+    has_latin = False
     for character in text:
         code = ord(character)
         if 0x3040 <= code <= 0x30FF:  # Hiragana + Katakana
-            return "kana"
-        if 0x4E00 <= code <= 0x9FFF:  # CJK Unified Ideographs
+            has_kana = True
+        elif 0x4E00 <= code <= 0x9FFF:  # CJK Unified Ideographs
             has_han = True
+        elif character.isascii() and character.isalpha():
+            has_latin = True
+    if has_kana:
+        return "kana"
+    if has_han and has_latin:
+        return None
     if has_han:
         return "han"
-    for character in text:
-        if character.isascii() and character.isalpha():
-            return "latin"
+    if has_latin:
+        return "latin"
     return None
 
 
@@ -138,7 +152,7 @@ def _strict_hint_winner(cluster: list[Observation], candidates: set[str]) -> str
 
 def _classify_clusters(
     clusters: list[list[Observation]], expected_languages: tuple[str, ...]
-) -> tuple[dict[str, list[list[Observation]]], list[list[Observation]]]:
+) -> tuple[dict[str, list[list[Observation]]], list[tuple[list[Observation], set[str]]]]:
     """Resolves each visual-line cluster to one expected language, as a
     single fixed-point process across ALL clusters together -- not
     independently per cluster. This is what lets a cluster whose own
@@ -154,12 +168,23 @@ def _classify_clusters(
     `_strict_hint_winner` -- when elimination alone doesn't narrow
     things to exactly one candidate, and the hint has a strict unique
     winner among what elimination left. A cluster that still can't be
-    resolved after all of that is returned unresolved, for
-    `assign_observations_to_languages`'s geometry fallback -- never
-    silently guessed here.
+    resolved after all of that is returned unresolved (paired with its
+    last-computed script candidates), for `assign_observations_to_languages`
+    to decide between two DIFFERENT fallbacks -- never silently guessed
+    here.
+
+    A cluster whose script candidates are the EMPTY set (no recognized
+    script at all -- e.g. bare digits/punctuation) is never narrowed by
+    elimination: substituting "every expected language" for "no evidence"
+    would let elimination alone (every OTHER language slot filling up)
+    silently hand it a language it has zero actual textual evidence for.
+    It always stays unresolved here; `assign_observations_to_languages`'s
+    geometry fallback is the only path that may place it, and always
+    marks the result ambiguous.
     """
     resolved: dict[str, list[list[Observation]]] = {language: [] for language in expected_languages}
-    remaining = list(clusters)
+    remaining: list[list[Observation]] = list(clusters)
+    last_candidates: dict[int, set[str]] = {}
     made_progress = True
     while made_progress and remaining:
         made_progress = False
@@ -168,11 +193,12 @@ def _classify_clusters(
         newly_resolved: list[tuple[str, list[Observation]]] = []
         for cluster in remaining:
             candidates = _cluster_script_candidates(cluster, expected_languages)
+            last_candidates[id(cluster)] = candidates
             language: str | None = None
             if len(candidates) == 1:
                 language = next(iter(candidates))
-            else:
-                narrowed = (candidates or set(expected_languages)) - claimed
+            elif candidates:
+                narrowed = candidates - claimed
                 if len(narrowed) == 1:
                     language = next(iter(narrowed))
                 elif len(narrowed) > 1:
@@ -185,7 +211,7 @@ def _classify_clusters(
         for language, cluster in newly_resolved:
             resolved[language].append(cluster)
         remaining = still_remaining
-    return resolved, remaining
+    return resolved, [(cluster, last_candidates[id(cluster)]) for cluster in remaining]
 
 
 def assign_observations_to_languages(
@@ -251,9 +277,25 @@ def assign_observations_to_languages(
       diagnostic, not silently hidden inside a confident-looking result.
     """
     clusters = _cluster_by_visual_line(observations)
-    resolved, unresolved_clusters = _classify_clusters(clusters, expected_languages)
+    resolved, unresolved = _classify_clusters(clusters, expected_languages)
 
     ambiguous_languages: set[str] = set()
+
+    # A cluster left unresolved WITH real (but undecidable) script
+    # candidates -- e.g. pure Han with no elimination/hint evidence to
+    # pick zh vs ja -- is genuine ambiguity between those specific
+    # languages, not a missing-layer gap a geometry guess may fill: every
+    # candidate language is marked ambiguous and the cluster is placed
+    # nowhere (fail-closed: no fabricated winner beats a wrong one). Only
+    # a cluster with NO script evidence at all (empty candidates) is
+    # eligible for the geometry fallback below.
+    geometry_eligible: list[list[Observation]] = []
+    for cluster, candidates in unresolved:
+        if candidates:
+            ambiguous_languages |= candidates
+        else:
+            geometry_eligible.append(cluster)
+    unresolved_clusters = geometry_eligible
 
     empty_languages = [language for language in expected_languages if not resolved[language]]
     unresolved_clusters.sort(key=_cluster_anchor_key)

@@ -59,6 +59,27 @@ def db_path(tmp_path) -> Path:
     return tmp_path / "observations.sqlite3"
 
 
+class _FakeSharedDetector:
+    """Milestone 11 Architecture B: multilingual runs need a shared
+    detector wired (`hybrid_detector_factory`), same as
+    EXPERIMENTAL_HYBRID already does. `FakeOcrEngine` isn't a
+    RegionOcrEngine, so the job always falls back to plain `recognize()`
+    regardless of what this returns -- an empty polygon list is enough."""
+
+    def initialize(self) -> None:
+        pass
+
+    def __call__(self, roi_frame):
+        return []
+
+    def shutdown(self) -> None:
+        pass
+
+
+def _fake_detector_factory() -> _FakeSharedDetector:
+    return _FakeSharedDetector()
+
+
 def _wait_for(job, timeout: float = 5.0) -> None:
     loop = QEventLoop()
     job.finished.connect(loop.quit)
@@ -145,38 +166,41 @@ def test_cancel_ocr_button_shows_cancelled_status_and_keeps_partial_evidence(
 def test_multilingual_track_group_uses_the_multi_engine_job_and_shows_layers(
     qapp_guard, track_group_repository, db_path, test_video
 ):
-    # A Track Group configured with 2 languages must actually drive a
-    # per-language engine set and the multilingual reconstruction path
-    # -- not silently fall back to a single engine -- and the result
+    # A Track Group configured with 2 languages must actually drive the
+    # real multilingual job (shared detector + universal engine) and
+    # reconstruction path -- not silently fall back to a single engine
+    # / single layer -- and the result
     # must land somewhere the user can see it (LanguageLayersPanel).
     source_id = normalize_source_id(test_video)
     track_group_repository.save(
         TrackGroup(id=f"tg:{source_id}", roi=ROI(0.0, 0.0, 1.0, 1.0), languages=("en", "zh"))
     )
     engine_calls: list[str] = []
-    # Real script content per language (not just a distinct string) --
-    # script detection is the real production separation signal (see
-    # docs/multilingual/track_group_reconstruction.md), so a fake
-    # engine's text has to actually look like its language for the
-    # separation to succeed, exactly like real PaddleOCR output would.
-    texts = {"en": "Hello there", "zh": "你好朋友"}
-
+    # One shared universal engine returns every real region in one call
+    # (Architecture B) -- real script content per region (not just a
+    # distinct string) is what the real production separation signal
+    # (script detection, see docs/multilingual/track_group_reconstruction.md)
+    # actually keys off, so a fake engine's text has to actually look
+    # like its language for the separation to succeed.
     def factory(language: str) -> FakeOcrEngine:
         engine_calls.append(language)
         return FakeOcrEngine(
-            regions=[OcrTextRegion(text=texts[language], language=language, confidence=0.9)]
+            regions=[
+                OcrTextRegion(text="Hello there", language=None, confidence=0.9),
+                OcrTextRegion(text="你好朋友", language=None, confidence=0.9),
+            ]
         )
 
-    pane = PathAMediaPane(track_group_repository, ocr_engine_factory=factory, db_path=db_path)
+    pane = PathAMediaPane(track_group_repository, ocr_engine_factory=factory, hybrid_detector_factory=_fake_detector_factory, db_path=db_path)
     pane.open_video(test_video)
 
     pane.run_ocr_button.click()
     _wait_for(pane.current_ocr_job)
 
     assert pane.current_ocr_job.state is JobState.SUCCEEDED
-    # Both configured languages' engines were actually constructed and
-    # used -- proof this did not silently run a single-engine job.
-    assert set(engine_calls) == {"en", "zh"}
+    # One shared engine constructed (Architecture B) -- proof this did
+    # not silently run a per-language multi-engine job.
+    assert engine_calls == ["en"]
     assert len(pane.qa.language_layers_panel.cards) == 2
     texts_by_language = {card.language: card.current_text() for card in pane.qa.language_layers_panel.cards}
     assert texts_by_language == {"en": "Hello there", "zh": "你好朋友"}
@@ -281,14 +305,18 @@ def test_user_configured_language_selection_persists_and_drives_the_real_multi_e
     # directly into the repository -- the user configures it through
     # the real UI surface, saves it, and a FRESH pane instance (a
     # stand-in for reopening the app) must restore and run with it.
-    texts = {"en": "Hello there", "zh": "你好朋友"}
-
+    # One shared universal engine returns every real region in one call
+    # (Architecture B), regardless of which language label it was
+    # constructed with.
     def factory(language: str) -> FakeOcrEngine:
         return FakeOcrEngine(
-            regions=[OcrTextRegion(text=texts[language], language=language, confidence=0.9)]
+            regions=[
+                OcrTextRegion(text="Hello there", language=None, confidence=0.9),
+                OcrTextRegion(text="你好朋友", language=None, confidence=0.9),
+            ]
         )
 
-    first_pane = PathAMediaPane(track_group_repository, ocr_engine_factory=factory, db_path=db_path)
+    first_pane = PathAMediaPane(track_group_repository, ocr_engine_factory=factory, hybrid_detector_factory=_fake_detector_factory, db_path=db_path)
     first_pane.open_video(test_video)
     # Starts as a single legal language, never the "und" placeholder.
     assert first_pane.language_selection_panel.selected_languages() == ("en",)
@@ -300,7 +328,7 @@ def test_user_configured_language_selection_persists_and_drives_the_real_multi_e
 
     # Simulate reopening the app: a brand new pane over the same
     # repository, not the same live widget.
-    second_pane = PathAMediaPane(track_group_repository, ocr_engine_factory=factory, db_path=db_path)
+    second_pane = PathAMediaPane(track_group_repository, ocr_engine_factory=factory, hybrid_detector_factory=_fake_detector_factory, db_path=db_path)
     second_pane.open_video(test_video)
     assert second_pane.language_selection_panel.selected_languages() == ("en", "zh")
 
@@ -327,14 +355,15 @@ def test_final_multilingual_cue_uses_the_real_processing_range_end_not_a_1ms_ins
     track_group_repository.save(
         TrackGroup(id=f"tg:{source_id}", roi=ROI(0.0, 0.0, 1.0, 1.0), languages=("en", "zh"))
     )
-    texts = {"en": "Hello there", "zh": "你好朋友"}
-
     def factory(language: str) -> FakeOcrEngine:
         return FakeOcrEngine(
-            regions=[OcrTextRegion(text=texts[language], language=language, confidence=0.9)]
+            regions=[
+                OcrTextRegion(text="Hello there", language=None, confidence=0.9),
+                OcrTextRegion(text="你好朋友", language=None, confidence=0.9),
+            ]
         )
 
-    pane = PathAMediaPane(track_group_repository, ocr_engine_factory=factory, db_path=db_path)
+    pane = PathAMediaPane(track_group_repository, ocr_engine_factory=factory, hybrid_detector_factory=_fake_detector_factory, db_path=db_path)
     pane.open_video(test_video)
     real_range_end = probe_media(test_video).duration_seconds
 

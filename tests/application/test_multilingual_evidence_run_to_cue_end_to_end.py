@@ -1,8 +1,8 @@
-"""End-to-end proof that the real Milestone 6 evidence-production path
-(`build_multilingual_ocr_evidence_job`, one scripted engine per
-language) feeds real Observations into the real Milestone 6
-reconstruction (`reconstruct_multilingual_cues_for_track_group`) and
-produces stable, correctly-ordered multi-layer Cues -- not just the
+"""End-to-end proof that the real evidence-production path
+(`build_multilingual_ocr_evidence_job`, Milestone 11 Architecture B: one
+shared detector, one scripted universal engine) feeds real Observations
+into the real reconstruction (`reconstruct_multilingual_cues_for_track_group`)
+and produces stable, correctly-ordered multi-layer Cues -- not just the
 pure-function unit tests in test_multilingual_reconstruction.py.
 """
 
@@ -51,14 +51,16 @@ def _write_test_video(path: Path, frames: list[tuple[int, int]]) -> None:
     container.close()
 
 
-class _ScriptedLanguageEngine:
-    """One language's scripted OcrEngine double: returns pre-scripted
-    regions per call, always tagged with this engine's own configured
-    language -- exactly like a real single-language PaddleOcrEngine
-    instance (see PaddleOcrEngine.recognize())."""
+class _ScriptedUniversalEngine:
+    """A scripted OcrEngine double standing in for Architecture B's one
+    shared universal recognizer: each call returns every region for
+    every language at once (real universal recognition doesn't run once
+    per language), tagged with a single "universal" label -- a real
+    engine's own tag is only a hint anyway (see
+    assign_observations_to_languages), so callers must reconstruct real
+    per-language layers from script content, not from this tag."""
 
-    def __init__(self, language: str, texts_by_call: list[str | None]) -> None:
-        self._language = language
+    def __init__(self, texts_by_call: list[list[str]]) -> None:
         self._texts_by_call = texts_by_call
         self._call_index = 0
         self.initialized = False
@@ -67,20 +69,25 @@ class _ScriptedLanguageEngine:
         self.initialized = True
 
     def recognize(self, image):
-        text = self._texts_by_call[min(self._call_index, len(self._texts_by_call) - 1)]
+        texts = self._texts_by_call[min(self._call_index, len(self._texts_by_call) - 1)]
         self._call_index += 1
-        if text is None:
-            return []
-        return [OcrTextRegion(text=text, confidence=0.9, language=self._language)]
+        return [OcrTextRegion(text=text, confidence=0.9, language=None) for text in texts]
 
     def supported_languages(self):
-        return (self._language,)
+        return ("en", "zh", "ja")
 
     def runtime_info(self):
-        return OcrRuntimeInfo(engine_name="scripted-fake", version="1.0", backend="cpu")
+        return OcrRuntimeInfo(engine_name="scripted-universal-fake", version="1.0", backend="cpu")
 
     def shutdown(self) -> None:
         self.initialized = False
+
+
+def _no_op_detect(image):
+    """A shared-detector double that finds no polygons -- the job falls
+    back to the scripted engine's plain `recognize()`, exactly like a
+    real caller-supplied `OcrEngine` that isn't a `RegionOcrEngine`."""
+    return []
 
 
 class _FinishedWaiter:
@@ -105,8 +112,7 @@ def test_bilingual_evidence_reconstructs_into_two_stable_layers(qapp_guard, tmp_
     _write_test_video(video_path, [(0, 50)])
 
     db_path = tmp_path / "glyphcue.sqlite3"
-    en_engine = _ScriptedLanguageEngine("en", ["Hello there"])
-    zh_engine = _ScriptedLanguageEngine("zh", ["你好朋友"])
+    engine = _ScriptedUniversalEngine([["Hello there", "你好朋友"]])
     metrics = PipelineMetrics()
     evidence_run_id = "run-bilingual"
     track_group = TrackGroup(id="tg-1", roi=_FULL_FRAME_ROI, languages=("en", "zh"))
@@ -115,16 +121,19 @@ def test_bilingual_evidence_reconstructs_into_two_stable_layers(qapp_guard, tmp_
         video_path,
         ProcessingRange(),
         track_group,
-        {"en": en_engine, "zh": zh_engine},
+        engine,
         db_path,
         metrics,
         evidence_run_id,
+        detect=_no_op_detect,
     )
     waiter = _FinishedWaiter(job)
     job.start()
     waiter.wait()
     assert job.state is JobState.SUCCEEDED
-    assert metrics.ocr_calls == 2  # one triggered frame x two engines
+    # One shared recognition call for the one triggered frame -- not one
+    # per Track Group language (Milestone 11 Architecture B).
+    assert metrics.ocr_calls == 1
 
     observation_repository = ObservationRepository(connect(db_path))
     observations = observation_repository.list_for_run(evidence_run_id)
@@ -145,8 +154,9 @@ def test_asymmetric_evidence_produces_a_missing_layer_diagnostic(qapp_guard, tmp
     _write_test_video(video_path, [(0, 50)])
 
     db_path = tmp_path / "glyphcue.sqlite3"
-    en_engine = _ScriptedLanguageEngine("en", ["Hello there"])
-    zh_engine = _ScriptedLanguageEngine("zh", [None])
+    # The universal engine only ever finds the English line -- no
+    # Chinese text exists anywhere in this frame's real evidence.
+    engine = _ScriptedUniversalEngine([["Hello there"]])
     metrics = PipelineMetrics()
     evidence_run_id = "run-asymmetric"
     track_group = TrackGroup(id="tg-2", roi=_FULL_FRAME_ROI, languages=("en", "zh"))
@@ -155,10 +165,11 @@ def test_asymmetric_evidence_produces_a_missing_layer_diagnostic(qapp_guard, tmp
         video_path,
         ProcessingRange(),
         track_group,
-        {"en": en_engine, "zh": zh_engine},
+        engine,
         db_path,
         metrics,
         evidence_run_id,
+        detect=_no_op_detect,
     )
     waiter = _FinishedWaiter(job)
     job.start()

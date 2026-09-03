@@ -45,6 +45,7 @@ from PySide6.QtWidgets import QApplication
 
 from benchmarks._job_harness import run_job_or_cancel
 from glyphcue.adapters.paddleocr_engine import PaddleOcrEngine
+from glyphcue.adapters.paddleocr_text_detector import PaddleOcrTextDetector
 from glyphcue.adapters.pyav_media_source import PyAvMediaFrameSource
 from glyphcue.application.consensus_reconstruction import reconstruct_cues_with_consensus
 from glyphcue.application.multilingual_ocr_evidence_job import build_multilingual_ocr_evidence_job
@@ -149,11 +150,20 @@ def _run_real_job(video_path: Path, languages: tuple[str, ...], db_path: Path, *
     policy = NaiveDenseOcrPolicy() if dense else None
     outer_start = time.perf_counter()
 
+    detector = None
     if len(languages) > 1:
+        # Milestone 11 Architecture B: one shared detector + one
+        # universal recognizer, not one full engine per language --
+        # see build_multilingual_ocr_evidence_job's docstring. The
+        # detector's initialize()/shutdown() lifecycle is caller-owned,
+        # same convention as the EXPERIMENTAL_HYBRID path's `detect`.
         track_group = TrackGroup(id=f"tg-{evidence_run_id}", roi=_FULL_ROI, languages=languages)
-        engines = {language: PaddleOcrEngine(language=language) for language in languages}
+        engine = PaddleOcrEngine(language=languages[0])
+        detector = PaddleOcrTextDetector()
+        detector.initialize()
         job = build_multilingual_ocr_evidence_job(
-            video_path, processing_range, track_group, engines, db_path, metrics, evidence_run_id, policy=policy
+            video_path, processing_range, track_group, engine, db_path, metrics, evidence_run_id,
+            detect=detector, policy=policy,
         )
     else:
         engine = PaddleOcrEngine(language=languages[0])
@@ -161,7 +171,11 @@ def _run_real_job(video_path: Path, languages: tuple[str, ...], db_path: Path, *
             video_path, processing_range, _FULL_ROI, engine, db_path, metrics, evidence_run_id, policy=policy
         )
 
-    state = run_job_or_cancel(job, timeout_seconds=_JOB_TIMEOUT_SECONDS, cancel_grace_seconds=10.0)
+    try:
+        state = run_job_or_cancel(job, timeout_seconds=_JOB_TIMEOUT_SECONDS, cancel_grace_seconds=10.0)
+    finally:
+        if detector is not None:
+            detector.shutdown()
     outer_elapsed = time.perf_counter() - outer_start
 
     read_conn = connect(db_path)

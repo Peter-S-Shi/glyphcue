@@ -43,13 +43,114 @@ This is exactly the kind of assumption ROADMAP section 13 asks to validate with 
 - **Elimination now uses real cross-cluster evidence, not just per-cluster guessing.** A Kana cluster's decisive "ja" claim is exactly the kind of fact that should make a separate, genuinely Han-ambiguous cluster in the same run resolve to "zh" by elimination, with no hint vote even needed. The single fixed-point classification pass (`_classify_clusters`) does this deterministically, order-independent by construction. Regression: `test_kana_cluster_claiming_ja_lets_a_plain_han_cluster_resolve_to_zh`.
 - **Same-language multi-line captions were silently losing lines.** The original flat `dict[str, list[Observation]]` return threw away which physical line each observation came from, so a genuine two-line English caption inside a multilingual block got ONE flat majority vote across both lines' readings — one line won, the other was discarded, never appearing anywhere in the output. Fixed by changing the return shape to `dict[str, list[list[Observation]]]` (clusters, not a flat list) and voting + newline-joining per cluster at the caller (see "What the algorithm is" above). Regression: `test_two_english_lines_and_one_chinese_line_all_preserved_across_engines_and_frames` (2 English lines + 1 Chinese line, multiple engines, detection order varied across frames — the English layer must come back as `"line1\nline2"`, not one line silently dropped).
 
+## Milestone 11 Architecture B: corrective contract + shared-detection runtime
+
+Approved via Codex architecture review and AG2.0's Minimal A/B Gate (a
+formal 12-case acceptance gate, formalized as first-party regression
+tests rather than kept as a scratch prototype). Two changes, both
+integrated together but independently motivated:
+
+**A fourth corrective pass on `assign_observations_to_languages`/
+`reconstruct_multilingual_cues_for_track_group`**, closing four more
+real bugs the third pass above didn't cover:
+
+- **A bare digits/punctuation line could be silently claimed by
+  elimination.** `_classify_clusters` substituted "every expected
+  language" for "no script evidence at all" when narrowing candidates,
+  so once every OTHER language resolved decisively, a script-less
+  cluster (e.g. a burned-in timestamp) got silently handed whatever
+  slot was left — a confident-looking guess with zero real support.
+  Fixed: a cluster with an EMPTY script-candidate set is never narrowed
+  by elimination; it always falls through to the geometry fallback,
+  which marks it `ambiguous_languages`. Regression:
+  `test_numeric_punctuation_line_is_not_silently_claimed_by_elimination`.
+- **Pure-Han zh/ja with zero disambiguating evidence anywhere got a
+  fabricated winner.** The geometry fallback treated "unresolved with
+  real but undecidable candidates" (e.g. Han with no Kana/hint/elimination
+  evidence to pick zh vs ja) the same as "unresolved with no evidence at
+  all," pairing it to whichever expected language slot was still empty.
+  Fixed: a cluster unresolved WITH non-empty candidates is dropped
+  entirely (placed in no bucket) and every one of its candidate
+  languages is marked ambiguous — including a tied hint vote, which is
+  the same kind of undecidable evidence, not a "pick the first
+  configured language" case. Regression:
+  `test_pure_han_zh_ja_has_no_winner_and_preserves_ambiguity`,
+  `test_han_hint_tie_stays_unresolved_by_classification_not_broken_by_counter_order`
+  (this existing test's expectation changed to match: previously
+  "lands under the first configured language," now "both stay empty").
+- **A single stray CJK character in OCR-corrupted English text was
+  silently read as confident Chinese.** `_dominant_script` picked "han"
+  as soon as any Han character appeared, ignoring Latin characters also
+  present — a real OCR misread ("H你llo"), not genuine Chinese. Fixed:
+  Han mixed with Latin (no Kana) is treated as no decisive script at
+  all, falling through to the ambiguous/geometry path instead of a
+  confident wrong answer. Kana-containing text is unaffected (real
+  Japanese routinely mixes Kana with Han and occasional Latin
+  loanwords). Regression: `test_mixed_script_ocr_error_is_not_silently_claimed`.
+- **A stable bilingual subtitle whose two layers swap vertical position
+  between frames manufactured a false Cue boundary, and (once that was
+  fixed) still mixed one language's votes into the other's.** Two
+  separate bugs at two different layers: (1) `frame_reading_aggregation`'s
+  `_combine` always re-derived same-frame join order from each frame's
+  own raw geometry, silently overriding `_canonicalize_frame_order`'s
+  already-computed canonical order the moment a frame's physical
+  positions differed from another frame's — reintroducing exactly the
+  false-boundary bug step 0 above exists to prevent. Fixed by adding
+  `aggregate_same_frame_observations(..., reading_order_key=...)`, used
+  only by the multilingual path to key on canonical rank instead of raw
+  geometry (the M5 default caller is unaffected). (2) Once the boundary
+  was correct, `_reconstruct_one_multilingual_cue` still built its final
+  per-language vote by clustering a WHOLE RUN's raw observations
+  together by absolute Y-position (`assign_observations_to_languages`'s
+  premise: same-Y-band evidence is the SAME physical line, true only
+  *within one frame*) — across multiple frames with swapped positions,
+  one Y-band ends up holding two different languages' readings, and
+  gets classified (and voted) as whichever one script happened to be
+  checked first. Fixed by assigning each frame's observations to
+  languages SEPARATELY (frame-local, position-independent within that
+  frame) and merging each language's Nth line by index ACROSS frames
+  (`_assign_per_frame_then_merge_lines`), rather than clustering raw
+  cross-frame geometry at all. Regression:
+  `test_temporal_position_swap_does_not_manufacture_a_false_cue_boundary`.
+
+**The runtime itself** (`build_multilingual_ocr_evidence_job`,
+`src/glyphcue/application/multilingual_ocr_evidence_job.py`): replaces
+one full detect+recognize `OcrEngine` per Track Group language with ONE
+shared detector (`detect`, the same P4B `create_text_detector`-selected,
+Windows-DirectML-opt-in-with-fallback adapter the EXPERIMENTAL_HYBRID
+path already uses) plus ONE universal recognizer (`ocr_engine`,
+typically `create_ocr_engine`-selected, P2/P3's own real DirectML
+preflight/fallback to `PaddleOcrEngine` unchanged) per triggered frame.
+This was always latent in the evidence above: `PaddleOcrEngine`'s and
+`DirectMlOcrEngine`'s own recognition models don't vary by the
+`language=` label an instance is constructed with, so "one engine per
+language" was paying for N-times the detection+recognition work to get
+N tags on otherwise-identical output. Every region is still tagged with
+the engine's own `language` as a real-but-not-authoritative hint,
+exactly as before -- the real per-language split still happens entirely
+downstream, in `assign_observations_to_languages`'s script-based
+classification. `TrackGroup` language ordering, the Cue/`LanguageLayer`
+schema, raw geometry/PTS, multiline integrity, and missing/ambiguous/
+review-priority/provenance semantics are all unchanged; 0.300, Beta-S,
+the 5fps scheduler, ROI handling, and Caption Identity (all
+EXPERIMENTAL_HYBRID-specific) are untouched, and chunk/thread
+parallelism (rejected on DirectX/D3D12 device-safety and multiprocess
+lock-serialization grounds, see `PROJECT_STATUS.md`) is not
+reintroduced here.
+
+As of this integration, `sample_h`/`sample_f`/`sample_c` post-integration
+confirmation is what remains to close the Multilingual Performance
+Corrective Gate -- see `PROJECT_STATUS.md` and
+`docs/m11_representative_evaluation.md` for current status. Architecture
+B landing here does not by itself close Stage ⑤.
+
 ## Missing / asymmetric layers
 
 Rare inconsistent source material — one language's OCR engine finding nothing at all in a run other languages have real text for — produces an explicit, empty-text `LanguageLayer` for that language plus a `MultilingualDiagnostics.missing_languages` entry naming it. No fabricated text, no schema expansion: the same `LanguageLayer.text` field V1 already has, just empty, with the diagnostic as the explicit signal (`test_missing_layer_in_one_run_produces_explicit_diagnostic_not_fabricated_text`, and the real M4-analogous end-to-end regression `test_asymmetric_evidence_produces_a_missing_layer_diagnostic`).
 
 ## Real evidence-production path
 
-`build_multilingual_ocr_evidence_job` (`src/glyphcue/application/multilingual_ocr_evidence_job.py`) is M4's job architecture extended from one `OcrEngine` to one engine per Track Group-expected language — a single OCR engine instance only ever recognizes the one language it was configured for is untrue in the sense that it will still transcribe other scripts too (see above), but it must still be constructed once per language so a genuinely multilingual evidence stream exists in the first place. The OCR-invocation decision is made exactly once per frame, shared across every language's engine call for that frame — this is what lets M6 reuse M5's `group_into_state_runs` unchanged (every language layer sees identical trigger cadence and `state_trigger` reasons, since they're evidence about the same physical frame read multiple times). `metrics.ocr_calls` honestly counts real per-engine invocations (a triggered frame in a 2-language Track Group costs 2 OCR calls, not 1).
+`build_multilingual_ocr_evidence_job` (`src/glyphcue/application/multilingual_ocr_evidence_job.py`) was M4's job architecture extended from one `OcrEngine` to one engine per Track Group-expected language when M6 first shipped: a single OCR engine instance only ever recognizes the one language it was configured for is untrue (it transcribes every script in the frame regardless — see "Evidence hygiene" above), but it was still constructed once per language purely so a genuinely multilingual evidence stream could exist at all. **As of Milestone 11 Architecture B (see below), this is no longer current**: the job now shares ONE detector and ONE universal recognizer across every language, since the evidence above already showed a single engine's model doesn't actually vary by its configured language label. See "Milestone 11 Architecture B" below for the current runtime and why the per-language-engine design was replaced rather than merely optimized. `metrics.ocr_calls` now counts one recognition invocation per triggered frame, regardless of how many languages `TrackGroup.languages` lists.
 
 ## Evaluation
 
@@ -76,7 +177,7 @@ Raw output: `benchmarks/multilingual_reconstruction/evaluation_results.json`.
 `PathAMediaPane` (`src/glyphcue/ui/path_a_media_pane.py`) accepts an optional `ocr_engine_factory: Callable[[str], OcrEngine]` alongside the existing single `ocr_engine`. When Run OCR Evidence is clicked, the CURRENT Track Group's own `languages` decide what actually runs:
 
 - exactly one language: unchanged M4/M5 behavior — `build_ocr_evidence_job` with a single engine (the plain `ocr_engine` if given, else `ocr_engine_factory(language)`).
-- more than one language: `build_multilingual_ocr_evidence_job` with one engine per language (`{language: ocr_engine_factory(language) for language in languages}`), and on success, `reconstruct_multilingual_cues_for_track_group`'s first reconstructed Cue is shown in `language_layers_panel` (a `LanguageLayersPanel`, DESIGN.md section 12's production 1…N layer presentation) right there on the same Path A surface.
+- more than one language: `build_multilingual_ocr_evidence_job` with one shared detector and one universal recognizer (Milestone 11 Architecture B -- see below), and on success, `reconstruct_multilingual_cues_for_track_group`'s first reconstructed Cue is shown in `language_layers_panel` (a `LanguageLayersPanel`, DESIGN.md section 12's production 1…N layer presentation) right there on the same Path A surface.
 
 This is deliberately the thinnest wiring that makes "configure N languages, run OCR, see N layers" actually reachable by a user — not a queue, not Approve/Split/Merge/Review Priority, none of which are in scope until Milestone 7. `create_path_a_app` wires `ocr_engine_factory=PaddleOcrEngine` for the real production entrypoint. Regression: `test_multilingual_track_group_uses_the_multi_engine_job_and_shows_layers` (proves the multi-engine job actually ran, not a single-engine one, and the layers actually appear) and `test_single_language_track_group_still_uses_the_single_engine_job` (proves a single-language Track Group is not silently routed through the multilingual path just because a factory happens to be available).
 

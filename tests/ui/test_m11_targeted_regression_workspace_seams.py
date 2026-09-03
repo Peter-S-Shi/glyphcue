@@ -180,7 +180,7 @@ def test_a_hybrid_run_does_not_contaminate_the_next_production_run(
     assert pane.current_evidence_run_id != hybrid_run_id
     # the hybrid detector is neither reused nor re-initialized
     assert detector.initialize_calls == 1
-    assert pane._active_hybrid_detector is None
+    assert pane._active_shared_detector is None
     # and the evidence pane shows this run's own evidence, not the hybrid's
     shown = pane._observation_repository.list_for_run(pane.current_evidence_run_id)
     assert pane.evidence_pane.list_widget.count() == len(shown)

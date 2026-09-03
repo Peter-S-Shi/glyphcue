@@ -164,10 +164,13 @@ def test_han_hint_tie_stays_unresolved_by_classification_not_broken_by_counter_o
     # geometry, so they cluster together), pure Han text, hints tied
     # 1:1 between zh and ja -- there is genuinely no decisive evidence.
     # This must NOT be silently resolved by Counter.most_common()'s
-    # insertion-order tie-break; it must fall through to the geometry
-    # fallback (here, the only cluster, so it lands under whichever
-    # configured language comes first) and be flagged ambiguous, never
-    # quietly guessed as "whichever tag was seen first."
+    # insertion-order tie-break, AND (M11 Architecture B corrective
+    # contract) must not be defaulted to whichever expected language
+    # happens to be configured first either -- a tied hint vote is real,
+    # undecidable ambiguity between exactly zh and ja, the same
+    # fail-closed case as a pure-Han cluster with no hint evidence at
+    # all (see test_pure_han_zh_ja_has_no_winner_and_preserves_ambiguity):
+    # neither language gets a fabricated winner.
     observations = [
         _obs("tagged-zh", "早上好", language="zh", geometry=_same_line_geometry()),
         _obs("tagged-ja", "早上好", language="ja", geometry=_same_line_geometry()),
@@ -175,14 +178,9 @@ def test_han_hint_tie_stays_unresolved_by_classification_not_broken_by_counter_o
 
     buckets, ambiguous = assign_observations_to_languages(observations, ("zh", "ja"))
 
-    # The single cluster (both readings of one real line) landed
-    # entirely under "zh" -- the first configured language, since
-    # geometry fallback pairs unresolved clusters against
-    # expected_languages' own order -- and is flagged ambiguous, since
-    # nothing decisive placed it there. "ja" is left genuinely empty.
-    assert set(_ids(buckets["zh"])) == {"tagged-zh", "tagged-ja"}
+    assert buckets["zh"] == []
     assert buckets["ja"] == []
-    assert ambiguous == {"zh"}
+    assert ambiguous == {"zh", "ja"}
 
 
 def test_han_tie_resolution_is_independent_of_engine_input_order():
@@ -226,3 +224,93 @@ def test_kana_cluster_claiming_ja_lets_a_plain_han_cluster_resolve_to_zh():
     assert _ids(buckets["zh"]) == ["han"]
     assert _ids(buckets["ja"]) == ["kana"]
     assert ambiguous == set()
+
+
+# Architecture B corrective contract (M11 Multilingual Performance
+# Corrective Gate): three of the twelve acceptance cases live here
+# because they're pure assign_observations_to_languages behavior, with
+# no cross-frame/cue-boundary dimension. See
+# test_multilingual_reconstruction.py for the temporal position-swap
+# case, which needs a real multi-frame run to reproduce.
+
+
+def test_numeric_punctuation_line_is_not_silently_claimed_by_elimination():
+    # A bare digits/punctuation line (e.g. a burned-in timestamp) carries
+    # no script evidence at all. Once "en" resolves decisively elsewhere,
+    # elimination must not treat "no evidence" as "matches every
+    # remaining expected language" and silently hand this line to "zh" --
+    # that's a confident-looking guess with zero real support.
+    observations = [
+        _obs("en", "Price USD", language=None),
+        _obs("digits", "2026-09-03", language=None),
+    ]
+
+    _buckets, ambiguous = assign_observations_to_languages(observations, ("en", "zh"))
+
+    assert "zh" in ambiguous
+
+
+def test_pure_han_zh_ja_has_no_winner_and_preserves_ambiguity():
+    # Two pure-Han clusters, zh-or-ja Track Group, zero disambiguating
+    # evidence anywhere (no Kana, no hints, nothing to eliminate
+    # against). Fail-closed: neither language may get a fabricated
+    # winner just because geometry has to put them somewhere.
+    observations = [
+        _obs("han-a", "東京", language=None),
+        _obs("han-b", "天気", language=None),
+    ]
+
+    buckets, ambiguous = assign_observations_to_languages(observations, ("zh", "ja"))
+
+    assert ambiguous == {"zh", "ja"}
+    assert all(not clusters for clusters in buckets.values())
+
+
+def test_mixed_script_ocr_error_is_not_silently_claimed():
+    # "H你llo" is what a real OCR misread of English text corrupted by
+    # one stray Han glyph looks like -- not genuine Chinese. Picking
+    # "han" as this cluster's dominant script (because a Han character
+    # is present at all) would silently misclassify OCR corruption as a
+    # confident Chinese reading instead of surfacing it as ambiguous.
+    observations = [
+        _obs("corrupt-en", "H你llo", language=None),
+        _obs("zh", "你好", language=None),
+    ]
+
+    _buckets, ambiguous = assign_observations_to_languages(observations, ("en", "zh"))
+
+    assert ambiguous
+
+
+def test_duplicate_universal_reads_add_votes_but_no_new_classification_information():
+    # A single universal engine can read the same physical line more
+    # than once per triggered frame in some pipeline configurations
+    # (Architecture B doesn't currently do this, but the contract must
+    # hold regardless): repeating an identical reading may add votes to
+    # an existing bucket, it must never manufacture a NEW, independently
+    # counted cluster/bucket shape that a single reading wouldn't have
+    # produced.
+    def _box(y):
+        return ((0.0, y), (100.0, y), (100.0, y + 8.0), (0.0, y + 8.0))
+
+    single = [
+        _obs("zh", "你好", language=None, geometry=_box(10)),
+        _obs("en", "Hello", language=None, geometry=_box(40)),
+    ]
+    duplicated = [
+        _obs("zh-1", "你好", language=None, geometry=_box(10)),
+        _obs("zh-2", "你好", language=None, geometry=_box(10)),
+        _obs("en-1", "Hello", language=None, geometry=_box(40)),
+        _obs("en-2", "Hello", language=None, geometry=_box(40)),
+    ]
+
+    single_buckets, single_ambiguous = assign_observations_to_languages(single, ("zh", "en"))
+    dup_buckets, dup_ambiguous = assign_observations_to_languages(duplicated, ("zh", "en"))
+
+    single_shape = {language: len(clusters) for language, clusters in single_buckets.items()}
+    dup_shape = {language: len(clusters) for language, clusters in dup_buckets.items()}
+    assert single_shape == dup_shape
+    assert single_ambiguous == dup_ambiguous
+    assert sum(len(_ids(v)) for v in dup_buckets.values()) == 2 * sum(
+        len(_ids(v)) for v in single_buckets.values()
+    )

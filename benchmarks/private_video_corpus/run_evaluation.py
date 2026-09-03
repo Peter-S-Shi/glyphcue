@@ -251,14 +251,23 @@ def _run_multilingual_job(
             f"{EvidenceJobProfile.PRODUCTION_TRIGGER.value} supports multilingual evidence"
         )
     track_group = TrackGroup(id=f"tg-{entry.id}", roi=_ROI_BY_ENTRY_ID[entry.id], languages=entry.languages)
-    engines = {language: PaddleOcrEngine(language=language) for language in entry.languages}
+    # Milestone 11 Architecture B: one shared detector + one universal
+    # recognizer, not one full engine per language -- see
+    # build_multilingual_ocr_evidence_job's docstring.
+    engine = PaddleOcrEngine(language=entry.languages[0])
     metrics = PipelineMetrics()
     evidence_run_id = str(uuid.uuid4())
     processing_range = ProcessingRange(entry.segment_start_seconds, entry.segment_end_seconds)
-    job = build_multilingual_ocr_evidence_job(
-        video_path, processing_range, track_group, engines, db_path, metrics, evidence_run_id
-    )
-    state = run_job_or_cancel(job, timeout_seconds=_JOB_TIMEOUT_SECONDS)
+    detector = PaddleOcrTextDetector()
+    detector.initialize()
+    try:
+        job = build_multilingual_ocr_evidence_job(
+            video_path, processing_range, track_group, engine, db_path, metrics, evidence_run_id,
+            detect=detector,
+        )
+        state = run_job_or_cancel(job, timeout_seconds=_JOB_TIMEOUT_SECONDS)
+    finally:
+        detector.shutdown()
     read_conn = connect(db_path)
     observations = ObservationRepository(read_conn).list_for_run(evidence_run_id)
     read_conn.close()

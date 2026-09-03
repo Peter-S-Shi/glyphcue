@@ -102,16 +102,17 @@ class PathAMediaPane:
     `build_ocr_evidence_job` opens on its own worker thread when a run
     starts. Final QA/review workspace is a later milestone (M7+).
 
-    `ocr_engine_factory` (Milestone 6) is an optional
-    `language -> OcrEngine` constructor: when present, the current
-    Track Group's live language selection always constructs the real
-    engine set from it. Multilingual groups run the real
-    `build_multilingual_ocr_evidence_job`, then reconstructs and
-    displays every language layer via `language_layers_panel` -- it
-    does not silently fall back to a single engine. A single-language
-    Track Group keeps using `build_ocr_evidence_job`; a plain
-    `ocr_engine` remains a compatibility fallback only when no factory
-    is wired.
+    `ocr_engine_factory` (Milestone 6, runtime Milestone 11 Architecture
+    B) is an optional `language -> OcrEngine` constructor: when present,
+    the current Track Group's live language selection always constructs
+    the real engine from it. A multilingual group runs the real
+    `build_multilingual_ocr_evidence_job` with ONE shared engine and ONE
+    shared detector (not one engine per language -- see that job's
+    docstring), then reconstructs and displays every language layer via
+    `language_layers_panel`; it does not silently fall back to a single
+    layer. A single-language Track Group keeps using
+    `build_ocr_evidence_job`; a plain `ocr_engine` remains a
+    compatibility fallback only when no factory is wired.
 
     `language_selection_panel` (Milestone 6) is the real, user-reachable
     1..N language configuration surface (DESIGN.md section 11): a
@@ -138,11 +139,12 @@ class PathAMediaPane:
     refuses the run with a clear status message rather than silently
     running production instead.
 
-    `hybrid_detector_factory` (M11) lazily constructs the text detector
-    EXPERIMENTAL_HYBRID needs -- called only when a Hybrid run actually
-    starts, so opening the app never pays for a detector model nobody
-    asked for. The pane owns its `initialize()`/`shutdown()` lifecycle
-    around the run.
+    `hybrid_detector_factory` (M11) lazily constructs the shared text
+    detector both EXPERIMENTAL_HYBRID and multilingual PRODUCTION_TRIGGER
+    runs need -- called only when one of those runs actually starts, so
+    opening the app never pays for a detector model nobody asked for.
+    The pane owns its `initialize()`/`shutdown()` lifecycle around the
+    run (`_active_shared_detector`).
     """
 
     def __init__(
@@ -164,7 +166,7 @@ class PathAMediaPane:
         self._db_path = db_path
         self._on_open_caption_file = on_open_caption_file
         self._hybrid_detector_factory = hybrid_detector_factory
-        self._active_hybrid_detector: TextDetector | None = None
+        self._active_shared_detector: TextDetector | None = None
         self._current_track_group: TrackGroup | None = None
         self._processing_range = ProcessingRange()
         self._source_id: str | None = None
@@ -1026,7 +1028,7 @@ class PathAMediaPane:
             )
             detector = self._hybrid_detector_factory()
             detector.initialize()
-            self._active_hybrid_detector = detector
+            self._active_shared_detector = detector
             self.current_ocr_job = build_evidence_job_for_profile(
                 EvidenceJobProfile.EXPERIMENTAL_HYBRID,
                 self._video_path,
@@ -1063,24 +1065,43 @@ class PathAMediaPane:
                 self.current_evidence_run_id,
             )
         else:
-            # Milestone 6: the Track Group's own configured languages
-            # decide the real engine set -- one per language, never a
-            # single engine reinterpreted after the fact.
+            # Milestone 11 Architecture B: ONE shared detector plus ONE
+            # universal recognizer regardless of how many languages this
+            # Track Group expects -- see
+            # build_multilingual_ocr_evidence_job's docstring for why a
+            # per-language engine set (Milestone 6's original design) was
+            # replaced, not merely rewired. `languages[0]` only picks
+            # which canonical label the shared engine reports in
+            # provenance; per-region text still gets split into the
+            # Track Group's real per-language layers downstream by
+            # `assign_observations_to_languages`'s own script-based
+            # classification, exactly as it already does for every
+            # region a single engine instance returns today.
             if self._ocr_engine_factory is None:
                 self.ocr_status_label.setText(
-                    "Multilingual Track Group needs an OCR engine per language "
+                    "Multilingual Track Group needs an OCR engine "
                     "(no ocr_engine_factory wired)"
                 )
                 return
-            engines = {language: self._ocr_engine_factory(language) for language in languages}
+            if self._hybrid_detector_factory is None:
+                self.ocr_status_label.setText(
+                    "Multilingual Track Group needs a shared detector "
+                    "(no hybrid_detector_factory wired)"
+                )
+                return
+            engine = self._ocr_engine_factory(languages[0])
+            detector = self._hybrid_detector_factory()
+            detector.initialize()
+            self._active_shared_detector = detector
             self.current_ocr_job = build_multilingual_ocr_evidence_job(
                 self._video_path,
                 self._processing_range,
                 track_group,
-                engines,
+                engine,
                 self._db_path,
                 self.ocr_metrics,
                 self.current_evidence_run_id,
+                detect=detector,
             )
 
         self.current_ocr_job.progress.connect(self._on_ocr_progress)
@@ -1113,9 +1134,9 @@ class PathAMediaPane:
         )
 
     def _on_ocr_finished(self) -> None:
-        if self._active_hybrid_detector is not None:
-            self._active_hybrid_detector.shutdown()
-            self._active_hybrid_detector = None
+        if self._active_shared_detector is not None:
+            self._active_shared_detector.shutdown()
+            self._active_shared_detector = None
         self.run_ocr_button.setEnabled(True)
         self.dry_run_policy_button.setEnabled(self._video_path is not None)
         self.cancel_ocr_button.setEnabled(False)
