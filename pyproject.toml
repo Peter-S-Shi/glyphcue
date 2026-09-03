@@ -17,6 +17,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0",
+    "Pillow>=10.0",
 ]
 # V1 OCR runtime (see docs/adr/0001-ocr-runtime-selection.md). Not part
 # of `dev` or the base dependencies: paddlepaddle alone is ~400MB, so it
