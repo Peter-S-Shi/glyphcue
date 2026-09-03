@@ -23,6 +23,8 @@ from PySide6.QtWidgets import (
 from glyphcue.adapters.ocr_engine import OcrEngine
 from glyphcue.adapters.ocr_engine_selection import create_ocr_engine
 from glyphcue.adapters.paddleocr_text_detector import PaddleOcrTextDetector
+from glyphcue.adapters.text_detector_selection import create_text_detector
+from glyphcue.application.hybrid_evidence_job import TextDetector
 from glyphcue.application.thin_path_b import parse_and_reconstruct
 from glyphcue.persistence.database import connect
 from glyphcue.persistence.track_group_repository import TrackGroupRepository
@@ -63,6 +65,24 @@ def _prefer_directml_ocr_enabled() -> bool:
 
 def _ocr_engine_factory(language: str) -> OcrEngine:
     return create_ocr_engine(language, prefer_directml=_prefer_directml_ocr_enabled())
+
+
+PREFER_DIRECTML_DETECTOR_ENV_VAR = "GLYPHCUE_PREFER_DIRECTML_DETECTOR"
+"""Set to "1" to opt into the experimental Windows DirectML text detector
+accelerator (M11 P4B) for Hybrid OCR jobs this process constructs.
+Unset/anything else keeps the shipped default: PaddleOcrTextDetector (PaddlePaddle
+CPU), unconditionally. Even when set, create_text_detector only attempts DirectML
+after a real platform/package preflight and initialization probe, and falls back
+to Paddle on any unsupported platform, missing install, or provider-init failure.
+"""
+
+
+def _prefer_directml_detector_enabled() -> bool:
+    return os.environ.get(PREFER_DIRECTML_DETECTOR_ENV_VAR) == "1"
+
+
+def _hybrid_detector_factory() -> TextDetector:
+    return create_text_detector(prefer_directml=_prefer_directml_detector_enabled())
 
 
 class GlyphCueWorkbench(QMainWindow):
@@ -316,7 +336,7 @@ def create_path_a_app(
         db_path=db_path,
         on_open_caption_file=on_open_caption_file,
         enable_dev_ocr_profile_selector=_dev_ocr_profile_selector_enabled(),
-        hybrid_detector_factory=PaddleOcrTextDetector,
+        hybrid_detector_factory=_hybrid_detector_factory,
     )
     return app, pane
 

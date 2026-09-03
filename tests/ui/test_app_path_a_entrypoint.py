@@ -128,3 +128,43 @@ def test_ocr_engine_factory_opt_in_still_falls_back_to_paddle_when_unsupported(m
     engine = app_module._ocr_engine_factory("en")
 
     assert isinstance(engine, PaddleOcrEngine)
+
+
+def test_create_path_a_app_wires_the_hybrid_detector_factory(qapp_guard, tmp_path):
+    _app, pane = create_path_a_app(db_path=tmp_path / "glyphcue.sqlite3")
+
+    assert pane._hybrid_detector_factory is app_module._hybrid_detector_factory
+
+
+def test_hybrid_detector_factory_defaults_to_paddle_without_opt_in(monkeypatch):
+    monkeypatch.delenv(app_module.PREFER_DIRECTML_DETECTOR_ENV_VAR, raising=False)
+    monkeypatch.delenv(app_module.PREFER_DIRECTML_OCR_ENV_VAR, raising=False)
+
+    detector = app_module._hybrid_detector_factory()
+
+    from glyphcue.adapters.paddleocr_text_detector import PaddleOcrTextDetector
+    assert isinstance(detector, PaddleOcrTextDetector)
+
+
+def test_hybrid_detector_factory_selects_directml_when_opted_in_and_supported(monkeypatch):
+    monkeypatch.setenv(app_module.PREFER_DIRECTML_DETECTOR_ENV_VAR, "1")
+    import glyphcue.adapters.text_detector_selection as text_detector_selection_module
+    monkeypatch.setattr(text_detector_selection_module, "directml_detector_platform_supported", lambda: True)
+    monkeypatch.setattr(text_detector_selection_module, "_directml_detector_probe_succeeds", lambda *a, **k: True)
+
+    detector = app_module._hybrid_detector_factory()
+
+    from glyphcue.adapters.directml_text_detector import DirectMlTextDetector
+    assert isinstance(detector, DirectMlTextDetector)
+
+
+def test_hybrid_detector_factory_opt_in_still_falls_back_to_paddle_when_unsupported(monkeypatch):
+    monkeypatch.setenv(app_module.PREFER_DIRECTML_DETECTOR_ENV_VAR, "1")
+    import glyphcue.adapters.text_detector_selection as text_detector_selection_module
+    monkeypatch.setattr(text_detector_selection_module, "directml_detector_platform_supported", lambda: False)
+
+    detector = app_module._hybrid_detector_factory()
+
+    from glyphcue.adapters.paddleocr_text_detector import PaddleOcrTextDetector
+    assert isinstance(detector, PaddleOcrTextDetector)
+

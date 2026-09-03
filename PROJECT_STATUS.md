@@ -129,12 +129,27 @@ Stage ④ Targeted Regression (CLOSED) remains recorded in
 14 seams, 12 PASS, 2 defects reproduced and fixed, 3 findings recorded and
 deliberately left unfixed.
 
+**M11 P4B DirectML Text Detector Acceleration (Opt-in, Windows-only) — INTEGRATED:**
+- Integrated `DirectMlTextDetector` backed by official ONNX `PP-OCRv6_det_medium.onnx`
+  with exact-matching PaddleDBNet pre/post-processing (`limit_side_len=640`, `thresh=0.2`,
+  `box_thresh=0.45`, `unclip_ratio=1.4`, ImageNet normalization).
+- Pure execution-backend substitution with zero geometry/word fragmentation drift
+  (100% subtitle recall, 0.835 mean IoU across 12 difficult multi-language frames).
+- Real hybrid pipeline A/B: 100% subtitle text and timing parity across `sample_g`
+  and `sample_e`, delivering ~1.67–1.79× E2E speedup.
+- Strict opt-in via `GLYPHCUE_PREFER_DIRECTML_DETECTOR=1` (or `GLYPHCUE_PREFER_DIRECTML_OCR=1`);
+  unconditional safe fallback to shipped PaddlePaddle CPU detector on non-Windows,
+  missing dependencies, or provider failure.
+- Scheduler, Beta-S, 0.300 clustering, caption identity, and P2/P3 recognizers frozen.
+
 ## Validation
 
 | Suite | Result |
 |---|---|
+| `pytest` (targeted P4B selection, contract & UI seams) | **40 passed** in 1.19s |
 | `pytest` (whole repository, stage ④) | **831 passed, 1 xfailed** in 112s |
 | `tests/ui` (one process, stage ④) | 291 passed, 1 xfailed |
+
 
 Stage ⑤ changed no product code — only `benchmarks/`, docs and untracked
 private corpus files — so it adds no tests. The suite was re-run in full
