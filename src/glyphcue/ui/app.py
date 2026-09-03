@@ -20,7 +20,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from glyphcue.adapters.paddleocr_engine import PaddleOcrEngine
+from glyphcue.adapters.ocr_engine import OcrEngine
+from glyphcue.adapters.ocr_engine_selection import create_ocr_engine
 from glyphcue.adapters.paddleocr_text_detector import PaddleOcrTextDetector
 from glyphcue.application.thin_path_b import parse_and_reconstruct
 from glyphcue.persistence.database import connect
@@ -40,6 +41,28 @@ product feature -- there is no in-app way to turn this on."""
 
 def _dev_ocr_profile_selector_enabled() -> bool:
     return os.environ.get(DEV_OCR_PROFILE_SELECTOR_ENV_VAR) == "1"
+
+
+PREFER_DIRECTML_OCR_ENV_VAR = "GLYPHCUE_PREFER_DIRECTML_OCR"
+"""Set to "1" to opt into the experimental Windows DirectML OCR
+accelerator (M11 P3, see docs/adr/0001-ocr-runtime-selection.md's
+Milestone 11 addendum) for OCR engines this process constructs.
+Unset/anything else keeps the shipped default: PaddleOcrEngine (P2
+recognition-only), unconditionally. Even when set, create_ocr_engine only
+attempts DirectML after a real platform/package preflight and
+initialization probe, and falls back to Paddle on any unsupported
+platform, missing install, or provider-init failure -- this variable
+requests the preference, it does not guarantee the backend. Not a V1
+product feature -- there is no in-app toggle for this.
+"""
+
+
+def _prefer_directml_ocr_enabled() -> bool:
+    return os.environ.get(PREFER_DIRECTML_OCR_ENV_VAR) == "1"
+
+
+def _ocr_engine_factory(language: str) -> OcrEngine:
+    return create_ocr_engine(language, prefer_directml=_prefer_directml_ocr_enabled())
 
 
 class GlyphCueWorkbench(QMainWindow):
@@ -289,7 +312,7 @@ def create_path_a_app(
     track_group_repository = TrackGroupRepository(conn)
     pane = PathAMediaPane(
         track_group_repository,
-        ocr_engine_factory=PaddleOcrEngine,
+        ocr_engine_factory=_ocr_engine_factory,
         db_path=db_path,
         on_open_caption_file=on_open_caption_file,
         enable_dev_ocr_profile_selector=_dev_ocr_profile_selector_enabled(),

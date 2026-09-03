@@ -5,7 +5,10 @@ import av
 import numpy as np
 from PySide6.QtCore import QEventLoop, QTimer
 
+import glyphcue.adapters.ocr_engine_selection as ocr_engine_selection_module
+from glyphcue.adapters.directml_ocr_engine import DirectMlOcrEngine
 from glyphcue.adapters.ocr_types import OcrTextRegion
+from glyphcue.adapters.paddleocr_engine import PaddleOcrEngine
 from glyphcue.jobs.job import JobState
 from glyphcue.ui import app as app_module
 from glyphcue.ui.app import create_path_a_app
@@ -75,7 +78,7 @@ def test_create_path_a_app_constructs_the_live_single_language_runtime(
             regions=[OcrTextRegion(text="你好朋友", language=language, confidence=0.9)]
         )
 
-    monkeypatch.setattr(app_module, "PaddleOcrEngine", paddle_factory)
+    monkeypatch.setattr(ocr_engine_selection_module, "PaddleOcrEngine", paddle_factory)
     video_path = tmp_path / "production-pane.mp4"
     _write_test_video(video_path)
     _app, pane = create_path_a_app(db_path=tmp_path / "glyphcue.sqlite3")
@@ -87,3 +90,41 @@ def test_create_path_a_app_constructs_the_live_single_language_runtime(
 
     assert pane.current_ocr_job.state is JobState.SUCCEEDED
     assert constructed_languages == ["zh"]
+
+
+def test_create_path_a_app_wires_the_real_ocr_engine_factory(qapp_guard, tmp_path):
+    """This is the exact `Callable[[str], OcrEngine]` PathAMediaPane calls
+    at real job-construction time (path_a_media_pane.py's
+    self._ocr_engine_factory(language)) -- proving it's wired here is
+    proving the opt-in seam below is actually reachable from a real job,
+    not just from a direct unit call."""
+    _app, pane = create_path_a_app(db_path=tmp_path / "glyphcue.sqlite3")
+
+    assert pane._ocr_engine_factory is app_module._ocr_engine_factory
+
+
+def test_ocr_engine_factory_defaults_to_paddle_without_opt_in(monkeypatch):
+    monkeypatch.delenv(app_module.PREFER_DIRECTML_OCR_ENV_VAR, raising=False)
+
+    engine = app_module._ocr_engine_factory("en")
+
+    assert isinstance(engine, PaddleOcrEngine)
+
+
+def test_ocr_engine_factory_selects_directml_when_opted_in_and_supported(monkeypatch):
+    monkeypatch.setenv(app_module.PREFER_DIRECTML_OCR_ENV_VAR, "1")
+    monkeypatch.setattr(ocr_engine_selection_module, "directml_platform_supported", lambda: True)
+    monkeypatch.setattr(ocr_engine_selection_module, "_directml_probe_succeeds", lambda *a, **k: True)
+
+    engine = app_module._ocr_engine_factory("en")
+
+    assert isinstance(engine, DirectMlOcrEngine)
+
+
+def test_ocr_engine_factory_opt_in_still_falls_back_to_paddle_when_unsupported(monkeypatch):
+    monkeypatch.setenv(app_module.PREFER_DIRECTML_OCR_ENV_VAR, "1")
+    monkeypatch.setattr(ocr_engine_selection_module, "directml_platform_supported", lambda: False)
+
+    engine = app_module._ocr_engine_factory("en")
+
+    assert isinstance(engine, PaddleOcrEngine)
