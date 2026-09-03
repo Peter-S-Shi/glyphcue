@@ -1,4 +1,4 @@
-﻿from fractions import Fraction
+from fractions import Fraction
 from pathlib import Path
 
 import av
@@ -115,7 +115,11 @@ class _FakeOcrEngine:
             engine_name="fake", version="1.0", backend="test", backend_version="1.0"
         )
 
+    def supported_languages(self) -> tuple[str, ...]:
+        return ("en",)
+
     def recognize(self, roi_frame: np.ndarray):
+
         self.recognize_calls += 1
         luminance = roi_frame.mean(axis=2) if roi_frame.ndim == 3 else roi_frame
         row = luminance[_CAPTION_TOP + 10, :]
@@ -458,3 +462,45 @@ def test_the_hybrid_job_rejects_a_non_positive_sampling_fps(two_caption_video, t
             detect=_FakeDetector(),
             sampling_fps=0.0,
         )
+
+
+class _FakeRegionOcrEngine(_FakeOcrEngine):
+    def __init__(self) -> None:
+        super().__init__()
+        self.recognize_regions_calls = 0
+        self.received_regions = []
+
+    def recognize(self, roi_frame: np.ndarray):
+        raise AssertionError("recognize() should not be called when recognize_regions is supported")
+
+    def recognize_regions(self, roi_frame: np.ndarray, regions: object):
+        self.recognize_regions_calls += 1
+        self.received_regions.append(regions)
+        return super().recognize(roi_frame)
+
+
+def test_hybrid_job_uses_recognize_regions_when_supported(two_caption_video, tmp_path):
+    db_path = tmp_path / "region_ocr.db"
+    detector = _FakeDetector()
+    engine = _FakeRegionOcrEngine()
+    metrics = PipelineMetrics()
+
+    job = _hybrid_job(two_caption_video, db_path, detector, engine, metrics)
+    _run_job(job)
+
+    assert engine.recognize_regions_calls > 0
+    assert len(engine.received_regions) == engine.recognize_regions_calls
+    assert all(r is not None for r in engine.received_regions)
+
+    # Verify complete public seam: persisted evidence and downstream Cue reconstruction
+    observations = _observations(db_path)
+    assert observations
+    texts = {o.text for o in observations if o.text}
+    assert {"caption-6", "caption-13"} <= texts
+
+    cues, diagnostics = reconstruct_cues_with_consensus(observations)
+    assert cues
+    assert any(d.had_disagreement for d in diagnostics)
+
+
+

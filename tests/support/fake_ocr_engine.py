@@ -55,3 +55,22 @@ class FakeOcrEngine:
     def shutdown(self) -> None:
         self.shutdown_call_count += 1
         self.initialized = False
+
+
+class FakeRegionOcrEngine(FakeOcrEngine):
+    """Test fake that implements RegionOcrEngine."""
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.recognize_regions_call_count = 0
+        self.received_regions: list[object] = []
+
+    def recognize_regions(
+        self, image: object, regions: object
+    ) -> list[OcrTextRegion]:
+        self.recognize_regions_call_count += 1
+        self.received_regions.append(regions)
+        if self._fail_recognize_with is not None:
+            raise OcrRecognitionError(str(self._fail_recognize_with)) from self._fail_recognize_with
+        return list(self._regions)
+

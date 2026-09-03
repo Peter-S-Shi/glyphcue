@@ -119,3 +119,62 @@ def test_runtime_info_reports_paddleocr_and_paddlepaddle_versions_distinctly(mon
     assert info.engine_name == "PaddleOCR"
     assert info.version == "3.7.0"
     assert info.backend_version == "3.3.1"
+
+
+def test_paddleocr_engine_satisfies_region_ocr_engine_protocol():
+    from glyphcue.adapters.ocr_engine import RegionOcrEngine
+
+    engine = PaddleOcrEngine()
+    assert isinstance(engine, RegionOcrEngine)
+
+
+def test_recognize_regions_before_initialize_raises_a_normalized_error():
+    engine = PaddleOcrEngine()
+
+    with pytest.raises(module.OcrRecognitionError):
+        engine.recognize_regions(image=object(), regions=[[0, 0], [10, 0], [10, 5], [0, 5]])
+
+
+def test_recognize_regions_with_empty_regions_returns_empty_list_immediately():
+    engine = PaddleOcrEngine()
+    engine.initialize()
+
+    regions = engine.recognize_regions(image=object(), regions=[])
+
+    assert regions == []
+
+
+def test_recognize_regions_uses_underlying_recognizer_and_maps_geometry(monkeypatch):
+    import numpy as np
+
+    class _FakeRecognizer:
+        def __init__(self):
+            self.closed = False
+
+        def predict(self, crops):
+            return [{"rec_text": "hello region", "rec_score": 0.92}]
+
+        def close(self):
+            self.closed = True
+
+    fake_recognizer = _FakeRecognizer()
+    monkeypatch.setattr(module, "_construct_paddleocr", lambda **_: object())
+    monkeypatch.setattr(module, "_construct_text_recognition", lambda **_: fake_recognizer)
+
+    engine = PaddleOcrEngine(language="en")
+    engine.initialize()
+
+    dummy_image = np.zeros((50, 50, 3), dtype=np.uint8)
+    polys = [((1.0, 2.0), (10.0, 2.0), (10.0, 20.0), (1.0, 20.0))]
+    regions = engine.recognize_regions(image=dummy_image, regions=polys)
+
+    assert len(regions) == 1
+    assert regions[0].text == "hello region"
+    assert regions[0].confidence == 0.92
+    assert regions[0].language == "en"
+    assert regions[0].geometry == ((1.0, 2.0), (10.0, 2.0), (10.0, 20.0), (1.0, 20.0))
+
+    engine.shutdown()
+    assert fake_recognizer.closed
+
+

@@ -92,3 +92,22 @@ def test_recognize_call_count_is_tracked_for_test_assertions():
     engine.recognize(image=object())
 
     assert engine.recognize_call_count == 2
+
+
+def test_fake_engine_supports_region_ocr_engine_protocol_when_implemented():
+    from glyphcue.adapters.ocr_engine import RegionOcrEngine
+    from tests.support.fake_ocr_engine import FakeRegionOcrEngine
+
+    standard_engine = FakeOcrEngine()
+    assert not isinstance(standard_engine, RegionOcrEngine)
+
+    engine = FakeRegionOcrEngine(regions=[OcrTextRegion(text="boxed", confidence=0.9)])
+    assert isinstance(engine, RegionOcrEngine)
+
+    engine.initialize()
+    polygons = [((0.0, 0.0), (10.0, 0.0), (10.0, 5.0), (0.0, 5.0))]
+    res = engine.recognize_regions(image=object(), regions=polygons)
+    assert res == [OcrTextRegion(text="boxed", confidence=0.9)]
+    assert engine.recognize_regions_call_count == 1
+
+
