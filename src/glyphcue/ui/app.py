@@ -34,48 +34,51 @@ from glyphcue.ui.path_b_workspace import PathBWorkspace
 
 DEFAULT_DB_PATH = Path.home() / ".glyphcue" / "glyphcue.sqlite3"
 
-PREFER_DIRECTML_OCR_ENV_VAR = "GLYPHCUE_PREFER_DIRECTML_OCR"
-"""Set to "1" to opt into the experimental Windows DirectML OCR
-accelerator (M11 P3, see docs/adr/0001-ocr-runtime-selection.md's
-Milestone 11 addendum) for OCR engines this process constructs.
-Unset/anything else keeps the shipped default: PaddleOcrEngine (P2
-recognition-only), unconditionally. Even when set, create_ocr_engine only
-attempts DirectML after a real platform/package preflight and
-initialization probe, and falls back to Paddle on any unsupported
-platform, missing install, or provider-init failure -- this variable
-requests the preference, it does not guarantee the backend. Not a V1
-product feature -- there is no in-app toggle for this.
+DISABLE_DIRECTML_OCR_ENV_VAR = "GLYPHCUE_DISABLE_DIRECTML_OCR"
+"""Stage 7 Runtime Default Corrective Gate (2026-09-04): Windows
+production now PREFERS the DirectML OCR accelerator (M11 P3, see
+docs/adr/0001-ocr-runtime-selection.md's Milestone 11 addendum) by
+default for OCR engines this process constructs -- a normal user no
+longer has to discover and set an env var to get the performance-
+accepted backend. `create_ocr_engine` still only attempts DirectML after
+a real platform/package preflight and initialization probe, and still
+falls back to PaddleOcrEngine (P2 recognition-only) automatically on any
+unsupported platform, missing install, or provider-init failure; Paddle
+remains the resilience fallback, not a second pipeline.
+
+Set this to "1" to force the CPU Paddle path even when DirectML would
+otherwise succeed -- a DevQA/support override for deterministic Paddle-
+only testing or working around a misbehaving DirectML install, not a
+normal user's lever. There is still no in-app toggle for this.
 """
 
 
-def _prefer_directml_ocr_enabled() -> bool:
-    return os.environ.get(PREFER_DIRECTML_OCR_ENV_VAR) == "1"
+def _directml_ocr_disabled() -> bool:
+    return os.environ.get(DISABLE_DIRECTML_OCR_ENV_VAR) == "1"
 
 
 def _ocr_engine_factory(language: str) -> OcrEngine:
-    return create_ocr_engine(language, prefer_directml=_prefer_directml_ocr_enabled())
+    return create_ocr_engine(language, prefer_directml=not _directml_ocr_disabled())
 
 
-PREFER_DIRECTML_DETECTOR_ENV_VAR = "GLYPHCUE_PREFER_DIRECTML_DETECTOR"
-"""Set to "1" to opt into the experimental Windows DirectML text detector
-accelerator (M11 P4B) for the shared text detector this process constructs
-(multilingual PRODUCTION_TRIGGER runs; also usable by the retained
-research-only EXPERIMENTAL_HYBRID benchmark infrastructure, never by any
-product/DevQA launch -- see M11 Legacy Pipeline Retirement Corrective
-Gate, 2026-09-04). Unset/anything else keeps the shipped default:
-PaddleOcrTextDetector (PaddlePaddle CPU), unconditionally. Even when set,
-create_text_detector only attempts DirectML after a real platform/package
-preflight and initialization probe, and falls back to Paddle on any
-unsupported platform, missing install, or provider-init failure.
+DISABLE_DIRECTML_DETECTOR_ENV_VAR = "GLYPHCUE_DISABLE_DIRECTML_DETECTOR"
+"""Stage 7 Runtime Default Corrective Gate (2026-09-04): mirrors
+DISABLE_DIRECTML_OCR_ENV_VAR above for the shared text detector this
+process constructs (multilingual PRODUCTION_TRIGGER runs; also usable by
+the retained research-only EXPERIMENTAL_HYBRID benchmark infrastructure,
+never by any product/DevQA launch -- see M11 Legacy Pipeline Retirement
+Corrective Gate, 2026-09-04). DirectML is now the preferred default,
+with the same real preflight/probe and automatic PaddleOcrTextDetector
+fallback as before; set to "1" to force Paddle for DevQA/support.
 """
 
 
-def _prefer_directml_detector_enabled() -> bool:
-    return os.environ.get(PREFER_DIRECTML_DETECTOR_ENV_VAR) == "1"
+def _directml_detector_disabled() -> bool:
+    return os.environ.get(DISABLE_DIRECTML_DETECTOR_ENV_VAR) == "1"
 
 
 def _hybrid_detector_factory() -> TextDetector:
-    return create_text_detector(prefer_directml=_prefer_directml_detector_enabled())
+    return create_text_detector(prefer_directml=not _directml_detector_disabled())
 
 
 class GlyphCueWorkbench(QMainWindow):

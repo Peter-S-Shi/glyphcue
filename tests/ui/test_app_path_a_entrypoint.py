@@ -79,6 +79,10 @@ def test_create_path_a_app_constructs_the_live_single_language_runtime(
         )
 
     monkeypatch.setattr(ocr_engine_selection_module, "PaddleOcrEngine", paddle_factory)
+    # Default now attempts DirectML first (Stage 7 Runtime Default
+    # Corrective Gate) -- pin it unsupported so this test deterministically
+    # exercises the Paddle path regardless of what's installed locally.
+    monkeypatch.setattr(ocr_engine_selection_module, "directml_platform_supported", lambda: False)
     video_path = tmp_path / "production-pane.mp4"
     _write_test_video(video_path)
     _app, pane = create_path_a_app(db_path=tmp_path / "glyphcue.sqlite3")
@@ -103,16 +107,11 @@ def test_create_path_a_app_wires_the_real_ocr_engine_factory(qapp_guard, tmp_pat
     assert pane._ocr_engine_factory is app_module._ocr_engine_factory
 
 
-def test_ocr_engine_factory_defaults_to_paddle_without_opt_in(monkeypatch):
-    monkeypatch.delenv(app_module.PREFER_DIRECTML_OCR_ENV_VAR, raising=False)
-
-    engine = app_module._ocr_engine_factory("en")
-
-    assert isinstance(engine, PaddleOcrEngine)
-
-
-def test_ocr_engine_factory_selects_directml_when_opted_in_and_supported(monkeypatch):
-    monkeypatch.setenv(app_module.PREFER_DIRECTML_OCR_ENV_VAR, "1")
+def test_ocr_engine_factory_prefers_directml_by_default_when_supported(monkeypatch):
+    """Stage 7 Runtime Default Corrective Gate (2026-09-04): a normal
+    Windows launch (no env var set) must attempt DirectML first -- this
+    is no longer an opt-in a user has to discover."""
+    monkeypatch.delenv(app_module.DISABLE_DIRECTML_OCR_ENV_VAR, raising=False)
     monkeypatch.setattr(ocr_engine_selection_module, "directml_platform_supported", lambda: True)
     monkeypatch.setattr(ocr_engine_selection_module, "_directml_probe_succeeds", lambda *a, **k: True)
 
@@ -121,9 +120,33 @@ def test_ocr_engine_factory_selects_directml_when_opted_in_and_supported(monkeyp
     assert isinstance(engine, DirectMlOcrEngine)
 
 
-def test_ocr_engine_factory_opt_in_still_falls_back_to_paddle_when_unsupported(monkeypatch):
-    monkeypatch.setenv(app_module.PREFER_DIRECTML_OCR_ENV_VAR, "1")
+def test_ocr_engine_factory_falls_back_to_paddle_when_directml_unsupported(monkeypatch):
+    monkeypatch.delenv(app_module.DISABLE_DIRECTML_OCR_ENV_VAR, raising=False)
     monkeypatch.setattr(ocr_engine_selection_module, "directml_platform_supported", lambda: False)
+
+    engine = app_module._ocr_engine_factory("en")
+
+    assert isinstance(engine, PaddleOcrEngine)
+
+
+def test_ocr_engine_factory_falls_back_to_paddle_when_directml_probe_fails(monkeypatch):
+    monkeypatch.delenv(app_module.DISABLE_DIRECTML_OCR_ENV_VAR, raising=False)
+    monkeypatch.setattr(ocr_engine_selection_module, "directml_platform_supported", lambda: True)
+    monkeypatch.setattr(ocr_engine_selection_module, "_directml_probe_succeeds", lambda *a, **k: False)
+
+    engine = app_module._ocr_engine_factory("en")
+
+    assert isinstance(engine, PaddleOcrEngine)
+
+
+def test_ocr_engine_factory_forced_to_paddle_when_directml_explicitly_disabled(monkeypatch):
+    """The DevQA override: even when DirectML would otherwise succeed,
+    GLYPHCUE_DISABLE_DIRECTML_OCR=1 forces the CPU Paddle path -- kept for
+    deterministic fallback testing/support, not for a user to have to set
+    to get accelerated performance."""
+    monkeypatch.setenv(app_module.DISABLE_DIRECTML_OCR_ENV_VAR, "1")
+    monkeypatch.setattr(ocr_engine_selection_module, "directml_platform_supported", lambda: True)
+    monkeypatch.setattr(ocr_engine_selection_module, "_directml_probe_succeeds", lambda *a, **k: True)
 
     engine = app_module._ocr_engine_factory("en")
 
@@ -136,18 +159,10 @@ def test_create_path_a_app_wires_the_hybrid_detector_factory(qapp_guard, tmp_pat
     assert pane._hybrid_detector_factory is app_module._hybrid_detector_factory
 
 
-def test_hybrid_detector_factory_defaults_to_paddle_without_opt_in(monkeypatch):
-    monkeypatch.delenv(app_module.PREFER_DIRECTML_DETECTOR_ENV_VAR, raising=False)
-    monkeypatch.delenv(app_module.PREFER_DIRECTML_OCR_ENV_VAR, raising=False)
-
-    detector = app_module._hybrid_detector_factory()
-
-    from glyphcue.adapters.paddleocr_text_detector import PaddleOcrTextDetector
-    assert isinstance(detector, PaddleOcrTextDetector)
-
-
-def test_hybrid_detector_factory_selects_directml_when_opted_in_and_supported(monkeypatch):
-    monkeypatch.setenv(app_module.PREFER_DIRECTML_DETECTOR_ENV_VAR, "1")
+def test_hybrid_detector_factory_prefers_directml_by_default_when_supported(monkeypatch):
+    """Stage 7 Runtime Default Corrective Gate (2026-09-04): default-on,
+    same as the OCR engine factory above."""
+    monkeypatch.delenv(app_module.DISABLE_DIRECTML_DETECTOR_ENV_VAR, raising=False)
     import glyphcue.adapters.text_detector_selection as text_detector_selection_module
     monkeypatch.setattr(text_detector_selection_module, "directml_detector_platform_supported", lambda: True)
     monkeypatch.setattr(text_detector_selection_module, "_directml_detector_probe_succeeds", lambda *a, **k: True)
@@ -158,10 +173,23 @@ def test_hybrid_detector_factory_selects_directml_when_opted_in_and_supported(mo
     assert isinstance(detector, DirectMlTextDetector)
 
 
-def test_hybrid_detector_factory_opt_in_still_falls_back_to_paddle_when_unsupported(monkeypatch):
-    monkeypatch.setenv(app_module.PREFER_DIRECTML_DETECTOR_ENV_VAR, "1")
+def test_hybrid_detector_factory_falls_back_to_paddle_when_directml_unsupported(monkeypatch):
+    monkeypatch.delenv(app_module.DISABLE_DIRECTML_DETECTOR_ENV_VAR, raising=False)
     import glyphcue.adapters.text_detector_selection as text_detector_selection_module
     monkeypatch.setattr(text_detector_selection_module, "directml_detector_platform_supported", lambda: False)
+
+    detector = app_module._hybrid_detector_factory()
+
+    from glyphcue.adapters.paddleocr_text_detector import PaddleOcrTextDetector
+    assert isinstance(detector, PaddleOcrTextDetector)
+
+
+def test_hybrid_detector_factory_forced_to_paddle_when_directml_explicitly_disabled(monkeypatch):
+    """The DevQA override, mirroring the OCR engine factory's."""
+    monkeypatch.setenv(app_module.DISABLE_DIRECTML_DETECTOR_ENV_VAR, "1")
+    import glyphcue.adapters.text_detector_selection as text_detector_selection_module
+    monkeypatch.setattr(text_detector_selection_module, "directml_detector_platform_supported", lambda: True)
+    monkeypatch.setattr(text_detector_selection_module, "_directml_detector_probe_succeeds", lambda *a, **k: True)
 
     detector = app_module._hybrid_detector_factory()
 

@@ -3,7 +3,7 @@
 **Document type:** Authoritative V1 milestone roadmap  
 **Project:** GlyphCue  
 **Repository:** `Peter-S-Shi/glyphcue`  
-**Lifecycle phase:** Production Development in progress → Milestone 10 complete (evidence/evaluation closure accepted; representative-video gate transferred to Milestone 11, not waived — see §17's gate audit disposition), Feature Freeze ACTIVE, **Milestone 11 (Product Hardening & Full Regression) IN PROGRESS — stage ④ Targeted Regression CLOSED (automated evidence accepted at the human gate, see `docs/m11_targeted_regression.md`), stage ⑤ Representative Evaluation CLOSED by Human Adjudication (2026-09-03) (all five frozen windows `sample_g`, `sample_e`, `sample_h`, `sample_f`, `sample_c` plus reserve `sample_a` completed to full 180s coverage; acceptance gate 9 satisfied; see `docs/m11_representative_evaluation.md` §17). The Chinese-CER finding has been investigated and CLOSED by the Caption Identity Corrective Gate; performance hardening passes P2 (recognition-only), P3 (Windows DirectML OCR recognizer), and P4B (Windows DirectML same-detector text detector) are INTEGRATED; Parallel Chunking was evaluated via evidence gate and REJECTED; **Stage ⑥ Full Regression is CLOSED by Human Adjudication (2026-09-03); Stage ⑦ Formal Human QA & Packaging Hardening is IN PROGRESS — Stage ⑦-A (packaging build) and ⑦-B (technical smoke) have automated evidence as of 2026-09-04 via the PyInstaller onedir path (Nuitka/pyside6-deploy retired as the primary path after repeated build-system/resource blockers; PyInstaller was already this document's documented fallback, see §3 Packaging below), pending human adjudication; Stage ⑦-C Human QA checklist remains** (see `docs/m11_representative_evaluation.md`, `PROJECT_STATUS.md`)
+**Lifecycle phase:** Production Development in progress → Milestone 10 complete (evidence/evaluation closure accepted; representative-video gate transferred to Milestone 11, not waived — see §17's gate audit disposition), Feature Freeze ACTIVE, **Milestone 11 (Product Hardening & Full Regression) IN PROGRESS — stage ④ Targeted Regression CLOSED (automated evidence accepted at the human gate, see `docs/m11_targeted_regression.md`), stage ⑤ Representative Evaluation CLOSED by Human Adjudication (2026-09-03) (all five frozen windows `sample_g`, `sample_e`, `sample_h`, `sample_f`, `sample_c` plus reserve `sample_a` completed to full 180s coverage; acceptance gate 9 satisfied; see `docs/m11_representative_evaluation.md` §17). The Chinese-CER finding has been investigated and CLOSED by the Caption Identity Corrective Gate; performance hardening passes P2 (recognition-only), P3 (Windows DirectML OCR recognizer), and P4B (Windows DirectML same-detector text detector) are INTEGRATED; Parallel Chunking was evaluated via evidence gate and REJECTED; **Stage ⑥ Full Regression is CLOSED by Human Adjudication (2026-09-03); Stage ⑦ Formal Human QA & Packaging Hardening is IN PROGRESS — Stage ⑦-A (packaging build) and ⑦-B (technical smoke) have automated evidence as of 2026-09-04 via the PyInstaller onedir path (Nuitka/pyside6-deploy retired as the primary path after repeated build-system/resource blockers; PyInstaller was already this document's documented fallback, see §3 Packaging below). The Stage ⑦ Runtime Default Corrective Gate (2026-09-04) is CLOSED by Human Adjudication: Windows production now prefers DirectML by default with verified automatic fallback to Paddle CPU (was hidden opt-in; see `docs/adr/0001-ocr-runtime-selection.md`'s Stage ⑦ addendum and `PROJECT_STATUS.md`), and the packaged product now bundles RapidOCR/DirectML completely. Stage ⑦-A/⑦-B/⑦-C overall remain pending human adjudication; Stage ⑦-C's remaining Human QA checklist items are manual click-through and package-size review** (see `docs/m11_representative_evaluation.md`, `PROJECT_STATUS.md`)
 **Status:** Current V1 execution roadmap  
 
 **Last updated:** 2026-09-04
@@ -1542,11 +1542,18 @@ Resolved (2026-09-04, PyInstaller onedir, see `PROJECT_STATUS.md`):
 - Qt plugins (including QtMultimedia's FFmpeg/Windows Media Foundation
   backends);
 - FFmpeg path (PyAV's own bundled DLLs);
-- OCR model assets (not bundled — Paddle/RapidOCR manage their own
-  runtime cache, unaffected by packaging);
-- runtime DLLs (`onnxruntime`'s `DirectML.dll` confirmed present);
-- local resource paths (`migrations_sql` package data confirmed present
-  and applied correctly at runtime).
+- OCR model assets: Paddle manages its own runtime cache, unaffected by
+  packaging; RapidOCR/DirectML's `.onnx` models ARE bundled directly in
+  the package (`--collect-all rapidocr`, added 2026-09-04 by the Stage ⑦
+  Runtime Default Corrective Gate — see `PROJECT_STATUS.md`), so a fresh
+  install never needs network access for them;
+- runtime DLLs (`onnxruntime`'s `DirectML.dll`, and Paddle's own
+  runtime-dynamically-loaded DLLs such as `mklml.dll` which needed an
+  explicit `--collect-binaries paddle`, confirmed present);
+- local resource paths (`migrations_sql` package data, and `paddlex`'s
+  own pipeline config YAML which needed explicit `--collect-data
+  paddlex` plus `--copy-metadata` for its dependency-presence checks,
+  confirmed present and applied correctly at runtime).
 
 ## Acceptance gate
 

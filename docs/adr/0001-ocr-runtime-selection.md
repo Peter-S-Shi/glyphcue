@@ -72,6 +72,52 @@ This ADR rejected RapidOCR as the **default** runtime (above), but explicitly le
 
 **What shipped:** `glyphcue.adapters.directml_ocr_engine.DirectMlOcrEngine`, a `RegionOcrEngine` implementation identical in shape to `PaddleOcrEngine`'s P2 recognition-only path — it uses RapidOCR's own public standalone method (`RapidOCR.recognize_txt`, which only calls `self.text_rec`, never `self.text_det`) for `recognize_regions`, and reuses GlyphCue's own `_sort_polygons_in_reading_order`/`_crop_polygon_region` (the same functions `PaddleOcrEngine` uses) rather than any RapidOCR-internal geometry helper. `glyphcue.adapters.ocr_engine_selection.create_ocr_engine(language, prefer_directml=...)` is the only sanctioned construction path: `prefer_directml` defaults to `False` (existing callers are unaffected), and even when a caller opts in, `PaddleOcrEngine` is returned unless a real DirectML initialization probe on this machine succeeds — a missing `[directml]` install, a non-Windows platform, or a genuine provider-initialization failure (e.g. no DX12-capable adapter) all fall back to Paddle, not to a crash. This is reachable from the real product, not just tests: `glyphcue.ui.app.create_path_a_app` wires `ocr_engine_factory` to a small function reading the `GLYPHCUE_PREFER_DIRECTML_OCR` env var (unset/anything but `"1"` keeps the shipped default of Paddle, unconditionally) — there is no in-app UI toggle, matching the "not a V1 product feature" framing already used for this file's other env-var-gated developer switch.
 
-**Dependency/packaging contract:** `[project.optional-dependencies].directml` in `pyproject.toml` pins `rapidocr==3.9.2` and `onnxruntime-directml==1.24.4` (the exact pair re-verified for this gate), both marked `sys_platform == 'win32'` so the extra is inert on Linux/macOS and cannot affect GitHub CI. It is a separate extra from `[ocr]`, not merged into it: `onnxruntime-directml` and plain `onnxruntime`/`onnxruntime-gpu` all provide the same top-level `onnxruntime` import and cannot coexist in one environment, so `[ocr]` and `[directml]` must be installed into separate environments until upstream resolves that conflict. The ~21.2MB `PP-OCRv6_rec_small.onnx` recognition model (same PP-OCRv6 family as the Paddle P2 `TextRecognition` model, ONNX-exported) is not bundled or version-tracked by GlyphCue — RapidOCR downloads and caches its own default model set on first use, the same pattern paddleocr/paddlepaddle already use. `GLYPHCUE_DIRECTML_MODELS_DIR`/`GLYPHCUE_DIRECTML_PACKAGES_DIR` exist only as optional local overrides for offline/pinned-artifact test environments.
+**Dependency/packaging contract:** `[project.optional-dependencies].directml` in `pyproject.toml` pins `rapidocr==3.9.2` and `onnxruntime-directml==1.24.4` (the exact pair re-verified for this gate), both marked `sys_platform == 'win32'` so the extra is inert on Linux/macOS and cannot affect GitHub CI. It is a separate extra from `[ocr]`, not merged into it. **Update (M11 Stage ⑦-A packaging hardening, 2026-09-04):** the caution below that `[ocr]` and `[directml]` "must be installed into separate environments" was written from the upstream `onnxruntime`-name-collision risk in the abstract, but was never actually tested against this project's exact pinned pair until Stage ⑦-A's packaging preflight — `pip install -e ".[ocr,directml]"` together in one environment was verified to work cleanly (`rapidocr` does not pull in a conflicting bare `onnxruntime`), and all four backend combinations (Paddle×2, DirectML×2) were verified to construct and run real inference in the same process. GlyphCue's shipped PyInstaller package now bundles both extras together in one environment (see `PROJECT_STATUS.md`'s canonical build command) — this is empirically proven for the pinned versions above, not merely assumed; a version bump to either package should re-verify this before relying on it again. The ~21.2MB `PP-OCRv6_rec_small.onnx` recognition model (same PP-OCRv6 family as the Paddle P2 `TextRecognition` model, ONNX-exported) is not bundled or version-tracked by GlyphCue in source control — RapidOCR downloads and caches its own default model set on first use, the same pattern paddleocr/paddlepaddle already use; the packaged product does bundle these `.onnx` files directly (via `--collect-all rapidocr`, see below) so a fresh install never needs network access for them. `GLYPHCUE_DIRECTML_MODELS_DIR`/`GLYPHCUE_DIRECTML_PACKAGES_DIR` exist only as optional local overrides for offline/pinned-artifact test environments.
 
-**What stays frozen:** this addendum does not touch `occupancy_normalized_distance`, the 0.300 grouping threshold, Beta-S, the 5fps scheduler, medoid calibration, caption identity evidence semantics, or the P2 recognition-only Paddle path in any way — `DirectMlOcrEngine` is a second, entirely separate implementation of the same frozen `OcrEngine`/`RegionOcrEngine` contract, reached only through explicit opt-in.
+**What stays frozen:** this addendum does not touch `occupancy_normalized_distance`, the 0.300 grouping threshold, Beta-S, the 5fps scheduler, medoid calibration, caption identity evidence semantics, or the P2 recognition-only Paddle path in any way — `DirectMlOcrEngine` is a second, entirely separate implementation of the same frozen `OcrEngine`/`RegionOcrEngine` contract.
+
+## Milestone 11 Stage ⑦ addendum: DirectML becomes the default-preferred backend, not opt-in (2026-09-04)
+
+**Runtime policy corrected — superseding "opt-in only" above.** The
+P3/P4B Confirmation Gates above proved DirectML real, safe (genuine
+preflight + automatic Paddle fallback), and within the ≤5× realtime
+performance target — but shipping it as a hidden opt-in meant a normal
+Windows user launching `GlyphCue.exe` never actually got that
+performance, silently defaulting instead to the CPU Paddle path's
+19.7×–108.4× realtime cost (`enable_mkldnn=False`, a real workaround for
+a `paddleocr==3.7.0`/`paddlepaddle==3.3.1` crash — see the base ADR
+above; `PaddleOcrEngine` remains correct, just slow). A packaging
+investigation (Stage ⑦-A/⑦-B/⑦-C, `PROJECT_STATUS.md`) surfaced this gap
+concretely when a real packaged run measured ~20× realtime, prompting
+Human Adjudication to close it as a small **Stage ⑦ Runtime Default
+Corrective Gate**.
+
+**What changed:** `src/glyphcue/ui/app.py`'s `_ocr_engine_factory`/
+`_hybrid_detector_factory` now call `create_ocr_engine`/
+`create_text_detector` with `prefer_directml=True` **by default** (no env
+var needed). `GLYPHCUE_PREFER_DIRECTML_OCR`/`GLYPHCUE_PREFER_DIRECTML_DETECTOR`
+were renamed to `GLYPHCUE_DISABLE_DIRECTML_OCR`/
+`GLYPHCUE_DISABLE_DIRECTML_DETECTOR` and their polarity flipped: they are
+now a DevQA/support override to force Paddle-only, not a switch a normal
+user has to find and set to get accelerated performance.
+
+**What did not change:** `create_ocr_engine`/`create_text_detector`
+themselves (this ADR's `prefer_directml` parameter, its real
+platform/package preflight, and its real DirectML initialization probe)
+are byte-for-byte unchanged — only the caller's default flipped. Paddle
+remains the automatic, correctness-preserving fallback on any
+unsupported platform, missing install, or provider-init failure; there
+is still exactly one product pipeline (`PRODUCTION_TRIGGER`) and
+`DirectMlOcrEngine`/`DirectMlTextDetector` remain a second *backend*
+inside it, not a second pipeline. The documented correctness trade-off
+(RapidOCR's bundled recognition model showing non-zero CER on some
+content where Paddle showed zero, per the Confirmation Gate above) is
+unchanged and still applies — this policy change is about which backend
+runs by default, not a claim that the trade-off no longer exists.
+
+**Packaging:** the canonical PyInstaller build command
+(`PROJECT_STATUS.md`) gained `--collect-all rapidocr` in the same gate —
+without it, the packaged product had zero DirectML capacity at all (the
+`rapidocr` package was entirely absent from the frozen bundle), which
+would have made this default-preference change silently inert in the
+shipped product even though it worked correctly from source.
