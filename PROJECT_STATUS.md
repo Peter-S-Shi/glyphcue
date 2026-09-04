@@ -67,6 +67,49 @@ explicitly:
   were performed for this closure — documentation/lifecycle reconciliation
   only.
 
+**Stage ⑥ evidence baseline refreshed to `4afb8d4`** (human-adjudicated;
+not a reopening of Stage ⑥ itself). Between `906f9e7` and `4afb8d4`, the
+**M11 Legacy Pipeline Retirement Corrective Gate** removed
+`EXPERIMENTAL_HYBRID` as a product/DevQA-reachable pipeline: no UI
+control, launch-time switch, or env var anywhere in `src/` can select it
+anymore (`path_a_media_pane.py`'s `dev_ocr_profile_combo` /
+`enable_dev_ocr_profile_selector`, and `app.py`'s
+`GLYPHCUE_DEV_OCR_PROFILE_SELECTOR`, are gone entirely). The
+implementation (`hybrid_evidence_job.py`, `hybrid_cascade_dry_run.py`,
+`caption_identity_verification.py`, `occupancy_normalized_distance.py`,
+`sparse_observation_semantics.py`, `text_anchored_region_mask.py`, and
+the `EXPERIMENTAL_HYBRID` enum member) is deliberately KEPT, not
+deleted: fresh import analysis found it load-bearing for 8 tracked
+benchmark scripts, including `benchmarks/private_video_corpus/run_evaluation.py`
+(the script that produced this document's own Stage ⑤ evidence numbers
+above) — deleting or relocating it risked either breaking that tracked
+tooling or a scope-expanding refactor across 8 files, both explicitly
+ruled out. `paddleocr_text_detector.py`'s docstring, previously stale
+(claimed to exist "ONLY" for the dev profile), is corrected: it is
+shared, load-bearing production infrastructure for the shipped
+multilingual `PRODUCTION_TRIGGER` path. DirectML→Paddle fallback is
+untouched. Targeted tests green (`tests/application` 416,
+`tests/adapters` 82+1 skipped, `tests/ui` 292+1 xfailed), GitHub Actions
+whole-suite CI green (run `33828500457`), and a real Windows smoke via
+the actual `create_app`/`main()` launch entrypoint confirmed
+`dev_ocr_profile_combo` no longer exists as an attribute and
+`hybrid_detector_factory` remains correctly wired for multilingual
+production runs. Full Regression itself was not repeated for this
+change — targeted tests plus CI's own whole-suite run were treated as
+sufficient, consistent with Stage ⑥'s own evidence discipline above.
+**Residual, non-blocking finding surfaced during this smoke (pre-existing,
+unrelated to this retirement, not fixed here):** in this worktree's
+`.venv` (which has plain `onnxruntime` + `cv2` + `pyclipper` installed
+but not the pinned `[directml]` extra), `create_text_detector(prefer_directml=True)`
+returns a `DirectMlTextDetector` instance even though `DmlExecutionProvider`
+is not actually available — `onnxruntime.InferenceSession` silently
+substitutes `CPUExecutionProvider` instead of raising, so the detector's
+own initialization probe reports success. `create_ocr_engine`'s
+equivalent preflight is unaffected (correctly falls back to
+`PaddleOcrEngine`, since `rapidocr` is genuinely absent). Not touched by
+this Corrective Gate — flagged for a future, separately-scoped look at
+`_directml_detector_probe_succeeds`.
+
 All Stage ⑤ residual non-blocking findings (below) are preserved
 unchanged. M11 is **not** complete. Next execution step: **Stage ⑦
 Formal Human QA & Packaging Hardening (NEXT / READY TO BEGIN)**.
@@ -304,6 +347,8 @@ deliberately left unfixed.
 | `tests/ui` (one process) | 295 passed, 1 xfailed |
 | GitHub Actions CI (Stage ⑥ evidence baseline `906f9e7`) | GREEN — run `33823586648` |
 | `pytest` (`tests/application/test_source_identity.py`, Stage ⑥ Windows-branch gap closure) | **3 passed** |
+| `pytest` (Legacy Pipeline Retirement targeted: `tests/application`, `tests/adapters`, `tests/ui`) | **790 passed, 1 skipped, 1 xfailed** |
+| GitHub Actions CI (Stage ⑥ evidence baseline refreshed to `4afb8d4`) | GREEN — run `33828500457` |
 
 Privacy check: no secrets, credentials, real user data, personal
 identifiers, or absolute local paths in the committed changes; local
@@ -337,11 +382,11 @@ Stage ⑤ Representative Evaluation is **CLOSED by Human Adjudication (2026-09-0
 (all five representative windows plus clean baseline reserve `sample_a` have full-window
 180 s evaluation evidence; acceptance gate 9 is satisfied).
 
-Stage ⑥ Full Regression is **CLOSED by Human Adjudication (2026-09-03)**
-on baseline `906f9e7` (see "Current milestone" above for the evidence
-split: GitHub Actions authoritative for the automated whole-repository
-suite, the one meaningful Linux-CI coverage gap closed, real Windows
-DirectML selection/fallback verification already established).
+Stage ⑥ Full Regression is **CLOSED by Human Adjudication (2026-09-03)**,
+evidence baseline refreshed from `906f9e7` to `4afb8d4` after the
+M11 Legacy Pipeline Retirement Corrective Gate (see "Current milestone"
+above for the full evidence split and what changed between the two
+baselines — this refresh did not reopen Stage ⑥).
 
 The subsequent execution sequence is strictly:
 **Stage ⑥ Full Regression (CLOSED) → Stage ⑦ Formal Human QA & Packaging Hardening**.
