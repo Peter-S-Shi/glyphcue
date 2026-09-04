@@ -34,8 +34,41 @@ to 100% completion under the formal Architecture B + DirectML product path:
     verified instants achieved CER 0.0000).
   - `sample_f`: Screen-recording b-roll editor toolbar glyphs (`B I U S ミ H1 H2`)
     recognized into `zh` with fail-closed ambiguity flags.
-Stage ⑤ is CLOSED. M11 is **not** complete. Next execution step:
-**Stage ⑥ Full Regression (READY TO BEGIN)**.
+Stage ⑤ is CLOSED. Stage ⑥ **Full Regression is CLOSED by Human
+Adjudication (2026-09-03)**, on baseline `906f9e7`. Evidence split
+explicitly:
+
+- **GitHub Actions is authoritative** for the automated, whole-repository
+  regression required by ROADMAP §18 ("Automated regression" — Path A,
+  Path B, persistence, jobs, export, cancellation, migrations, settings,
+  offscreen UI): clean `ubuntu-latest`/Python 3.12, unfiltered `pytest`,
+  green on every push (latest run `33823586648`). Not duplicated locally.
+- **Stage ⑥ additionally audited platform-specific branches** —
+  `sys.platform == "win32"` appears in 7 source files; 6 were already
+  exercised by CI-run mocks. The one meaningful Linux-CI coverage gap
+  (`src/glyphcue/application/source_identity.py`'s Windows-only
+  case-folding/forward-slash branch, never taken on a Linux runner and
+  never asserted by any existing caller) was closed with three
+  deterministic regression tests
+  (`tests/application/test_source_identity.py`, `sys.platform` mocked so
+  they run identically on any CI runner) — commit `906f9e7`, CI green.
+- **Real Windows verification** (this milestone's already-established
+  current-product evidence, not re-run for Stage ⑥ specifically): both
+  directions of DirectML selection/fallback confirmed on real Windows
+  hardware — `create_ocr_engine`/`create_text_detector` correctly fall
+  back to Paddle CPU without the `[directml]` extra installed, and
+  correctly resolve to `DirectMlOcrEngine`/`DirectMlTextDetector` (with
+  `DmlExecutionProvider` confirmed present) and complete real end-to-end
+  multilingual evidence jobs when it is.
+- **Deliberately NOT Stage ⑥ evidence, deferred to Stage ⑦:** actual
+  Nuitka/pyside6-deploy packaging, clean-machine package execution, and
+  Formal Human QA. No pytest re-run and no private-corpus re-evaluation
+  were performed for this closure — documentation/lifecycle reconciliation
+  only.
+
+All Stage ⑤ residual non-blocking findings (below) are preserved
+unchanged. M11 is **not** complete. Next execution step: **Stage ⑦
+Formal Human QA & Packaging Hardening (NEXT / READY TO BEGIN)**.
 
 **Multilingual Architecture B integrated** (shared detection + universal
 recognition, corrective 12-case gate — see
@@ -268,7 +301,8 @@ deliberately left unfixed.
 | `pytest` (targeted P4B selection, contract & UI seams) | **40 passed** in 1.19s |
 | `pytest` (whole repository, full suite) | **902 passed, 1 skipped, 1 xfailed** in 118s |
 | `tests/ui` (one process) | 295 passed, 1 xfailed |
-| GitHub Actions CI (`milestone/11-product-hardening-full-regression`) | **All green** |
+| GitHub Actions CI (`milestone/11-product-hardening-full-regression`) | **All green**, latest run `33823586648` on `906f9e7` |
+| `pytest` (`tests/application/test_source_identity.py`, Stage ⑥ Windows-branch gap closure) | **3 passed** |
 
 Privacy check: no secrets, credentials, real user data, personal
 identifiers, or absolute local paths in the committed changes; local
@@ -292,9 +326,9 @@ appears anywhere in the repository.
 - Residual non-blocking evaluation findings preserved:
   - `sample_c`: Isolated window-boundary non-text reading (`"zh": "3\n8"`) on Cue 1 (1.1s), safely fail-closed with `ambiguous_languages: ["zh"]`; non-contaminating.
   - `sample_f`: One illegible Chinese layer at 661.1s left untranscribed in GT rather than guessed; rapid b-roll editor button glyphs flagged ambiguous.
-- Packaging hardening (Qt plugins, FFmpeg path, OCR model assets, runtime DLLs) — unstarted.
-- Formal human Manual QA — unstarted.
-- Stage ⑥ Full Regression — unstarted (READY TO BEGIN).
+- Packaging hardening (Qt plugins, FFmpeg path, OCR model assets, runtime DLLs) — unstarted, Stage ⑦.
+- Formal human Manual QA — unstarted, Stage ⑦.
+- Actual Nuitka/pyside6-deploy packaging and clean-machine package execution — unstarted, Stage ⑦.
 
 ## Next action
 
@@ -302,9 +336,17 @@ Stage ⑤ Representative Evaluation is **CLOSED by Human Adjudication (2026-09-0
 (all five representative windows plus clean baseline reserve `sample_a` have full-window
 180 s evaluation evidence; acceptance gate 9 is satisfied).
 
-The subsequent execution sequence is strictly:
-**Stage ⑥ Full Regression (READY TO BEGIN) → Stage ⑦ Formal Human QA & Packaging Hardening**.
+Stage ⑥ Full Regression is **CLOSED by Human Adjudication (2026-09-03)**
+on baseline `906f9e7` (see "Current milestone" above for the evidence
+split: GitHub Actions authoritative for the automated whole-repository
+suite, the one meaningful Linux-CI coverage gap closed, real Windows
+DirectML selection/fallback verification already established).
 
-Immediate next step: **Begin Stage ⑥ Full Regression** across the full repository test suite
-and packaging verification seams once authorized. Milestone 11 remains **IN PROGRESS**
+The subsequent execution sequence is strictly:
+**Stage ⑥ Full Regression (CLOSED) → Stage ⑦ Formal Human QA & Packaging Hardening**.
+
+Immediate next step: **Begin Stage ⑦ Formal Human QA & Packaging Hardening**
+once authorized — Nuitka/pyside6-deploy packaging, clean-machine install
+verification, and formal manual QA critical paths. Not started yet; this
+session stops here for review before Stage ⑦ begins. Milestone 11 remains **IN PROGRESS**
 and incomplete; PR #13 stays **Draft**.
