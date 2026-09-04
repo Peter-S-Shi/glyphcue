@@ -253,3 +253,50 @@ def test_four_language_track_group_has_no_bilingual_only_assumption():
         "C text",
         "D text",
     ]
+
+
+def test_temporal_position_swap_does_not_manufacture_a_false_cue_boundary():
+    # M11 Architecture B corrective contract: a stable bilingual subtitle
+    # whose two layers physically swap VERTICAL POSITION between frames
+    # (nothing in the actual subtitle content changed) must still
+    # reconstruct as one Cue with each language's own text intact --
+    # never a spurious second Cue from the position swap alone, and
+    # never a vote that silently mixes one language's text into the
+    # other's because both got clustered by raw screen position instead
+    # of by which language they actually are.
+    observations = [
+        _obs(
+            "a0-zh", "你好", start=0.0, language=None, frame_reference="v@0.0",
+            geometry=_TOP_LINE_GEOMETRY,
+        ),
+        _obs(
+            "a0-en", "Hello", start=0.0, language=None, frame_reference="v@0.0",
+            geometry=_BOTTOM_LINE_GEOMETRY,
+        ),
+        # Positions swapped: en now on top, zh now on the bottom.
+        _obs(
+            "a1-en", "Hello", start=0.5, language=None, frame_reference="v@0.5",
+            geometry=_TOP_LINE_GEOMETRY,
+        ),
+        _obs(
+            "a1-zh", "你好", start=0.5, language=None, frame_reference="v@0.5",
+            geometry=_BOTTOM_LINE_GEOMETRY,
+        ),
+        _obs(
+            "a2-en", "Hello", start=1.0, language=None, frame_reference="v@1.0",
+            geometry=_TOP_LINE_GEOMETRY,
+        ),
+        _obs(
+            "a2-zh", "你好", start=1.0, language=None, frame_reference="v@1.0",
+            geometry=_BOTTOM_LINE_GEOMETRY,
+        ),
+    ]
+
+    cues, diagnostics = reconstruct_multilingual_cues_for_track_group(
+        observations, _track_group(("zh", "en")), processing_end_time=1.5
+    )
+
+    assert len(cues) == 1
+    layers = {layer.language: layer.text for layer in cues[0].language_layers}
+    assert layers == {"zh": "你好", "en": "Hello"}
+    assert diagnostics[0].ambiguous_languages == ()

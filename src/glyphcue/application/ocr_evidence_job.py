@@ -13,6 +13,7 @@ from glyphcue.application.ocr_invocation_policy import (
 from glyphcue.application.pipeline_metrics import PipelineMetrics
 from glyphcue.application.processing_range import ProcessingRange
 from glyphcue.application.roi_crop import crop_to_roi
+from glyphcue.application.source_identity import normalize_source_id
 from glyphcue.domain.observation import Observation
 from glyphcue.domain.provenance import Provenance, ProvenanceKind
 from glyphcue.domain.roi import ROI
@@ -107,7 +108,9 @@ def build_ocr_evidence_job(
         conn = None
         source = None
         try:
+            init_start = time.monotonic()
             ocr_engine.initialize()
+            metrics.engine_initialization_seconds = time.monotonic() - init_start
             engine_initialized = True
 
             conn = connect(db_path)
@@ -123,16 +126,30 @@ def build_ocr_evidence_job(
                 roi_frame = crop_to_roi(frame, roi)
 
                 if active_policy.should_ocr(roi_frame, timestamp):
-                    metrics.ocr_calls += 1
+                    trigger_reason = getattr(active_policy, "last_trigger_reason", "unspecified")
+                    diff_score = getattr(active_policy, "last_difference_score", None)
+                    struct_score = getattr(active_policy, "last_structural_score", None)
+                    h, w = roi_frame.shape[:2]
+
+                    t0 = time.monotonic()
                     regions = ocr_engine.recognize(roi_frame)
+                    call_latency = time.monotonic() - t0
+
+                    metrics.record_invocation(
+                        timestamp=timestamp,
+                        trigger_reason=trigger_reason,
+                        difference_score=diff_score,
+                        dimensions=(w, h),
+                        latency_seconds=call_latency,
+                        structural_score=struct_score,
+                    )
                     runtime_info = ocr_engine.runtime_info()
-                    trigger_reason = getattr(active_policy, "last_trigger_reason", None)
                     detail = {
                         "engine_version": runtime_info.version,
                         "backend": runtime_info.backend,
                         "backend_version": runtime_info.backend_version or "",
                     }
-                    if trigger_reason is not None:
+                    if trigger_reason != "unspecified":
                         detail[STATE_TRIGGER_DETAIL_KEY] = trigger_reason
 
                     non_empty_regions = [region for region in regions if region.text]
@@ -154,7 +171,8 @@ def build_ocr_evidence_job(
                                 geometry=region.geometry,
                                 frame_reference=f"{path}@{timestamp:.6f}s",
                             )
-                            observation_repository.add(observation, evidence_run_id)
+                            source_id = normalize_source_id(path)
+                            observation_repository.add(observation, evidence_run_id, source_id)
                             metrics.observations_created += 1
                     else:
                         # OCR-empty candidate: the engine found no
@@ -183,12 +201,18 @@ def build_ocr_evidence_job(
                             geometry=None,
                             frame_reference=f"{path}@{timestamp:.6f}s",
                         )
-                        observation_repository.add(observation, evidence_run_id)
+                        source_id = normalize_source_id(path)
+                        observation_repository.add(observation, evidence_run_id, source_id)
                         metrics.observations_created += 1
 
                 processed_in_range = timestamp - range_start
                 metrics.media_seconds_processed = processed_in_range
                 metrics.elapsed_seconds = time.monotonic() - wall_start
+                metrics.candidate_transition_episodes = getattr(active_policy, "candidate_transition_episodes", 0)
+                metrics.confirmed_transition_episodes = getattr(active_policy, "confirmed_transition_episodes", 0)
+                metrics.rejected_transition_episodes = getattr(active_policy, "rejected_transition_episodes", 0)
+                metrics.transition_episodes = getattr(active_policy, "transition_episodes", 0)
+                metrics.suppressed_candidate_triggers = getattr(active_policy, "suppressed_candidate_triggers", 0)
                 context.report_progress("ocr_evidence", processed_in_range, range_duration)
 
             # The frame iterator was exhausted naturally -- not by a
@@ -200,6 +224,11 @@ def build_ocr_evidence_job(
             # report 100%, not "close to it."
             metrics.media_seconds_processed = range_duration
             metrics.elapsed_seconds = time.monotonic() - wall_start
+            metrics.candidate_transition_episodes = getattr(active_policy, "candidate_transition_episodes", 0)
+            metrics.confirmed_transition_episodes = getattr(active_policy, "confirmed_transition_episodes", 0)
+            metrics.rejected_transition_episodes = getattr(active_policy, "rejected_transition_episodes", 0)
+            metrics.transition_episodes = getattr(active_policy, "transition_episodes", 0)
+            metrics.suppressed_candidate_triggers = getattr(active_policy, "suppressed_candidate_triggers", 0)
             context.report_progress("ocr_evidence", range_duration, range_duration)
         finally:
             if source is not None:

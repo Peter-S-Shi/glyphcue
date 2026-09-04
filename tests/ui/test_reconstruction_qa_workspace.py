@@ -625,3 +625,108 @@ def test_set_cues_and_priorities_populates_an_initially_empty_workspace(qapp_gua
     assert workspace.active_cue is not None
     assert workspace.active_cue.id == "c1"
     assert workspace.queue.count() == 1
+
+
+def test_queue_items_show_review_state_badges_and_review_priority(qapp_guard):
+    cues = [
+        _cue("c1", 0.0, 1.0, texts={"en": "First line"}),
+        _cue("c2", 1.0, 2.0, texts={"en": "Second line"}),
+        _cue("c3", 2.0, 3.0, texts={"en": "Third line"}),
+    ]
+    priorities = {
+        "c1": _priority("c1", 0.9, "High"),
+        "c2": _priority("c2", 0.5, "Medium"),
+        "c3": _none_priority("c3"),
+    }
+    workspace = ReconstructionQaWorkspace(cues, {}, priorities, QWidget())
+
+    # Initial pending state
+    assert "[High]" in workspace.queue.item(0).text()
+    assert "[○ Pending]" in workspace.queue.item(0).text()
+    assert "First line" in workspace.queue.item(0).text()
+
+    # Approve c1
+    workspace.approve_and_advance()
+    assert "[High]" in workspace.queue.item(0).text()
+    assert "[✓ Approved]" in workspace.queue.item(0).text()
+
+    # Discard c2
+    workspace.discard_active_cue()
+    assert "[Medium]" in workspace.queue.item(1).text()
+    assert "[✕ Discarded]" in workspace.queue.item(1).text()
+
+
+def test_review_state_and_review_priority_are_distinct_labels_in_right_pane(qapp_guard):
+    cues = [_cue("c1", 0.0, 1.0, texts={"en": "Hello"})]
+    priorities = {"c1": _priority("c1", 0.85, "High")}
+    workspace = ReconstructionQaWorkspace(cues, {}, priorities, QWidget())
+
+    assert workspace.review_state_label.text() == "Review State: ○ Pending"
+    assert workspace.priority_label.text() == "Review Priority: High (0.85)"
+
+    workspace.approve_and_advance()
+    assert workspace.review_state_label.text() == "Review State: ✓ Approved"
+
+
+def test_editing_text_and_approving_immediately_refreshes_queue_label_and_state(qapp_guard):
+    cues = [
+        _cue("c1", 0.0, 1.0, texts={"en": "Original Text"}),
+        _cue("c2", 1.0, 2.0, texts={"en": "Second Cue"}),
+    ]
+    priorities = {"c1": _priority("c1", 0.9, "High"), "c2": _none_priority("c2")}
+    workspace = ReconstructionQaWorkspace(cues, {}, priorities, QWidget())
+
+    # Edit text in right pane
+    workspace.language_layers_panel.cards[0].text_edit.setPlainText("Corrected Hand-Edited Text")
+    workspace.approve_and_advance()
+
+    # The first item in queue must immediately reflect new text and Approved state
+    c1_item_text = workspace.queue.item(0).text()
+    assert "[✓ Approved]" in c1_item_text
+    assert "Corrected Hand-Edited Text" in c1_item_text
+
+
+def test_raw_ocr_evidence_header_and_explanatory_note_are_present(qapp_guard):
+    cues = [_cue("c1", 0.0, 1.0)]
+    priorities = {"c1": _none_priority("c1")}
+    workspace = ReconstructionQaWorkspace(cues, {}, priorities, QWidget())
+
+    assert "Raw OCR Evidence" in workspace.evidence_header_label.text()
+    assert "Machine Observations" in workspace.evidence_header_label.text()
+    assert len(workspace.evidence_note_label.text()) > 0
+
+
+def test_timing_nudge_exact_50ms_steps_and_refreshes_ui(qapp_guard):
+    cues = [_cue("c1", 1.0, 2.0, texts={"en": "Test Cue"})]
+    priorities = {"c1": _none_priority("c1")}
+    workspace = ReconstructionQaWorkspace(cues, {}, priorities, QWidget())
+
+    # Verify button labels are 50ms
+    assert workspace.nudge_start_earlier_button.text() == "Start −0.05s"
+    assert workspace.nudge_start_later_button.text() == "Start +0.05s"
+    assert workspace.nudge_end_earlier_button.text() == "End −0.05s"
+    assert workspace.nudge_end_later_button.text() == "End +0.05s"
+
+    # 1. Start earlier by 0.05s -> 0.95s
+    workspace.nudge_start_earlier_button.click()
+    assert workspace.cues[0].start_time == 0.95
+    assert workspace.cues[0].end_time == 2.0
+    assert "0.950s" in workspace.cue_identity_label.text()
+    assert "⚠ Needs Review" in workspace.review_state_label.text()
+    assert "[⚠ Needs Review]" in workspace.queue.item(0).text()
+
+    # 2. Start later by 0.05s -> 1.0s
+    workspace.nudge_start_later_button.click()
+    assert workspace.cues[0].start_time == 1.0
+    assert "1.000s" in workspace.cue_identity_label.text()
+
+    # 3. End later by 0.05s -> 2.05s
+    workspace.nudge_end_later_button.click()
+    assert workspace.cues[0].end_time == 2.05
+    assert "2.050s" in workspace.cue_identity_label.text()
+
+    # 4. End earlier by 0.05s -> 2.0s
+    workspace.nudge_end_earlier_button.click()
+    assert workspace.cues[0].end_time == 2.0
+    assert "2.000s" in workspace.cue_identity_label.text()
+

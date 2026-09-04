@@ -17,6 +17,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0",
+    "Pillow>=10.0",
 ]
 # V1 OCR runtime (see docs/adr/0001-ocr-runtime-selection.md). Not part
 # of `dev` or the base dependencies: paddlepaddle alone is ~400MB, so it
@@ -37,6 +38,46 @@ dev = [
 ocr = [
     "paddleocr==3.7.0",
     "paddlepaddle==3.3.1",
+    # PaddleOcrEngine._crop_polygon_region (P2 recognition-only path)
+    # imports cv2 directly for perspective-warp cropping. Not reliably
+    # pulled transitively by paddleocr/paddlepaddle -- declare it as our
+    # own direct dependency rather than relying on vendor internals.
+    "opencv-python-headless>=4.8",
+]
+# M11 P3: opt-in Windows-only DirectML accelerator (see
+# docs/adr/0001-ocr-runtime-selection.md's Milestone 11 addendum). Never
+# installed by `dev` or `ocr`, and never on non-Windows: PaddleOcrEngine
+# (above) stays the default/fallback everywhere, so a Linux/GitHub CI
+# install of `dev`/`ocr` is completely unaffected by this extra existing.
+#
+# `sys_platform == 'win32'` markers mean `pip install -e ".[directml]"` is a
+# no-op off Windows rather than an error, and mean this extra can never
+# resolve at all on the Linux CI runner even if a future workflow change
+# installed every extra unconditionally.
+#
+# Deliberately its OWN extra, not merged into `ocr`: onnxruntime-directml
+# ships the same top-level `onnxruntime` import as plain `onnxruntime` /
+# `onnxruntime-gpu` (whichever RapidOCR's own dependencies might otherwise
+# pull in) and the two cannot both be installed in one environment --
+# `pip install -e ".[ocr,directml]"` together is unsupported and will
+# silently resolve to whichever onnxruntime distribution pip picks last.
+# Install `[directml]` in its own venv/environment, separate from `[ocr]`,
+# until that upstream conflict has a real resolution.
+#
+# Pinned exactly, matching the pair actually re-verified for the P3/P4B gates
+# (RapidOCR 3.9.2 / onnxruntime-directml 1.24.4 on Windows). The rec and det
+# models loaded (PP-OCRv6_rec_small.onnx, ~21.2MB; PP-OCRv6_det_medium.onnx,
+# ~62.1MB) are not bundled or versioned by GlyphCue in git: RapidOCR/DirectML
+# manages model caching on first use, exactly as paddleocr/paddlepaddle already
+# do for the Paddle path above. GLYPHCUE_DIRECTML_MODELS_DIR /
+# GLYPHCUE_DIRECTML_PACKAGES_DIR (glyphcue/adapters/directml_ocr_engine.py,
+# glyphcue/adapters/directml_text_detector.py) are optional local overrides
+# for offline/pinned-artifact test environments only, not required for a normal install.
+directml = [
+    "rapidocr==3.9.2; sys_platform == 'win32'",
+    "onnxruntime-directml==1.24.4; sys_platform == 'win32'",
+    "pyclipper>=1.3; sys_platform == 'win32'",
+    "opencv-python-headless>=4.8; sys_platform == 'win32'",
 ]
 
 [tool.setuptools.packages.find]

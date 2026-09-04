@@ -1,8 +1,8 @@
-from __future__ import annotations
-
-from typing import Protocol, runtime_checkable
+from collections.abc import Sequence
+from typing import Any, Protocol, runtime_checkable
 
 from glyphcue.adapters.ocr_types import OcrRuntimeInfo, OcrTextRegion
+
 
 
 @runtime_checkable
@@ -51,3 +51,27 @@ class OcrEngine(Protocol):
     def shutdown(self) -> None:
         """Release runtime resources. Safe to call more than once."""
         ...
+
+
+@runtime_checkable
+class RegionOcrEngine(OcrEngine, Protocol):
+    """An OcrEngine that supports recognition-only on pre-localized text regions.
+
+    Eliminates redundant text detection when region geometry (e.g. from an
+    external text detector in Hybrid mode) is already available. Implementations
+    must catch vendor exceptions and raise OcrRecognitionError, returning only
+    GlyphCue-normalized OcrTextRegion items.
+    """
+
+    def recognize_regions(
+        self,
+        image: object,
+        regions: Sequence[Any],
+    ) -> list[OcrTextRegion]:
+        """Run recognition on pre-localized polygon regions within image.
+
+        Raises OcrRecognitionError (never a vendor exception) on failure.
+        """
+        ...
+
+

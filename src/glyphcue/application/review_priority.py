@@ -216,6 +216,7 @@ def review_signals_from_consensus_diagnostics(
         had_disagreement=diagnostics.had_disagreement,
         missing_language_count=0,
         ambiguous_language_count=0,
+        disagreement_detail=diagnostics.disagreement_detail,
     )
 
 

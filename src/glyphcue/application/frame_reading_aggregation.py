@@ -1,13 +1,21 @@
 from __future__ import annotations
 
+from typing import Callable
+
 from glyphcue.domain.observation import Observation
 from glyphcue.domain.provenance import Provenance
 
 _MEMBER_ID_SEPARATOR = "\x1f"
 _MEMBER_IDS_DETAIL_KEY = "member_observation_ids"
 
+ReadingOrderKey = Callable[[Observation], tuple[float, float]]
 
-def aggregate_same_frame_observations(observations: list[Observation]) -> list[Observation]:
+
+def aggregate_same_frame_observations(
+    observations: list[Observation],
+    *,
+    reading_order_key: ReadingOrderKey | None = None,
+) -> list[Observation]:
     """Combines Observations that came from the same physical OCR frame
     into one reading per frame, in stable reading order, before any
     cross-frame consensus runs.
@@ -30,6 +38,20 @@ def aggregate_same_frame_observations(observations: list[Observation]) -> list[O
     with no separator. Every contributing Observation's id is preserved
     -- see `member_observation_ids` -- even though the combined reading
     gets one new id.
+
+    `reading_order_key` overrides the default geometry-based sort used to
+    decide join order (never the geometry-based newline decision, which
+    always uses each observation's own real y-range regardless of this
+    override). Milestone 6's multilingual path needs this: it already
+    computes a canonical, language-based order once
+    (`multilingual_reconstruction._canonicalize_frame_order`) so that a
+    stable bilingual subtitle whose physical layer POSITIONS happen to
+    swap between frames still joins into the same string every frame --
+    the default geometry sort would silently re-derive (and disagree
+    with) that canonical order from each frame's own raw positions,
+    reintroducing the exact false state-boundary this parameter exists to
+    prevent. The single-language M5 caller passes nothing and keeps the
+    original geometry-only behavior unchanged.
     """
     if not observations:
         return []
@@ -46,7 +68,9 @@ def aggregate_same_frame_observations(observations: list[Observation]) -> list[O
     aggregated: list[Observation] = []
     for key in order:
         group = groups[key]
-        aggregated.append(group[0] if len(group) == 1 else _combine(group))
+        aggregated.append(
+            group[0] if len(group) == 1 else _combine(group, reading_order_key)
+        )
     return aggregated
 
 
@@ -90,8 +114,8 @@ def _on_a_new_visual_line(previous_y_range: tuple[float, float] | None, current_
     return overlap <= 0
 
 
-def _combine(group: list[Observation]) -> Observation:
-    ordered = sorted(group, key=_reading_order_key)  # stable: ties keep original order
+def _combine(group: list[Observation], reading_order_key: ReadingOrderKey | None) -> Observation:
+    ordered = sorted(group, key=reading_order_key or _reading_order_key)  # stable: ties keep original order
 
     parts: list[str] = []
     previous_y_range: tuple[float, float] | None = None

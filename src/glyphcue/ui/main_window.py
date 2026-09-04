@@ -53,23 +53,27 @@ class MainWindow(QMainWindow):
         self.setStyleSheet(base_stylesheet())
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
-        splitter.addWidget(
-            left_pane
-            or _placeholder_pane("Structure + Queue", "Left pane — reconstruction queue")
-        )
-        splitter.addWidget(
-            center_pane
-            or _placeholder_pane(
-                "Primary Evidence Workspace", "Center pane — Path A/B evidence"
-            )
-        )
-        splitter.addWidget(
-            right_pane
-            or _placeholder_pane(
-                "Reconstruction QA", "Right pane — QA + supporting evidence"
-            )
-        )
-        splitter.setSizes([1, 2, 1])
+        left = left_pane or _placeholder_pane("Structure + Queue", "Left pane — reconstruction queue")
+        center = center_pane or _placeholder_pane("Primary Evidence Workspace", "Center pane — Path A/B evidence")
+        right = right_pane or _placeholder_pane("Reconstruction QA", "Right pane — QA + supporting evidence")
+
+        left.setMinimumWidth(260)
+        center.setMinimumWidth(400)
+        right.setMinimumWidth(320)
+
+        splitter.addWidget(left)
+        splitter.addWidget(center)
+        splitter.addWidget(right)
+
+        splitter.setCollapsible(0, False)
+        splitter.setCollapsible(1, False)
+        splitter.setCollapsible(2, False)
+
+        splitter.setStretchFactor(0, 0)
+        splitter.setStretchFactor(1, 1)
+        splitter.setStretchFactor(2, 0)
+
+        splitter.setSizes([280, 640, 360])
 
         self.setCentralWidget(splitter)
         self.statusBar().showMessage("Local-first · Idle")

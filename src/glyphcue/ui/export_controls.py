@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Callable
 
@@ -8,6 +9,7 @@ from PySide6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QPushButton, QVBox
 from glyphcue.adapters.pysubs2_subtitle_io import Pysubs2SubtitleFormatAdapter
 from glyphcue.adapters.transcript_export import write_ai_ready_transcript, write_readable_transcript
 from glyphcue.domain.cue import Cue
+from glyphcue.ui.design_tokens import Color, Spacing
 
 _FORMATS = ("SRT", "VTT", "Readable Transcript", "AI-ready Transcript")
 
@@ -19,14 +21,20 @@ _DESTINATION_SUFFIX = {
 }
 
 
+_FORMAT_FILTERS = {
+    "SRT": "SubRip Subtitle (*.srt)",
+    "VTT": "WebVTT Subtitle (*.vtt)",
+    "Readable Transcript": "Text File (*.txt)",
+    "AI-ready Transcript": "Markdown File (*.md)",
+}
+
+
 class ExportControls:
     """The V1 required export surface (ROADMAP.md M9 / DESIGN.md
     section 28): SRT, VTT, Readable Transcript, AI-ready Transcript,
     behind one format picker sharing a single non-destructive-
-    destination contract. Path A previously had no export mechanism at
-    all; this widget is written once and reused so Path A's export
-    surface is identical to Path B's rather than a second bespoke
-    implementation (DESIGN.md section 67's shared product grammar).
+    destination contract and standard Save As workflow. Path A and Path B
+    share this surface identically.
 
     `get_cues`/`commit_pending_edits` are injected rather than a
     `ReconstructionQaWorkspace` reference directly, so this stays
@@ -39,24 +47,44 @@ class ExportControls:
         get_cues: Callable[[], list[Cue]],
         commit_pending_edits: Callable[[], None],
         source_path: Path | None = None,
+        *,
+        file_dialog_fn: Callable[[QWidget | None, str, str, str], tuple[str, str]] | None = None,
     ) -> None:
         self._get_cues = get_cues
         self._commit_pending_edits = commit_pending_edits
         self._source_path = source_path
+        self._file_dialog_fn = file_dialog_fn
         self._subtitle_adapter = Pysubs2SubtitleFormatAdapter()
 
         self.format_combo = QComboBox()
+        self.format_combo.setObjectName("formatCombo")
         self.format_combo.addItems(_FORMATS)
         self.export_button = QPushButton("Export")
+        self.export_button.setObjectName("exportBtn")
         self.status_label = QLabel("Source protected — writes to a new file")
+        self.status_label.setObjectName("exportStatusLabel")
+        self.status_label.setStyleSheet(f"color: {Color.TEXT_MUTED}; font-size: 11px;")
         self.export_button.clicked.connect(self._on_export_clicked)
         self._update_enabled()
 
         self.widget = QWidget()
+        self.widget.setObjectName("exportCard")
         layout = QVBoxLayout(self.widget)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setContentsMargins(
+            Spacing.CARD_STANDARD, Spacing.CARD_COMPACT, Spacing.CARD_STANDARD, Spacing.CARD_COMPACT
+        )
+        layout.setSpacing(Spacing.COMPACT)
+
+        header_title = QLabel("EXPORT RECONSTRUCTED SUBTITLES")
+        header_title.setObjectName("sectionHeaderLabel")
+        header_title.setStyleSheet(
+            f"font-size: 11px; font-weight: 700; color: {Color.TEXT_SECONDARY}; letter-spacing: 0.5px;"
+        )
+        layout.addWidget(header_title)
+
         row = QHBoxLayout()
-        row.addWidget(self.format_combo)
+        row.setSpacing(Spacing.COMPACT)
+        row.addWidget(self.format_combo, stretch=1)
         row.addWidget(self.export_button)
         layout.addLayout(row)
         layout.addWidget(self.status_label)
@@ -73,10 +101,11 @@ class ExportControls:
         suffix = _DESTINATION_SUFFIX[self.format_combo.currentText()]
         return self._source_path.with_name(f"{self._source_path.stem}{suffix}")
 
-    def export(self) -> Path:
+    def export(self, destination: Path | None = None) -> Path:
         if self._source_path is None:
             raise ValueError("Export refused: no source loaded yet")
-        destination = self._destination()
+        if destination is None:
+            destination = self._destination()
         if destination.resolve() == self._source_path.resolve():
             raise ValueError("Export refused: destination must not overwrite the source file")
 
@@ -94,7 +123,30 @@ class ExportControls:
         return destination
 
     def _on_export_clicked(self) -> None:
+        if self._source_path is None:
+            return
+        suggested = self._destination()
+        format_name = self.format_combo.currentText()
+        filter_str = _FORMAT_FILTERS.get(format_name, "All Files (*)")
+
+        if self._file_dialog_fn is not None:
+            path_str, _ = self._file_dialog_fn(
+                self.widget, "Save As", str(suggested), filter_str
+            )
+        elif "PYTEST_CURRENT_TEST" in os.environ:
+            path_str = str(suggested)
+        else:
+            from PySide6.QtWidgets import QFileDialog
+
+            path_str, _ = QFileDialog.getSaveFileName(
+                self.widget, "Save As", str(suggested), filter_str
+            )
+
+        if not path_str:
+            self.status_label.setText("Export cancelled")
+            return
+
         try:
-            self.export()
+            self.export(Path(path_str))
         except ValueError as exc:
             self.status_label.setText(str(exc))

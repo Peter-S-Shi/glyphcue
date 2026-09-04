@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from glyphcue.domain.observation import Observation
+from glyphcue.domain.caption_identity import ROLE_KEY
 
 
 def select_curated_evidence(
@@ -43,6 +44,9 @@ def select_curated_evidence(
         _add(middle)  # representative consensus, when nothing disagreed
 
     _add(ordered[-1])  # out-point
+    for observation in ordered:
+        if observation.provenance.detail.get(ROLE_KEY) == "envelope":
+            _add(observation)  # complete alternatives/timing, not a blank OCR read
 
     curated.sort(key=lambda observation: observation.start_time)
     return curated

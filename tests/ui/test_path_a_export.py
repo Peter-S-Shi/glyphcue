@@ -34,6 +34,7 @@ def test_export_srt_writes_a_reconstructed_srt_file_next_to_the_video(qapp_guard
     pane = _pane(tmp_path)
     pane._video_path = video_path
     pane.export_controls.set_source_path(video_path)
+    pane.export_controls._file_dialog_fn = lambda _w, _t, d, _f: (d, "")
     pane.qa.set_cues_and_priorities([_cue("c1", "reconstructed line")], {}, {})
 
     pane.export_controls.format_combo.setCurrentText("SRT")
@@ -50,6 +51,7 @@ def test_export_readable_transcript_writes_a_transcript_file(qapp_guard, tmp_pat
     pane = _pane(tmp_path)
     pane._video_path = video_path
     pane.export_controls.set_source_path(video_path)
+    pane.export_controls._file_dialog_fn = lambda _w, _t, d, _f: (d, "")
     pane.qa.set_cues_and_priorities([_cue("c1", "reconstructed line")], {}, {})
 
     pane.export_controls.format_combo.setCurrentText("Readable Transcript")

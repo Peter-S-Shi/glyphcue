@@ -153,3 +153,32 @@ def test_cancelled_partial_evidence_stays_scoped_to_its_run(repository):
 
     assert [obs.id for obs in repository.list_for_run("run-cancelled")] == ["obs-partial"]
     assert [obs.id for obs in repository.list_for_run("run-2")] == ["obs-rerun"]
+
+
+def test_add_with_source_id_and_list_for_source(repository):
+    obs_a1 = Observation(id="obs-a1", text="a1", start_time=1.0, end_time=1.1, provenance=Provenance(ProvenanceKind.OCR_ENGINE, "source"))
+    obs_a2 = Observation(id="obs-a2", text="a2", start_time=2.0, end_time=2.1, provenance=Provenance(ProvenanceKind.OCR_ENGINE, "source"))
+    obs_b1 = Observation(id="obs-b1", text="b1", start_time=0.5, end_time=0.6, provenance=Provenance(ProvenanceKind.OCR_ENGINE, "source"))
+
+    repository.add(obs_a1, evidence_run_id="run-1", source_id="source_a.mp4")
+    repository.add(obs_a2, evidence_run_id="run-2", source_id="source_a.mp4")
+    repository.add(obs_b1, evidence_run_id="run-3", source_id="source_b.mp4")
+
+    assert [obs.id for obs in repository.list_for_source("source_a.mp4")] == ["obs-a1", "obs-a2"]
+    assert [obs.id for obs in repository.list_for_source("source_b.mp4")] == ["obs-b1"]
+    assert repository.list_for_source("unknown.mp4") == []
+
+
+def test_get_by_ids_returns_dictionary_of_matching_observations(repository):
+    obs_1 = Observation(id="obs-1", text="1", start_time=1.0, end_time=1.1, provenance=Provenance(ProvenanceKind.OCR_ENGINE, "source"))
+    obs_2 = Observation(id="obs-2", text="2", start_time=2.0, end_time=2.1, provenance=Provenance(ProvenanceKind.OCR_ENGINE, "source"))
+    obs_3 = Observation(id="obs-3", text="3", start_time=3.0, end_time=3.1, provenance=Provenance(ProvenanceKind.OCR_ENGINE, "source"))
+
+    repository.add(obs_1, evidence_run_id="run-1", source_id="source.mp4")
+    repository.add(obs_2, evidence_run_id="run-1", source_id="source.mp4")
+    repository.add(obs_3, evidence_run_id="run-1", source_id="source.mp4")
+
+    result = repository.get_by_ids(["obs-1", "obs-3", "obs-missing"])
+    assert result == {"obs-1": obs_1, "obs-3": obs_3}
+
+

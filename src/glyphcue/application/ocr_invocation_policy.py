@@ -4,7 +4,10 @@ from typing import Protocol, runtime_checkable
 
 import numpy as np
 
-from glyphcue.application.change_detection import frame_difference_score
+from glyphcue.application.change_detection import (
+    frame_difference_score,
+    subtitle_structural_difference,
+)
 
 
 @runtime_checkable
@@ -20,53 +23,157 @@ class OcrInvocationPolicy(Protocol):
 
 
 class ChangeTriggeredOcrPolicy:
-    """The default, selective policy: OCR the first frame (to establish
-    a baseline), OCR again whenever `frame_difference_score` against the
-    last-OCR'd frame exceeds `change_threshold`, and otherwise force a
-    periodic confirmation OCR every `max_gap_seconds` even without a
-    detected change (state could have drifted without a large enough
-    single-frame difference, e.g. a slow fade).
-
-    Deliberately a commodity technique -- no novelty claim is made about
-    this change-detection approach (ROADMAP Milestone 4, gate 8).
+    """The production selective policy with Subtitle-Aware Change Confirmation & Temporal Episode Detection:
+    - Holds the pre-episode confirmed OCR baseline fixed while temporal evidence accumulates.
+    - Low `change_threshold` acts as a cheap candidate-onset signal only; it does NOT immediately invoke OCR.
+    - Suppresses OCR throughout an unstable transition burst (e.g. cross-dissolves, scene cuts).
+    - When the episode settles, evaluates whether the settled state has a confirmed subtitle structural difference against the fixed baseline.
+    - If confirmed, invokes OCR ONCE on the stable representative frame and updates the confirmed baseline.
+    - If rejected (e.g. moving background without subtitle structure change), adapts the visual reference without calling OCR.
+    - Discards transient spikes and low-amplitude background noise without invoking OCR.
+    - Forces periodic confirmation OCR every `max_gap_seconds` when no change occurs.
     """
 
-    def __init__(self, change_threshold: float = 0.02, max_gap_seconds: float = 2.0) -> None:
+    def __init__(
+        self,
+        change_threshold: float = 0.02,
+        confirmation_threshold: float = 0.012,
+        stability_threshold: float = 0.015,
+        min_stable_frames: int = 1,
+        min_episode_duration: float = 0.033,
+        max_transition_seconds: float = 0.35,
+        max_gap_seconds: float = 2.0,
+    ) -> None:
         self._change_threshold = change_threshold
+        self._confirmation_threshold = confirmation_threshold
+        self._stability_threshold = stability_threshold
+        self._min_stable_frames = min_stable_frames
+        self._min_episode_duration = min_episode_duration
+        self._max_transition_seconds = max_transition_seconds
         self._max_gap_seconds = max_gap_seconds
-        self._last_ocr_frame: np.ndarray | None = None
-        self._last_ocr_timestamp: float | None = None
+
+        self._confirmed_ocr_frame: np.ndarray | None = None
+        self._confirmed_ocr_timestamp: float | None = None
+        self._prev_frame: np.ndarray | None = None
+        self._prev_timestamp: float | None = None
+
+        self._candidate_episode_active: bool = False
+        self._candidate_start_timestamp: float | None = None
+        self._stable_run_count: int = 0
+
         self.last_trigger_reason: str | None = None
-        """Why the most recent `should_ocr()` call that returned True
-        did so -- "first_frame", "change_detected", or
-        "periodic_confirmation". Unchanged by calls that return False.
-        Not part of the `OcrInvocationPolicy` Protocol (an optional,
-        duck-typed extra `build_ocr_evidence_job` reads via getattr()
-        when present) -- M5's multi-frame consensus uses this as real,
-        already-computed evidence for genuine state-change boundaries,
-        instead of guessing them from OCR text similarity alone."""
+        self.last_difference_score: float | None = None
+        self.last_structural_score: float | None = None
+        self.last_rejection_reason: str | None = None
+        self.candidate_transition_episodes: int = 0
+        self.confirmed_transition_episodes: int = 0
+        self.rejected_transition_episodes: int = 0
+        self.suppressed_candidate_triggers: int = 0
+
+    @property
+    def transition_episodes(self) -> int:
+        """Alias for confirmed_transition_episodes for diagnostics compatibility."""
+        return self.confirmed_transition_episodes
 
     def should_ocr(self, roi_frame: np.ndarray, timestamp: float) -> bool:
-        if self._last_ocr_frame is None:
-            decision, reason = True, "first_frame"
-        elif roi_frame.shape != self._last_ocr_frame.shape:
-            # A shape change (e.g. ROI edited mid-run) is itself a state
-            # change worth confirming.
-            decision, reason = True, "change_detected"
-        else:
-            score = frame_difference_score(self._last_ocr_frame, roi_frame)
-            gap = timestamp - self._last_ocr_timestamp
-            if score > self._change_threshold:
-                decision, reason = True, "change_detected"
-            elif gap >= self._max_gap_seconds:
-                decision, reason = True, "periodic_confirmation"
-            else:
-                decision, reason = False, None
+        if self._confirmed_ocr_frame is None:
+            self._confirmed_ocr_frame = roi_frame
+            self._confirmed_ocr_timestamp = timestamp
+            self._prev_frame = roi_frame
+            self._prev_timestamp = timestamp
+            self.last_trigger_reason = "first_frame"
+            self.last_difference_score = None
+            self.last_structural_score = None
+            return True
 
-        if decision:
-            self._last_ocr_frame = roi_frame
-            self._last_ocr_timestamp = timestamp
-            self.last_trigger_reason = reason
+        if roi_frame.shape != self._confirmed_ocr_frame.shape:
+            self._confirmed_ocr_frame = roi_frame
+            self._confirmed_ocr_timestamp = timestamp
+            self._prev_frame = roi_frame
+            self._prev_timestamp = timestamp
+            self._candidate_episode_active = False
+            self.last_trigger_reason = "change_detected"
+            self.last_difference_score = None
+            self.last_structural_score = None
+            self.confirmed_transition_episodes += 1
+            return True
+
+        diff_against_confirmed = frame_difference_score(self._confirmed_ocr_frame, roi_frame)
+        consecutive_diff = (
+            frame_difference_score(self._prev_frame, roi_frame)
+            if self._prev_frame is not None and self._prev_frame.shape == roi_frame.shape
+            else 0.0
+        )
+
+        decision = False
+        reason = None
+
+        if not self._candidate_episode_active:
+            if diff_against_confirmed <= self._change_threshold:
+                gap = timestamp - (self._confirmed_ocr_timestamp or 0.0)
+                if gap >= self._max_gap_seconds:
+                    decision, reason = True, "periodic_confirmation"
+                    self._confirmed_ocr_frame = roi_frame
+                    self._confirmed_ocr_timestamp = timestamp
+                    self.last_trigger_reason = reason
+                    self.last_difference_score = diff_against_confirmed
+                    self.last_structural_score = 0.0
+            else:
+                # Candidate onset: do NOT invoke OCR immediately; hold confirmed baseline fixed
+                self._candidate_episode_active = True
+                self._candidate_start_timestamp = timestamp
+                self.candidate_transition_episodes += 1
+                self.suppressed_candidate_triggers += 1
+                self._stable_run_count = 1 if consecutive_diff <= self._stability_threshold else 0
+        else:
+            # Candidate episode in progress
+            if diff_against_confirmed <= self._change_threshold:
+                # Reverted to confirmed baseline (transient spike / noise)
+                self._candidate_episode_active = False
+                self._stable_run_count = 0
+                self.rejected_transition_episodes += 1
+                self.last_rejection_reason = "reverted_to_baseline"
+            else:
+                if consecutive_diff <= self._stability_threshold:
+                    self._stable_run_count += 1
+                else:
+                    self._stable_run_count = 0
+
+                elapsed_in_episode = timestamp - (self._candidate_start_timestamp or timestamp)
+                is_settled = (
+                    self._stable_run_count >= self._min_stable_frames
+                    and elapsed_in_episode >= (self._min_episode_duration - 1e-4)
+                ) or (elapsed_in_episode >= self._max_transition_seconds)
+
+                if is_settled:
+                    self._candidate_episode_active = False
+                    self._stable_run_count = 0
+                    settled_raw_diff = diff_against_confirmed
+                    settled_struct_diff = subtitle_structural_difference(
+                        self._confirmed_ocr_frame, roi_frame
+                    )
+
+                    if settled_struct_diff >= self._confirmation_threshold:
+                        decision, reason = True, "change_detected"
+                        self.confirmed_transition_episodes += 1
+                        self._confirmed_ocr_frame = roi_frame
+                        self._confirmed_ocr_timestamp = timestamp
+                        self.last_trigger_reason = reason
+                        self.last_difference_score = settled_raw_diff
+                        self.last_structural_score = settled_struct_diff
+                    else:
+                        # Rejected as background drift / no subtitle structure change
+                        self.rejected_transition_episodes += 1
+                        self.last_rejection_reason = "below_structural_threshold"
+                        self.last_difference_score = settled_raw_diff
+                        self.last_structural_score = settled_struct_diff
+                        # Adapt visual reference to avoid repeated triggering on the same drifted background
+                        self._confirmed_ocr_frame = roi_frame
+                else:
+                    self.suppressed_candidate_triggers += 1
+
+        self._prev_frame = roi_frame
+        self._prev_timestamp = timestamp
         return decision
 
 

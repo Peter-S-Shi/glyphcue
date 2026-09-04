@@ -89,12 +89,12 @@ def _run(job) -> None:
 
 @pytest.fixture
 def changing_subtitle_video(tmp_path) -> Path:
-    # gray=50 for 3 frames, gray=200 for 2 frames, back to gray=50 for 1
-    # frame: 3 real state changes worth confirming (start, change, change).
+    # gray=50 for 3 frames, gray=200 for 2 frames, back to gray=50 for 2
+    # frames: 3 real state changes worth confirming (start, change, change).
     path = tmp_path / "changing.mp4"
     _write_test_video(
         path,
-        [(0, 50), (100, 50), (200, 50), (300, 200), (400, 200), (500, 50)],
+        [(0, 50), (100, 50), (200, 50), (300, 200), (400, 200), (500, 50), (600, 50)],
     )
     return path
 
@@ -134,8 +134,8 @@ def test_job_produces_observations_with_source_correct_pts(
 
     assert job.state is JobState.SUCCEEDED
     observed_pts = sorted(obs.start_time for obs in _read_repository(db_path).list_all())
-    # Real per-frame PTS (0.0, 0.3, 0.5s), never frame_index/fps.
-    assert observed_pts == [0.0, 0.3, 0.5]
+    # Real per-frame PTS (0.0, 0.4, 0.6s), never frame_index/fps.
+    assert observed_pts == [0.0, 0.4, 0.6]
 
 
 def test_job_only_produces_observations_within_the_processing_range(
@@ -284,8 +284,8 @@ def test_a_detected_change_is_stamped_as_the_state_trigger(qapp_guard, tmp_path,
     _run(job)
 
     observations = sorted(_read_repository(db_path).list_all(), key=lambda o: o.start_time)
-    # frame at 0.3s is a real gray-50 -> gray-200 pixel change.
-    changed = next(o for o in observations if o.start_time == pytest.approx(0.3))
+    # frame at 0.4s is a real settled gray-50 -> gray-200 pixel change.
+    changed = next(o for o in observations if o.start_time == pytest.approx(0.4))
     assert changed.provenance.detail["state_trigger"] == "change_detected"
 
 
@@ -329,7 +329,7 @@ def test_instrumentation_counts_match_the_real_execution_path(
 
     _run(job)
 
-    assert metrics.frames_analyzed == 6
+    assert metrics.frames_analyzed == 7
     assert metrics.ocr_calls == 3
     assert metrics.observations_created == len(_read_repository(db_path).list_all())
     assert metrics.elapsed_seconds > 0

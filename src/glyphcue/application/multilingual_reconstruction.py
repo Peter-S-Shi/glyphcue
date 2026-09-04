@@ -91,6 +91,63 @@ def _canonicalize_frame_order(
     return canonical
 
 
+def _assign_per_frame_then_merge_lines(
+    voting_raw: list[Observation], expected_languages: tuple[str, ...]
+) -> tuple[dict[str, list[list[Observation]]], set[str]]:
+    """Assigns a run's raw voting Observations to languages one PHYSICAL
+    FRAME at a time, then merges each language's per-frame lines by
+    LINE INDEX (top-to-bottom position within that one frame) across
+    every frame in the run.
+
+    `assign_observations_to_languages` clusters by absolute vertical
+    geometry, which is only a safe "same real line" signal *within one
+    frame* -- its own docstring's premise is multiple ENGINES reading
+    the SAME frame. Calling it on a whole multi-frame run's raw
+    observations flattened together (as if they were one frame) breaks
+    that premise the moment two languages' layers physically swap
+    vertical position between frames in the same run (nothing in the
+    subtitle content changed, only which layer renders on top): a
+    cross-frame Y-band ends up holding readings of two DIFFERENT
+    languages, gets classified by whichever member's script happens to
+    be checked first, and the resulting "vote" silently mixes votes for
+    one language's text with the other's -- a wrong-but-confident
+    result, not a missing/ambiguous one.
+
+    Assigning per frame keeps every frame's own script classification
+    decisive and position-independent (exactly what
+    `assign_observations_to_languages` already guarantees for one
+    frame), then this stitches each language's Nth line (by that
+    frame's own top-to-bottom cluster order) across every frame in the
+    run into one cross-frame vote per line -- the multi-frame
+    consensus-per-real-line semantics `_reconstruct_one_multilingual_cue`
+    already expects, computed the way that's actually safe to compute.
+    """
+    frame_groups: dict[str, list[Observation]] = {}
+    order: list[str] = []
+    for observation in voting_raw:
+        key = observation.frame_reference if observation.frame_reference else f"__no_frame__{observation.id}"
+        if key not in frame_groups:
+            frame_groups[key] = []
+            order.append(key)
+        frame_groups[key].append(observation)
+
+    per_language_lines: dict[str, list[list[Observation]]] = {language: [] for language in expected_languages}
+    ambiguous_languages: set[str] = set()
+    for key in order:
+        frame_buckets, frame_ambiguous = assign_observations_to_languages(
+            frame_groups[key], expected_languages
+        )
+        ambiguous_languages |= frame_ambiguous
+        for language in expected_languages:
+            lines = per_language_lines[language]
+            for line_index, cluster in enumerate(frame_buckets[language]):
+                if line_index == len(lines):
+                    lines.append([])
+                lines[line_index].extend(cluster)
+
+    return per_language_lines, ambiguous_languages
+
+
 def reconstruct_multilingual_cues_for_track_group(
     observations: list[Observation],
     track_group: TrackGroup,
@@ -144,8 +201,20 @@ def reconstruct_multilingual_cues_for_track_group(
     raw_by_id = {observation.id: observation for observation in observations}
     ordered = sorted(observations, key=lambda observation: observation.start_time)
     canonical = _canonicalize_frame_order(ordered, track_group.languages)
+    # Join same-frame regions in canonicalize's language-based order, not
+    # each frame's own raw geometry order: two frames of the same stable
+    # multi-language subtitle can have their physical layer POSITIONS
+    # swap (nothing in the video content changed, only which language
+    # happens to render on top) -- re-deriving order from that frame's
+    # own geometry would disagree frame-to-frame and manufacture a false
+    # state boundary in group_into_state_runs below. See
+    # aggregate_same_frame_observations's reading_order_key docstring.
+    canonical_rank = {observation.id: index for index, observation in enumerate(canonical)}
     aggregated = sorted(
-        aggregate_same_frame_observations(canonical), key=lambda observation: observation.start_time
+        aggregate_same_frame_observations(
+            canonical, reading_order_key=lambda observation: (float(canonical_rank[observation.id]), 0.0)
+        ),
+        key=lambda observation: observation.start_time,
     )
     entries = group_into_state_runs(aggregated, similarity_threshold)
 
@@ -184,7 +253,7 @@ def _reconstruct_one_multilingual_cue(
             if member is not None and member.text:
                 voting_raw.append(member)
 
-    buckets, ambiguous_languages = assign_observations_to_languages(voting_raw, expected_languages)
+    buckets, ambiguous_languages = _assign_per_frame_then_merge_lines(voting_raw, expected_languages)
 
     layers: list[LanguageLayer] = []
     languages_present: list[str] = []

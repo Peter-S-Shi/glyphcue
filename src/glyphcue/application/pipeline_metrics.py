@@ -1,19 +1,48 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Any
+
+import numpy as np
+
+
+@dataclass(frozen=True)
+class OcrInvocationRecord:
+    """Individual record for one OCR recognize() call in a run."""
+
+    timestamp: float
+    trigger_reason: str
+    difference_score: float | None
+    dimensions: tuple[int, int]
+    latency_seconds: float
+    structural_score: float | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "timestamp": round(self.timestamp, 4),
+            "trigger_reason": self.trigger_reason,
+            "difference_score": (
+                round(self.difference_score, 4)
+                if self.difference_score is not None
+                else None
+            ),
+            "structural_score": (
+                round(self.structural_score, 4)
+                if self.structural_score is not None
+                else None
+            ),
+            "dimensions": list(self.dimensions),
+            "latency_ms": round(self.latency_seconds * 1000.0, 2),
+            "latency_seconds": round(self.latency_seconds, 4),
+        }
 
 
 @dataclass
 class PipelineMetrics:
     """Honest, real-execution instrumentation for an OCR evidence job.
 
-    Mutable and passed in by the caller (mirroring how `JobContext` is
-    passed into a `Job`'s work function): the job's work closure
-    accumulates into it as it actually runs, and the caller reads it
-    after the job finishes. Every field is a plain count/measurement
-    taken from the real execution path -- nothing here is estimated or
-    fabricated (ROADMAP Milestone 4: "metrics must come from a real
-    execution path, no fake telemetry").
+    Mutable and passed in by the caller: accumulated during real job execution
+    and read by callers for diagnostics and performance reports.
     """
 
     frames_analyzed: int = 0
@@ -21,6 +50,40 @@ class PipelineMetrics:
     observations_created: int = 0
     elapsed_seconds: float = 0.0
     media_seconds_processed: float = 0.0
+    engine_initialization_seconds: float = 0.0
+    candidate_transition_episodes: int = 0
+    confirmed_transition_episodes: int = 0
+    rejected_transition_episodes: int = 0
+    transition_episodes: int = 0
+    suppressed_candidate_triggers: int = 0
+    # Text DETECTION, as distinct from recognition: only the hybrid
+    # profile pays this, and the honest cost of that profile is the two
+    # together. Left at zero by the production trigger path, which never
+    # runs a detector of its own.
+    detector_calls: int = 0
+    detector_seconds: float = 0.0
+    invocation_records: list[OcrInvocationRecord] = field(default_factory=list)
+
+    def record_invocation(
+        self,
+        timestamp: float,
+        trigger_reason: str,
+        difference_score: float | None,
+        dimensions: tuple[int, int],
+        latency_seconds: float,
+        structural_score: float | None = None,
+    ) -> None:
+        self.invocation_records.append(
+            OcrInvocationRecord(
+                timestamp=timestamp,
+                trigger_reason=trigger_reason,
+                difference_score=difference_score,
+                dimensions=dimensions,
+                latency_seconds=latency_seconds,
+                structural_score=structural_score,
+            )
+        )
+        self.ocr_calls = len(self.invocation_records)
 
     @property
     def ocr_calls_per_minute(self) -> float:
@@ -29,8 +92,115 @@ class PipelineMetrics:
         return self.ocr_calls / self.elapsed_seconds * 60.0
 
     @property
+    def ocr_calls_per_media_minute(self) -> float:
+        if self.media_seconds_processed <= 0:
+            return 0.0
+        return self.ocr_calls / self.media_seconds_processed * 60.0
+
+    @property
     def effective_processing_speed(self) -> float:
-        """Media seconds processed per wall-clock second (real-time factor)."""
+        """Media seconds processed per wall-clock second (e.g. 2.0x realtime processing speed)."""
         if self.elapsed_seconds <= 0:
             return 0.0
         return self.media_seconds_processed / self.elapsed_seconds
+
+    @property
+    def wall_media_ratio(self) -> float:
+        """Wall-clock elapsed seconds per media second processed (e.g. 20.0x slower than realtime)."""
+        if self.media_seconds_processed <= 0:
+            return 0.0
+        return self.elapsed_seconds / self.media_seconds_processed
+
+    @property
+    def slowdown_factor(self) -> float:
+        """Alias for wall_media_ratio."""
+        return self.wall_media_ratio
+
+    @property
+    def trigger_counts(self) -> dict[str, int]:
+        counts: dict[str, int] = {}
+        for r in self.invocation_records:
+            counts[r.trigger_reason] = counts.get(r.trigger_reason, 0) + 1
+        return counts
+
+    @property
+    def latency_mean_seconds(self) -> float:
+        if not self.invocation_records:
+            return 0.0
+        return float(np.mean([r.latency_seconds for r in self.invocation_records]))
+
+    @property
+    def latency_median_seconds(self) -> float:
+        if not self.invocation_records:
+            return 0.0
+        return float(np.median([r.latency_seconds for r in self.invocation_records]))
+
+    @property
+    def latency_p95_seconds(self) -> float:
+        if not self.invocation_records:
+            return 0.0
+        return float(np.percentile([r.latency_seconds for r in self.invocation_records], 95))
+
+    def to_dict(self, include_invocations: bool = True) -> dict[str, Any]:
+        result: dict[str, Any] = {
+            "summary": {
+                "frames_analyzed": self.frames_analyzed,
+                "ocr_calls": self.ocr_calls,
+                "observations_created": self.observations_created,
+                "media_seconds_processed": round(self.media_seconds_processed, 3),
+                "elapsed_seconds": round(self.elapsed_seconds, 3),
+                "engine_initialization_seconds": round(self.engine_initialization_seconds, 4),
+                "candidate_transition_episodes": self.candidate_transition_episodes,
+                "confirmed_transition_episodes": self.confirmed_transition_episodes,
+                "rejected_transition_episodes": self.rejected_transition_episodes,
+                "transition_episodes": self.transition_episodes or self.confirmed_transition_episodes,
+                "suppressed_candidate_triggers": self.suppressed_candidate_triggers,
+                "detector_calls": self.detector_calls,
+                "detector_seconds": round(self.detector_seconds, 3),
+                "ocr_calls_per_media_minute": round(self.ocr_calls_per_media_minute, 2),
+                "effective_processing_speed": round(self.effective_processing_speed, 3),
+                "wall_media_ratio": round(self.wall_media_ratio, 3),
+                "slowdown_factor": round(self.slowdown_factor, 3),
+                "trigger_counts": self.trigger_counts,
+                "latency_mean_ms": round(self.latency_mean_seconds * 1000.0, 2),
+                "latency_median_ms": round(self.latency_median_seconds * 1000.0, 2),
+                "latency_p95_ms": round(self.latency_p95_seconds * 1000.0, 2),
+            }
+        }
+        if include_invocations:
+            result["invocations"] = [r.to_dict() for r in self.invocation_records]
+        return result
+
+    def format_summary_report(self) -> str:
+        mean_ms = self.latency_mean_seconds * 1000.0
+        med_ms = self.latency_median_seconds * 1000.0
+        p95_ms = self.latency_p95_seconds * 1000.0
+        triggers_str = ", ".join(f"{k}: {v}" for k, v in sorted(self.trigger_counts.items())) or "none"
+
+        if self.wall_media_ratio > 1.0:
+            speed_desc = f"{self.effective_processing_speed:.2f}x realtime ({self.wall_media_ratio:.2f}x slower than realtime)"
+        else:
+            speed_desc = f"{self.effective_processing_speed:.2f}x realtime ({self.wall_media_ratio:.2f}x wall/media ratio)"
+
+        return (
+            "=== Temporal OCR Baseline Diagnostic Report ===\n\n"
+            f"Frames Analyzed:            {self.frames_analyzed}\n"
+            f"OCR Calls:                  {self.ocr_calls}\n"
+            f"Observations Created:       {self.observations_created}\n"
+            f"Candidate Episodes:         {self.candidate_transition_episodes}\n"
+            f"Confirmed Episodes:         {self.confirmed_transition_episodes}\n"
+            f"Rejected Episodes:          {self.rejected_transition_episodes}\n"
+            f"Transition Episodes:        {self.transition_episodes or self.confirmed_transition_episodes}\n"
+            f"Suppressed Triggers:        {self.suppressed_candidate_triggers}\n"
+            f"Media Duration Processed:   {self.media_seconds_processed:.2f}s\n"
+            f"Wall-Clock Elapsed Time:    {self.elapsed_seconds:.2f}s\n"
+            f"Processing Speed:           {speed_desc}\n"
+            f"OCR Calls / Media Minute:   {self.ocr_calls_per_media_minute:.2f}\n"
+            f"Engine Initialization:      {self.engine_initialization_seconds * 1000.0:.1f}ms\n\n"
+            "--- OCR Call Latency ---\n"
+            f"Mean:                       {mean_ms:.2f}ms\n"
+            f"Median:                     {med_ms:.2f}ms\n"
+            f"P95:                        {p95_ms:.2f}ms\n\n"
+            "--- Trigger Reasons ---\n"
+            f"{triggers_str}\n"
+        )

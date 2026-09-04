@@ -1,12 +1,11 @@
 # Evaluation Report
 
-Required by ROADMAP.md §17. This report **assembles already-committed
-M3–M10 evidence** — every number below already exists in a benchmark
-result file, QA/ADR doc, or incident report that was produced by a real
-run of real code. No benchmark was re-run and no new evidence was
-generated to fill a gap for this report; where §17 asks for a metric
-that has no valid empirical result on any relevant corpus, this report
-says so explicitly rather than approximating one.
+Required by ROADMAP.md §17. This report **compiles committed M3–M10
+benchmark evidence alongside M11 Stage ⑤ representative evaluation
+outcomes** — numbers originate from real benchmark runs, QA/ADR records,
+incident investigations, and M11 Stage ⑤ evaluation runs. Where a metric
+lacks empirical closure on a given corpus, this report states that
+boundary explicitly rather than approximating one.
 
 ## How to read this report
 
@@ -17,9 +16,12 @@ Every result below is tagged along four axes that must not be conflated:
    degradation) are built and fully controlled by GlyphCue's own test
    authors. The realistic-private corpus (`private_samples/m10_video_corpus/`,
    gitignored, never committed) is the repo owner's own real, private
-   video material — the only source of genuinely external-realistic
-   evidence in this report, and the one corpus this report does **not**
-   have a completed run for (see "Corpus" below).
+   video material — the primary source of external-realistic evidence in
+    this report, for which M11 Stage ⑤ has completed full-window runs on all
+    five frozen representative windows (`sample_g`, `sample_e`, `sample_h`,
+    `sample_f`, `sample_c`) plus clean baseline reserve `sample_a` (see "Corpus"
+    and "M11 stage 5" below). Stage ⑤ is CLOSED by human adjudication.
+
 2. **TDD/non-held-out fixtures vs. comparative or external-realistic
    evidence.** Several corpora (Path B's 17-case fixture, the
    consensus/multilingual synthetic scenarios) are the *same* corpus the
@@ -55,14 +57,13 @@ Every result below is tagged along four axes that must not be conflated:
 | Multilingual reconstruction corpus (`benchmarks/multilingual_reconstruction/`) | Generated, controlled/synthetic (bilingual + trilingual single-frame blocks, real PaddleOCR) | Independently known | Complete; both scenarios show 0 missing/wrong layers — see "Multilingual" below for why this is a coverage gap, not a clean bill of health |
 | Review Priority evaluation corpus (`benchmarks/review_priority/`) | Generated, controlled/synthetic (200 synthetic Cues, noisy Observations, real reconstruction) | Derived automatically post-hoc from the synthetic ground truth (label-leak-free methodology) | Complete, comparative (Review Priority vs. random baseline) |
 | M10 controlled video corpus (`benchmarks/m10_controlled_video_corpus/`) | Generated, controlled/synthetic (3 fixtures, 5.9s each) | Not applicable — used for performance diagnosis, not text accuracy | Complete for its stated purpose: reproducible performance-diagnosis only |
-| **Realistic-private corpus** (`private_samples/m10_video_corpus/`) | **Real, private, copyrighted video** — the repo owner's own material | Independently verified point-samples (real captions read directly from extracted frames, not reverse-engineered from GlyphCue's own output) | **Incomplete.** The one real attempt crashed after ~40 minutes on an evaluation-harness bug before any entry finished (`docs/m10_private_corpus_incident.md`). Recovered partial evidence exists (trigger counts, coverage windows) but no entry produced a scored result. |
+| **Realistic-private corpus** (`private_samples/m10_video_corpus/`) | **Real, private, copyrighted video** — the repo owner's own material | Independently verified point-samples (real captions read directly from extracted frames, not reverse-engineered from GlyphCue's own output) | **Complete for Milestone 11 Stage ⑤.** All five frozen representative windows (`sample_g`, `sample_e`, `sample_h`, `sample_f`, `sample_c`, 180 s each) plus baseline reserve `sample_a` (177 s) have completed full-window evaluation runs with 100% media coverage. The bilingual windows completed under Architecture B + DirectML at 2.71× / 3.66× / 4.16× realtime, 31/31 point recall, and 0/0 multilingual missing/wrong assignment errors. Formally closed by human adjudication. |
 
 **ROADMAP §17's target envelope — "3–5 representative videos × 2–5 minute
-segments" — was not closed by any corpus in this report.** M10's gate
-audit (2026-08-31, ROADMAP.md §17) accepted M10 as complete while
-transferring this specific target to Milestone 11 as a mandatory
-acceptance gate, not waiving it. See "M10 evidence status / unresolved
-items" at the end of this report.
+segments" — was transferred to Milestone 11 as mandatory acceptance gate 9
+and is now CLOSED by Stage ⑤ human adjudication.** All five frozen 3-minute
+windows plus reserve `sample_a` have completed full-window evaluations. See
+"M11 stage 5" below for full breakdown.
 
 Public demo-safe material: none identified beyond the copyright-safe
 generated/rendered fixtures already listed above (per
@@ -82,11 +83,11 @@ generated/rendered fixtures already listed above (per
   methodology and the specific label-leak it replaced.
 - **Independently verified point-samples** (realistic-private corpus):
   a small number of specific verified instants where the real on-screen
-  caption text was read directly from extracted video frames — this
-  supports point-recall and per-point CER *only*, not Cue-level
-  precision or timing start/end error (see "Cue recovery" and "Timing"
-  below for exactly why, and note this corpus never produced a scored
-  run regardless).
+  caption text was read directly from extracted video frames — M11 Stage ⑤
+  has produced completed Hybrid scored point-sample results, but this GT
+  methodology still cannot support Cue-level precision or start/end
+  timing-error claims (see "Cue recovery" and "Timing" below for exactly why).
+
 
 ## Metrics
 
@@ -106,10 +107,12 @@ Organized by ROADMAP §17's own named metric families.
     "Negative/mixed findings").
   - Multilingual reconstruction: CER 0.0 on every language layer in both
     the bilingual and trilingual synthetic scenarios.
-  - **Not measured on the realistic-private corpus** — no entry
-    completed (see "Corpus").
+  - **Measured on realistic-private corpus under M11 Stage ⑤ evaluations:**
+    - *Single-language supplement (Hybrid, pre-corrective baseline)*: `sample_g` (EN) measured CER 0.163. `sample_e` (ZH) measured 1.166 and reserve `sample_a` (ZH) measured 1.679. Note: these Chinese CER measurements reflect the pre-corrective state that historically triggered the **Caption Identity Corrective Gate** (commit `875fb04`), which subsequently root-caused and resolved the consensus/probe issue in product code; they do not represent current post-fix quality.
+    - *Bilingual completion supplement (Architecture B + DirectML product path)*: `sample_h` (bilingual fixed footer) measured mean CER zh 0.2523 / en **0.0183** (10/10 point recall, 100%); `sample_f` (bilingual fast b-roll) measured mean CER zh **0.0611** / en 0.4641 (11/11 point recall, 100%); `sample_c` (bilingual mixed format) measured mean CER zh 0.1316 / en 0.4316 (10/10 point recall, 100%). Across all three bilingual windows, point recall was **31/31 (100.0%)**, and multilingual missing and wrong assignment were **0/0**.
 - **WER** (`glyphcue.evaluation.metrics.word_error_rate`): implemented
   and unit-tested (`tests/evaluation/test_metrics.py`) against known-good
+
   literal examples. **No benchmark applies it to any real or synthetic
   text corpus.** Stated per this report's own discipline: **not
   empirically closed** for any corpus — an implementation exists, no
@@ -141,12 +144,17 @@ each verified instant at all) but explicitly **cannot** support Cue-level
 precision (a sparse point sample cannot vouch for every real Cue GlyphCue
 produces — an unmatched real Cue is not evidence of a false positive) —
 this scope limitation is stated in the evaluation script's own docstring
-(`benchmarks/private_video_corpus/run_evaluation.py`). Regardless, no
-run of that corpus ever completed, so even point-recall has zero real
-data points from it.
+(`benchmarks/private_video_corpus/run_evaluation.py`). In M11 Stage ⑤,
+point-recall was measured across all completed windows: 90–100% (30/31)
+across verified instants on single-language windows (`sample_g`, `sample_e`, reserve
+`sample_a`), and 100.0% (**31/31**) across verified instants on bilingual windows
+(`sample_h`, `sample_f`, `sample_c`) under Architecture B + DirectML (0 missing
+layers, 0 wrong assignments). However, Cue-level precision remains unmeasured by design of
+the sparse point-sample methodology.
 
 **Stated per this report's own discipline: Path A Cue-level precision/
 recall is not empirically closed on any corpus.**
+
 
 ### Timing: start error / end error
 
@@ -183,20 +191,24 @@ was constructed to be hard to classify, so a zero-failure result does
 not establish the mechanism is robust against harder, real material. The
 realistic-private corpus's `_evaluate_entry` explicitly computes
 `multilingual_missing_layer_count` and `multilingual_wrong_assignment_count`
-per entry for exactly this reason — but that corpus never produced a
-completed run, so those fields have never been populated with a single
-real data point (`FAILURE_MODE_REPORT.md` #5 has the full analysis). The
-M6 implementation doc additionally states, as an already-known limitation
-independent of this report: script detection covers only Han/Kana/Latin
-(no claim for Cyrillic, Arabic, Devanagari, etc.), and a cluster with
-zero decisive/eliminated evidence falls back to geometry-only guessing,
-"not yet measured against a real target sample exhibiting this"
-(`docs/multilingual/track_group_reconstruction.md`).
+per entry for exactly this reason. In M11 Stage ⑤'s initial stress run, the bilingual
+windows (`sample_h`, `sample_f`, `sample_c`) ran under `PRODUCTION_TRIGGER`
+and timed out at 2.2%–3.5% window coverage, matching only 3 instants. In the subsequent
+bilingual completion supplement (§17 of `docs/m11_representative_evaluation.md`),
+the same three windows ran to 100% completion (180/180 s) under the formal Architecture B +
+DirectML product path (`DirectMlOcrEngine` + `DirectMlTextDetector`). Across all 31 verified
+bilingual ground-truth instants (`h`: 10, `f`: 11, `c`: 10), **point recall was 31/31 (100%)**,
+`multilingual_missing_layer_count` was **0**, and `multilingual_wrong_assignment_count` was
+**0**. No conversational dialogue layer swaps occurred. The M6 script limitation (Han/Kana/Latin
+scope, geometry fallback for zero-signal clusters) remains a documented boundary; in `sample_f`
+at 618–622 s, non-dialogue rich-text formatting buttons in screen-recording b-roll were recognized
+into `zh` and explicitly tagged with fail-closed `ambiguous_languages: ["zh"]` diagnostics.
 
-**Stated per this report's own discipline: multilingual layer-assignment
-correctness against real, non-synthetic material is not empirically
-closed in either direction** — neither confirmed working nor confirmed
-failing.
+**Stated per this report's own discipline: Multilingual layer-assignment
+correctness against real, non-synthetic representative material is now
+empirically validated across 31 verified bilingual instants with 0/31 layer
+failures and 100% point recall.** Residual non-dialogue ambiguity and script
+coverage limits remain documented boundaries rather than unmeasured gaps.
 
 ### Path B: duplicate-removal / segmentation / timing normalization
 
@@ -328,10 +340,15 @@ honestly at the time they were produced and preserved here unchanged:
    distinct from the separate, real production finding it partially
    confounded (elevated real-world OCR-trigger rate). `FAILURE_MODE_REPORT.md`
    #6–#7, `docs/m10_private_corpus_incident.md`.
-6. **Even the best-case (selective) policy runs slower than realtime**
-   on small, mostly-static synthetic clips (1.92×–6.44×), driven by
-   PaddleOCR's ~3s/call structural cost, not decode/persistence/harness
-   overhead. `FAILURE_MODE_REPORT.md` #8, `docs/m10_performance_diagnosis.md`.
+6. **Historical M10 baseline: Even the best-case (selective) policy ran slower
+   than realtime** on small, mostly-static synthetic clips (1.92×–6.44×), driven
+   by PaddleOCR's ~3s/full-call structural cost, not decode/persistence/harness
+   overhead (`FAILURE_MODE_REPORT.md` #8, `docs/m10_performance_diagnosis.md`).
+   This historical negative baseline has been materially superseded by M11
+   Hybrid, P2 recognition-only, P3 Windows DirectML recognizer, and P4B Windows
+   DirectML same-detector text detector performance hardening, and cannot be used
+   to describe current pipeline performance.
+
 7. **ADR 0005's multilingual timing simplification has no dedicated
    benchmark behind it** — a design-time claim from ROADMAP §4, not a
    measured comparison. `FAILURE_MODE_REPORT.md` #10 (design
@@ -367,9 +384,18 @@ this report.
 - **WER has no empirically-closed result on any corpus** — implemented,
   unit-tested, never applied to a real evaluation corpus.
 - **Multilingual layer-assignment correctness against real, non-synthetic
-  material is unverified in either direction** — the only real-PaddleOCR
-  evidence is two clean synthetic scenarios with zero observed failures,
-  which is a coverage gap, not a robustness finding.
+  material**: The initial timeout-limited stress run observed only 3 instants (1 miss +
+  2 non-misses). Under the completed Stage ⑤ bilingual evaluation (Architecture B +
+  DirectML across full 180 s spans of `sample_h`, `sample_f`, and `sample_c`), point-sample
+  evaluation achieved **31/31 (100.0%) point recall with 0 missing layers and 0 wrong layer
+  assignments**, confirming resolution of the earlier stress-run miss and layer-swap
+  defect (fixed in `075ac4b`) at the verified point-sample level. As a residual
+  boundary limitation, this is point-sample coverage across 31 verified instants, not a
+  universal guarantee across all unverified frames or arbitrary non-standard layouts;
+  isolated non-text boundary readings (`sample_c` `"3\n8"`) and dense background glyphs
+  (`sample_f` b-roll editor icons) remain fail-closed and flagged with
+  `ambiguous_languages`.
+
 - **CPU use and full-pipeline memory are not measured anywhere in M10** —
   only OCR-engine-in-isolation memory/startup (M3) and wall-clock
   performance (M10 controlled corpus) exist.
@@ -377,8 +403,13 @@ this report.
   most cases, the same corpus its implementation was built and corrected
   against** — reproducible regression evidence, not a generalization
   claim, stated explicitly at each corpus's own entry above.
-- **The realistic-private corpus never produced a scored result** — see
-  "Corpus" and the unresolved item below.
+- **The realistic-private corpus now has complete 180 s scored results across all
+  five frozen representative windows plus baseline reserve `sample_a`.**
+  M11 Stage ⑤ fixed the M10 harness bug, established baseline split-profile stress
+  results, completed the single-language supplement under Hybrid, and completed the
+  three bilingual windows (`sample_h`, `sample_f`, `sample_c`) under Architecture B +
+  DirectML at 2.71×, 3.66×, and 4.16× realtime with 100% point recall and 0/0
+  multilingual missing/wrong assignment errors. Stage ⑤ is CLOSED by human adjudication.
 
 ---
 
@@ -394,22 +425,72 @@ this report.
   (`benchmarks/m10_controlled_video_corpus/`) satisfies **reproducible
   performance diagnosis only** — it does not satisfy the
   representative-video target and is not presented as equivalent to it.
-  The one real attempt against the repo owner's realistic-private corpus
-  supplies **partial external-realistic evidence** (real OCR-trigger-rate
-  signal, real coverage/timing data for the fraction of each entry that
-  ran) but is **not a completed representative-video evaluation** — it
-  crashed before any entry finished scoring.
-- **This report is not updated to reflect the transferred evaluation's
-  eventual results.** Per ROADMAP.md §17's gate audit disposition, M12
-  must not begin until Milestone 11 completes the transferred evaluation
-  and its results — whatever they are — are folded back into this
-  document and, where relevant, `FAILURE_MODE_REPORT.md`.
-- Also open, restated from "Limitations" above: Path A Cue-level
-  precision/recall, Path A timing start/end error, WER (any corpus),
-  multilingual layer-assignment correctness on real material, CPU use,
-  and full-pipeline memory are all not empirically closed. None of these
-  gaps were filled by generating new evidence for this report, per this
-  report's own stated discipline.
-- No production algorithm, OCR policy, or Review Priority logic was
-  changed to produce this report. No M11 (Product Hardening) work has
-  begun.
+  M10's one real attempt against the repo owner's realistic-private
+  corpus supplied only partial external-realistic evidence before
+  crashing on an evaluation-harness bug (`docs/m10_private_corpus_incident.md`)
+  — see "M11 stage 5" immediately below for what has since run.
+
+### M11 stage 5 — Representative-Video Evaluation (CLOSED by human adjudication)
+
+Full detail, per-window numbers and the human-adjudication list:
+`docs/m11_representative_evaluation.md` §15–§17.
+
+**Five-window split-profile stress run** (all five ⑤-A/⑤-B frozen
+windows, 600 s per-entry timeout, no exception, harness bug from M10
+confirmed fixed): every window finished `partial_timeout` —
+`ChangeTriggeredOcrPolicy` ("Production Trigger", run on the three
+bilingual windows `sample_h`/`sample_f`/`sample_c`) covered only
+2.2%–3.5% of its 180 s window before the timeout; `EXPERIMENTAL_HYBRID`
+(run on the two single-language windows `sample_g`/`sample_e`) covered
+50.2%–60.9%. This reproduced the historical M10 performance-cost finding
+(`docs/m10_performance_diagnosis.md`, `FAILURE_MODE_REPORT.md` #7)
+directly on five real windows.
+
+**Completion supplement 1 (single-language Hybrid, historical measurement)** (`sample_g`,
+`sample_e` at their unchanged window/ROI, plus the pre-existing M10 `sample_a`
+clean-baseline reserve reused verbatim — Hybrid only, 1800 s timeout,
+human-gate-approved): **all three completed** (real `succeeded` state,
+not a timeout cancellation), with point recall 90–100% across 31 verified
+instants. Mean CER on the two Chinese-language entries measured above 1.0
+in this pre-corrective run (`sample_e`: 1.166, `sample_a`: 1.679), serving
+as the historical trigger for the Caption Identity Corrective Gate (subsequently
+investigated, resolved in product code, and regression-verified across 843 tests
+at gate closure; commit `875fb04`; current repository baseline is 902 passed, 1 skipped, 1 xfailed).
+
+**Completion supplement 2 (bilingual Architecture B + DirectML product path)** (`sample_h`,
+`sample_f`, `sample_c` at their unchanged 180 s windows and ROIs, 1800 s timeout,
+formal `DirectMlOcrEngine` + `DirectMlTextDetector` in isolated `[directml]` environment):
+**all three completed 180/180 s (100.0% coverage)** with exit code 0 and `succeeded` state.
+
+| Entry | Window | Coverage | Point recall | Mean CER (zh / en) | Realtime ratio | Wall clock | Ambiguous cues |
+|---|---|---|---|---|---|---|---|
+| `sample_h` (bilingual, fixed footer) | 900–1080 s | **180/180 s (100%)** | **10/10 (100%)** | zh 0.2523 / en **0.0183** | **2.71×** | 488.1 s (8.1 min) | 17 / 160 (10.6%) |
+| `sample_f` (bilingual, fast b-roll) | 560–740 s | **180/180 s (100%)** | **11/11 (100%)** | zh **0.0611** / en 0.4641 | **3.66×** | 659.2 s (11.0 min) | 78 / 399 (19.5%) |
+| `sample_c` (bilingual, mixed format) | 480–660 s | **180/180 s (100%)** | **10/10 (100%)** | zh 0.1316 / en 0.4316 | **4.16×** | 748.2 s (12.5 min) | 31 / 143 (21.7%) |
+
+- **Realtime performance:** All three windows met the M11 performance target of ≤5.0× realtime
+  (2.71×, 3.66×, 4.16×), resolving the former CPU bottleneck.
+- **Multilingual accuracy:** Point recall was 100.0% (31/31 verified instants); `multilingual_missing_layer_count`
+  and `multilingual_wrong_assignment_count` were both 0 across all 31 instants.
+- **Layer swap:** 0 occurrences in conversational dialogue. The layer-swap defect diagnosed and
+  fixed in `075ac4b` is confirmed resolved under full-window conditions.
+- **Residual findings preserved:**
+  - `sample_c`: An isolated non-text OCR reading (`"zh": "3\n8"`) occurred on Cue 1 (480.0–481.1 s, duration 1.1 s),
+    flagged fail-closed with `ambiguous_languages: ["zh"]`. It did not propagate to Cue 2 (481.1 s, CER 0.0) or
+    contaminate any downstream cue across the remaining 179 seconds (7/10 verified instants achieved CER 0.0000).
+  - `sample_f`: Rapid b-roll screen recording at 618–622 s recognized editor toolbar buttons (`B I U S ミ H1 H2`)
+    into `zh`, explicitly flagged `ambiguous_languages: ["zh"]`.
+
+**Human Adjudication Closure (2026-09-03):** All five frozen representative windows plus clean baseline
+reserve `sample_a` have completed full-window evaluation. Acceptance gate 9 (ROADMAP §17/§18) is
+satisfied. **Milestone 11 Stage ⑤ Representative Evaluation is formally CLOSED.**
+At this point in the record, Milestone 11 remained **IN PROGRESS**, with Stage ⑥ Full Regression next. **Update:** Stage ⑥ subsequently closed by Human Adjudication (2026-09-03), Stage ⑦ produced real packaging/DirectML-default evidence (2026-09-04), and Milestone 11 itself then **CLOSED (2026-09-04) with Release Acceptance REJECTED BY HUMAN ADJUDICATION** — see `PROJECT_STATUS.md` and `ROADMAP.md` §18 for the full closure disposition; the product is now in Milestone 12 (Product Rework & Cue Quality Recovery, `ROADMAP.md` §19).
+
+- Also open, restated from "Limitations" above: Path A Cue-level precision/recall, Path A timing start/end error,
+  WER (any corpus), and CPU use / full-pipeline memory are all not empirically closed by design of the point-sample
+  methodology. None of these gaps were filled by generating synthetic proxies, per this report's discipline.
+- Product code in `src/` incorporates caption identity fixes (`875fb04`), opt-in DirectML GPU accelerators (`178038f`),
+  and mixed-script clustering vetoes (`075ac4b`). PR #13 is Milestone 11's
+  Lifecycle Closure PR (hardening complete, Release Acceptance rejected
+  by Human Adjudication — see `PROJECT_STATUS.md`), not a release PR.
+

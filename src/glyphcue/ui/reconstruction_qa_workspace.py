@@ -5,15 +5,20 @@ from typing import Callable
 from PySide6.QtCore import QEvent, QObject, Qt
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
+    QAbstractItemView,
     QCheckBox,
     QComboBox,
     QDoubleSpinBox,
+    QFrame,
+    QGridLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
     QListWidget,
     QListWidgetItem,
     QPushButton,
+    QScrollArea,
+    QSplitter,
     QTextEdit,
     QVBoxLayout,
     QWidget,
@@ -28,15 +33,17 @@ from glyphcue.application.cue_review_actions import (
     split_cue,
 )
 from glyphcue.application.curated_evidence import select_curated_evidence
+from glyphcue.application.caption_identity_review import caption_evidence_summary
 from glyphcue.application.review_priority import ReviewPriority
 from glyphcue.domain.cue import Cue
 from glyphcue.domain.observation import Observation
 from glyphcue.domain.review_state import ReviewState
+from glyphcue.ui.collapsible_section import CollapsibleSection
 from glyphcue.ui.design_tokens import Color, Spacing
 from glyphcue.ui.language_layer_presentation import LanguageLayersPanel, queue_label_for_cue
 from glyphcue.ui.main_window import MainWindow
 
-_TIMING_NUDGE_STEP_SECONDS = 0.1
+_TIMING_NUDGE_STEP_SECONDS = 0.05
 _QUEUE_ITEM_ROLE_CUE_ID = "cue_id"
 
 _APPROVE_BUTTON_STYLE = f"""
@@ -112,14 +119,38 @@ class _CtrlEnterApproveFilter(QObject):
         super().__init__(parent)
         self._callback = callback
 
-    def eventFilter(self, obj: QObject, event: QEvent) -> bool:  # noqa: N802 (Qt override)
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:
         if event.type() == QEvent.Type.ShortcutOverride and _is_approve_key_event(event):
             event.accept()
             return True
         if event.type() == QEvent.Type.KeyPress and _is_approve_key_event(event):
             self._callback()
+            event.accept()
             return True
-        return False
+        return super().eventFilter(watched, event)
+
+
+class _CloseEventFilter(QObject):
+    def __init__(self, on_close: Callable[[], None], parent: QObject | None = None) -> None:
+        super().__init__(parent)
+        self._on_close = on_close
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:
+        if event.type() == QEvent.Type.Close:
+            self._on_close()
+        return super().eventFilter(watched, event)
+
+
+def review_state_badge(state: ReviewState) -> str:
+    """Clear text + graphic status marker for ReviewState (not color-only)."""
+    if state is ReviewState.APPROVED:
+        return "✓ Approved"
+    elif state == ReviewState.REJECTED:
+        return "✕ Discarded"
+    elif state == ReviewState.NEEDS_REVIEW:
+        return "⚠ Needs Review"
+    else:  # PENDING
+        return "○ Pending"
 
 
 def _priority_label(priority: ReviewPriority) -> str:
@@ -142,14 +173,12 @@ class ReconstructionQaWorkspace:
     only the CENTER evidence widget differs per path (video for Path A,
     timed-text evidence for Path B), passed in by the caller.
 
-    Operates on an in-memory `list[Cue]`, mirroring the existing
-    `PathBWorkspace` pattern rather than adding new Cue persistence:
-    neither path currently round-trips QA edits through `CueRepository`
-    (which is insert-only), and ROADMAP M7 explicitly asks to reuse
-    existing invariants rather than add speculative schema/migration.
-    QA state survives for the review session and flows to Export; it is
-    not yet durable across app restarts (a real, documented scope
-    boundary, not a silent gap).
+    Operates on an in-memory `list[Cue]` and remains persistence-agnostic:
+    notifies callers of any Cue modifications via `on_cues_changed`,
+    allowing host panes to persist changes according to their lifecycle
+    contracts. Path A connects this to atomic source-bound SQLite
+    persistence supporting full restart resume, while Path B maintains its
+    in-memory session/export lifecycle.
 
     `priorities_by_cue_id` is precomputed by the caller (via
     `review_signals_from_consensus_diagnostics` /
@@ -170,6 +199,7 @@ class ReconstructionQaWorkspace:
         play_pause_callback: Callable[[], None] | None = None,
         replay_callback: Callable[[Cue], None] | None = None,
         on_active_cue_changed: Callable[[Cue | None], None] | None = None,
+        on_cues_changed: Callable[[list[Cue]], None] | None = None,
         filter_labels: tuple[str, str, str] = ("All", "Review Needed", "Clean / Approved"),
         third_filter_predicate: Callable[[Cue], bool] | None = None,
     ) -> None:
@@ -179,9 +209,11 @@ class ReconstructionQaWorkspace:
         self._play_pause_callback = play_pause_callback
         self._replay_callback = replay_callback
         self._on_active_cue_changed = on_active_cue_changed
+        self._on_cues_changed = on_cues_changed
         self._filter_labels = filter_labels
         self._third_filter_predicate = third_filter_predicate
         self._displayed_cue_id: str | None = None
+        self._playback_active_cue_id: str | None = None
         self._approve_filter = _CtrlEnterApproveFilter(lambda: self.approve_and_advance())
 
         # DESIGN.md section 7.1 / section 53: the left pane must offer
@@ -197,27 +229,50 @@ class ReconstructionQaWorkspace:
         self.filter_combo.addItems(list(filter_labels))
 
         self.queue = QListWidget()
+        self.queue.setObjectName("cueList")
         self.cue_identity_label = QLabel("")
+        self.cue_identity_label.setObjectName("cueIdentityLabel")
+        self.cue_identity_label.setStyleSheet(f"font-weight: 700; font-size: 13px; color: {Color.TEXT_PRIMARY};")
+        self.review_state_label = QLabel("")
+        self.review_state_label.setObjectName("reviewStateLabel")
+        self.review_state_label.setStyleSheet(f"font-weight: 600; color: {Color.TEXT_PRIMARY};")
         self.priority_label = QLabel("")
+        self.priority_label.setObjectName("reviewPriorityLabel")
+        self.priority_label.setStyleSheet(f"color: {Color.TEXT_SECONDARY};")
         self.diagnostics_view = QTextEdit()
+        self.diagnostics_view.setObjectName("diagnosticsCard")
         self.diagnostics_view.setReadOnly(True)
+        self.diagnostics_view.setMaximumHeight(80)
+        self.diagnostics_view.setStyleSheet(
+            f"background-color: {Color.SURFACE_0}; font-size: 11px; border: 1px solid {Color.BORDER_SUBTLE}; border-radius: 4px; padding: 4px;"
+        )
         self.language_layers_panel = LanguageLayersPanel(editable=True)
 
-        self.nudge_start_earlier_button = QPushButton("Start −0.1s")
-        self.nudge_start_later_button = QPushButton("Start +0.1s")
-        self.nudge_end_earlier_button = QPushButton("End −0.1s")
-        self.nudge_end_later_button = QPushButton("End +0.1s")
+        self.nudge_start_earlier_button = QPushButton("Start −0.05s")
+        self.nudge_start_later_button = QPushButton("Start +0.05s")
+        self.nudge_end_earlier_button = QPushButton("End −0.05s")
+        self.nudge_end_later_button = QPushButton("End +0.05s")
 
+        self.split_label = QLabel("Split at (s):")
+        self.split_label.setObjectName("splitTimeLabel")
+        self.split_label.setStyleSheet(f"color: {Color.TEXT_SECONDARY}; font-size: 11px;")
         self.split_time_spin = QDoubleSpinBox()
         self.split_time_spin.setDecimals(3)
         self.split_time_spin.setRange(0.0, 24.0 * 3600.0)
         self.split_button = QPushButton("Split")
+        self.split_button.setObjectName("secondaryBtn")
         self.merge_next_button = QPushButton("Merge with Next")
+        self.merge_next_button.setObjectName("secondaryBtn")
         self.discard_button = QPushButton("Discard")
-        self.approve_button = QPushButton("Approve")
-        self.previous_button = QPushButton("Previous")
-        self.next_button = QPushButton("Next")
-        self.replay_button = QPushButton("Replay")
+        self.discard_button.setObjectName("discardButton")
+        self.approve_button = QPushButton("Approve [Ctrl+Enter]")
+        self.approve_button.setObjectName("approveButton")
+        self.previous_button = QPushButton("Previous [")
+        self.previous_button.setObjectName("secondaryBtn")
+        self.next_button = QPushButton("Next ]")
+        self.next_button.setObjectName("secondaryBtn")
+        self.replay_button = QPushButton("Replay [R]")
+        self.replay_button.setObjectName("secondaryBtn")
 
         # DESIGN.md section 23's minimal QA action hierarchy: Approve is
         # the one dominant action; Split/Merge are secondary and look
@@ -234,52 +289,176 @@ class ReconstructionQaWorkspace:
         replay_wired = replay_callback is not None
         self.replay_button.setEnabled(replay_wired)
 
+        self.evidence_header_label = QLabel("Raw OCR Evidence / Original Machine Observations")
+        self.evidence_header_label.setObjectName("evidenceHeaderLabel")
+        self.evidence_header_label.setStyleSheet(
+            f"font-size: 11px; font-weight: 700; color: {Color.TEXT_SECONDARY}; letter-spacing: 0.5px;"
+        )
+        self.evidence_note_label = QLabel(
+            "Original machine OCR observations are preserved for reference and audit, and remain unchanged when cue text is edited."
+        )
+        self.evidence_note_label.setObjectName("evidenceNoteLabel")
+        self.evidence_note_label.setStyleSheet(f"color: {Color.TEXT_MUTED}; font-size: 11px;")
+        self.evidence_note_label.setWordWrap(True)
         self.show_full_evidence_checkbox = QCheckBox("Show full evidence")
         self.evidence_view = QTextEdit()
+        self.evidence_view.setObjectName("evidenceView")
         self.evidence_view.setReadOnly(True)
+        self.evidence_view.setMaximumHeight(130)
+        self.evidence_view.setStyleSheet(
+            f"background-color: {Color.SURFACE_0}; font-family: 'JetBrains Mono', 'Cascadia Code', Consolas, monospace; font-size: 11px; border: 1px solid {Color.BORDER_SUBTLE}; border-radius: 4px; padding: 4px;"
+        )
 
         left_pane = QWidget()
         left_layout = QVBoxLayout(left_pane)
         left_layout.setContentsMargins(
-            Spacing.PANEL_MAJOR, Spacing.PANEL_MAJOR, Spacing.PANEL_MAJOR, Spacing.PANEL_MAJOR
+            Spacing.STANDARD, Spacing.STANDARD, Spacing.STANDARD, Spacing.STANDARD
         )
-        left_layout.addWidget(self.search_edit)
-        left_layout.addWidget(self.filter_combo)
-        left_layout.addWidget(self.queue)
+        left_layout.setSpacing(Spacing.COMPACT)
+
+        # Vertical splitter for user-resizable work areas in the left sidebar (Phase B.3)
+        self.left_splitter = QSplitter(Qt.Orientation.Vertical)
+        self.left_splitter.setObjectName("leftSidebarSplitter")
+        self.left_splitter.setChildrenCollapsible(False)
+
+        # 1. Structure & Region Collapsible Section (scrollable content, minimum height 140)
+        self.structure_section = CollapsibleSection(
+            "STRUCTURE & REGION", expanded=True, scrollable_content=True, min_expanded_height=140
+        )
+        self.structure_section.setObjectName("structureSection")
+
+        # 2. Cue Queue Collapsible Section (default expanded, consumes remaining height)
+        queue_content = QWidget()
+        queue_layout = QVBoxLayout(queue_content)
+        queue_layout.setContentsMargins(0, Spacing.COMPACT, 0, 0)
+        queue_layout.setSpacing(Spacing.COMPACT)
+        queue_layout.addWidget(self.search_edit)
+        queue_layout.addWidget(self.filter_combo)
+        queue_layout.addWidget(self.queue, stretch=1)
+
+        self.queue_section = CollapsibleSection(
+            "CUE QUEUE", content=queue_content, expanded=True, min_expanded_height=140
+        )
+        self.queue_section.setObjectName("queueSection")
+
+        self.left_splitter.addWidget(self.structure_section)
+        self.left_splitter.addWidget(self.queue_section)
+        self.left_splitter.setStretchFactor(0, 1)
+        self.left_splitter.setStretchFactor(1, 2)
+        self.left_splitter.setSizes([260, 420])
+
+        # 3. Source Context Collapsible Section (default collapsed)
+        self.context_section = CollapsibleSection("SOURCE CONTEXT", expanded=False)
+        self.context_section.setObjectName("contextSection")
+
+        left_layout.addWidget(self.left_splitter, stretch=1)
+        left_layout.addWidget(self.context_section)
         self._left_layout = left_layout
 
         right_pane = QWidget()
-        right_layout = QVBoxLayout(right_pane)
+        right_scroll = QScrollArea(right_pane)
+        right_scroll.setObjectName("rightPaneScrollArea")
+        right_scroll.setWidgetResizable(True)
+        right_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        right_scroll.setFrameShape(QFrame.Shape.NoFrame)
+
+        right_content = QWidget()
+        right_content.setObjectName("rightPaneContent")
+        right_layout = QVBoxLayout(right_content)
         right_layout.setContentsMargins(
-            Spacing.PANEL_MAJOR, Spacing.PANEL_MAJOR, Spacing.PANEL_MAJOR, Spacing.PANEL_MAJOR
+            Spacing.STANDARD, Spacing.STANDARD, Spacing.STANDARD, Spacing.STANDARD
         )
-        right_layout.addWidget(self.cue_identity_label)
-        right_layout.addWidget(self.priority_label)
-        right_layout.addWidget(self.diagnostics_view)
+        right_layout.setSpacing(Spacing.STANDARD)
+
+        # 1. Header Card (Cue ID, State badge, Priority badge, Review flags & signals)
+        header_card = QWidget()
+        header_card.setObjectName("qaHeaderCard")
+        header_card_layout = QVBoxLayout(header_card)
+        header_card_layout.setContentsMargins(
+            Spacing.CARD_STANDARD, Spacing.CARD_COMPACT, Spacing.CARD_STANDARD, Spacing.CARD_COMPACT
+        )
+        header_card_layout.setSpacing(Spacing.COMPACT)
+        header_card_layout.addWidget(self.cue_identity_label)
+        badges_row = QHBoxLayout()
+        badges_row.addWidget(self.review_state_label)
+        badges_row.addWidget(self.priority_label)
+        badges_row.addStretch(1)
+        header_card_layout.addLayout(badges_row)
+
+        diag_title = QLabel("REVIEW FLAGS & SIGNALS")
+        diag_title.setObjectName("sectionHeaderLabel")
+        diag_title.setStyleSheet(f"font-size: 10px; font-weight: 700; color: {Color.TEXT_MUTED}; letter-spacing: 0.5px;")
+        header_card_layout.addWidget(diag_title)
+        header_card_layout.addWidget(self.diagnostics_view)
+        right_layout.addWidget(header_card)
+
+        # 2. Language Layers Editor
         right_layout.addWidget(self.language_layers_panel)
-        timing_row = QHBoxLayout()
-        for button in (
-            self.nudge_start_earlier_button,
-            self.nudge_start_later_button,
-            self.nudge_end_earlier_button,
-            self.nudge_end_later_button,
-        ):
-            timing_row.addWidget(button)
-        right_layout.addLayout(timing_row)
+
+        # 3. 50ms Precision Timing & Split/Merge Card
+        timing_card = QWidget()
+        timing_card.setObjectName("timingCard")
+        timing_card_layout = QVBoxLayout(timing_card)
+        timing_card_layout.setContentsMargins(
+            Spacing.CARD_STANDARD, Spacing.CARD_COMPACT, Spacing.CARD_STANDARD, Spacing.CARD_COMPACT
+        )
+        timing_card_layout.setSpacing(Spacing.COMPACT)
+        timing_title = QLabel("TIMING PRECISION (50ms)")
+        timing_title.setObjectName("sectionHeaderLabel")
+        timing_title.setStyleSheet(f"font-size: 11px; font-weight: 700; color: {Color.TEXT_SECONDARY}; letter-spacing: 0.5px;")
+        timing_card_layout.addWidget(timing_title)
+
+        timing_grid = QGridLayout()
+        timing_grid.setSpacing(6)
+        self.nudge_start_earlier_button.setObjectName("secondaryBtn")
+        self.nudge_start_later_button.setObjectName("secondaryBtn")
+        self.nudge_end_earlier_button.setObjectName("secondaryBtn")
+        self.nudge_end_later_button.setObjectName("secondaryBtn")
+        timing_grid.addWidget(self.nudge_start_earlier_button, 0, 0)
+        timing_grid.addWidget(self.nudge_start_later_button, 0, 1)
+        timing_grid.addWidget(self.nudge_end_earlier_button, 1, 0)
+        timing_grid.addWidget(self.nudge_end_later_button, 1, 1)
+        timing_card_layout.addLayout(timing_grid)
+
+        # Split & Merge Tools integrated inside Timing Card
         split_merge_row = QHBoxLayout()
+        split_merge_row.setSpacing(Spacing.COMPACT)
+        split_merge_row.addWidget(self.split_label)
         split_merge_row.addWidget(self.split_time_spin)
         split_merge_row.addWidget(self.split_button)
         split_merge_row.addWidget(self.merge_next_button)
-        right_layout.addLayout(split_merge_row)
-        action_row = QHBoxLayout()
-        action_row.addWidget(self.previous_button)
-        action_row.addWidget(self.replay_button)
-        action_row.addWidget(self.discard_button)
-        action_row.addWidget(self.approve_button)
-        action_row.addWidget(self.next_button)
-        right_layout.addLayout(action_row)
-        right_layout.addWidget(self.show_full_evidence_checkbox)
-        right_layout.addWidget(self.evidence_view)
+        timing_card_layout.addLayout(split_merge_row)
+        right_layout.addWidget(timing_card)
+
+        # 4. Primary QA Action Bar (Dominant full row Approve + sub-actions)
+        action_box = QVBoxLayout()
+        action_box.addWidget(self.approve_button)
+        sub_actions_row = QHBoxLayout()
+        sub_actions_row.addWidget(self.previous_button)
+        sub_actions_row.addWidget(self.replay_button)
+        sub_actions_row.addWidget(self.discard_button)
+        sub_actions_row.addWidget(self.next_button)
+        action_box.addLayout(sub_actions_row)
+        right_layout.addLayout(action_box)
+
+        # 5. Raw Observations Evidence Card
+        evidence_card = QWidget()
+        evidence_card.setObjectName("evidenceCard")
+        evidence_layout = QVBoxLayout(evidence_card)
+        evidence_layout.setContentsMargins(
+            Spacing.CARD_STANDARD, Spacing.CARD_COMPACT, Spacing.CARD_STANDARD, Spacing.CARD_COMPACT
+        )
+        evidence_layout.setSpacing(Spacing.COMPACT)
+        evidence_layout.addWidget(self.evidence_header_label)
+        evidence_layout.addWidget(self.evidence_note_label)
+        evidence_layout.addWidget(self.show_full_evidence_checkbox)
+        evidence_layout.addWidget(self.evidence_view)
+        right_layout.addWidget(evidence_card)
+
+        right_scroll.setWidget(right_content)
+        right_outer_layout = QVBoxLayout(right_pane)
+        right_outer_layout.setContentsMargins(0, 0, 0, 0)
+        right_outer_layout.addWidget(right_scroll)
         self._right_layout = right_layout
 
         self.window = MainWindow(left_pane=left_pane, center_pane=center_widget, right_pane=right_pane)
@@ -328,6 +507,23 @@ class ReconstructionQaWorkspace:
         # whatever order the caller happened to pass them in.
         self._rebuild_queue(select_cue_id=None)
 
+        self._close_filter = _CloseEventFilter(self.commit_pending_edits)
+        self.window.installEventFilter(self._close_filter)
+
+    @property
+    def central_widget(self) -> QWidget:
+        """Returns the embeddable 3-pane central widget (splitter)."""
+        return self.window.centralWidget()
+
+    def bind_to_host(self, host: QWidget) -> None:
+        """Binds QA keyboard shortcuts to a host window (e.g. GlyphCueWorkbench)
+        when hosted inside a persistent product shell."""
+        self.play_pause_shortcut.setParent(host)
+        self.approve_shortcut.setParent(host)
+        self.replay_shortcut.setParent(host)
+        self.next_shortcut.setParent(host)
+        self.previous_shortcut.setParent(host)
+
     @property
     def cues(self) -> list[Cue]:
         return list(self._cues)
@@ -335,12 +531,12 @@ class ReconstructionQaWorkspace:
     def commit_pending_edits(self) -> None:
         """Commits whatever is currently typed into the displayed
         Cue's language-layer text edits into the in-memory Cue list --
-        the minimal public persistence seam a caller (e.g. Path B's
-        Export) uses to make sure a live, un-Approved hand-edit is not
-        silently lost. Never changes `review_state` and never Approves
-        -- committing an edit for export is not itself a review
-        decision. Safe to call at any time, including when nothing is
-        displayed (a no-op)."""
+        the minimal public persistence seam a caller (e.g. Path A/B
+        lifecycle hooks or Export) uses to make sure a live, un-committed
+        hand-edit is not silently lost. Never automatically Approves, but
+        real text modifications transition the Cue to `ReviewState.NEEDS_REVIEW`
+        and trigger `on_cues_changed` for persistence. Safe to call at any
+        time, including when nothing is displayed (a no-op)."""
         self._commit_displayed_edits()
 
     def set_cues_and_priorities(
@@ -437,6 +633,40 @@ class ReconstructionQaWorkspace:
         self._commit_displayed_edits()
         self._rebuild_queue(select_cue_id=self._displayed_cue_id)
 
+    @property
+    def playback_active_cue_id(self) -> str | None:
+        return self._playback_active_cue_id
+
+    def set_playback_active_cue_id(self, cue_id: str | None) -> None:
+        """DOG-007: Updates the playback-active Cue indicator in the queue
+        without altering the user's active editing selection (active_cue /
+        _displayed_cue_id)."""
+        if self._playback_active_cue_id == cue_id:
+            return
+        self._playback_active_cue_id = cue_id
+        self._refresh_queue_labels()
+        if cue_id is not None:
+            for row in range(self.queue.count()):
+                item = self.queue.item(row)
+                if item is not None and item.data(Qt.ItemDataRole.UserRole) == cue_id:
+                    self.queue.scrollToItem(item, QAbstractItemView.ScrollHint.EnsureVisible)
+                    break
+
+    def _queue_item_label(self, cue: Cue) -> str:
+        priority = self._priority_for(cue.id)
+        prefix = "▶ " if cue.id == self._playback_active_cue_id else ""
+        return f"{prefix}[{priority.level}] [{review_state_badge(cue.review_state)}] {queue_label_for_cue(cue)}"
+
+    def _refresh_queue_labels(self) -> None:
+        for row in range(self.queue.count()):
+            item = self.queue.item(row)
+            if item is None:
+                continue
+            cue_id = item.data(Qt.ItemDataRole.UserRole)
+            cue = next((c for c in self._cues if c.id == cue_id), None)
+            if cue is not None:
+                item.setText(self._queue_item_label(cue))
+
     def _rebuild_queue(self, *, select_cue_id: str | None) -> None:
         ordered = sorted(
             self._cues, key=lambda cue: self._priority_for(cue.id).score, reverse=True
@@ -446,8 +676,7 @@ class ReconstructionQaWorkspace:
         self.queue.clear()
         select_row = 0
         for row, cue in enumerate(ordered):
-            priority = self._priority_for(cue.id)
-            item = QListWidgetItem(f"[{priority.level}] {queue_label_for_cue(cue)}")
+            item = QListWidgetItem(self._queue_item_label(cue))
             item.setData(Qt.ItemDataRole.UserRole, cue.id)
             self.queue.addItem(item)
             if cue.id == select_cue_id:
@@ -455,6 +684,7 @@ class ReconstructionQaWorkspace:
         self.queue.blockSignals(False)
         if self.queue.count():
             self.queue.setCurrentRow(select_row)
+            self._refresh_active_pane()
         else:
             self._on_row_changed(-1)
 
@@ -470,6 +700,10 @@ class ReconstructionQaWorkspace:
         self._refresh_active_pane()
         if self._on_active_cue_changed is not None:
             self._on_active_cue_changed(self.active_cue)
+
+    def _notify_cues_changed(self) -> None:
+        if self._on_cues_changed is not None:
+            self._on_cues_changed(self.cues)
 
     def _commit_displayed_edits(self) -> None:
         """Commits whatever is currently typed into the language-layer
@@ -489,18 +723,24 @@ class ReconstructionQaWorkspace:
         cue = next((c for c in self._cues if c.id == self._displayed_cue_id), None)
         if cue is None:
             return
+        modified = False
         for language, text in self.language_layers_panel.current_texts().items():
             existing = next(
                 (layer for layer in cue.language_layers if layer.language == language), None
             )
             if existing is not None and existing.text != text:
                 self._cues = edit_cue_language_text(self._cues, cue.id, language, text)
+                modified = True
+        if modified:
+            self._refresh_queue_labels()
+            self._notify_cues_changed()
 
     def _refresh_active_pane(self) -> None:
         cue = self.active_cue
         if cue is None:
             self._displayed_cue_id = None
             self.cue_identity_label.setText("")
+            self.review_state_label.setText("")
             self.priority_label.setText("")
             self.diagnostics_view.clear()
             self.language_layers_panel.set_cue(None)
@@ -508,7 +748,13 @@ class ReconstructionQaWorkspace:
             return
 
         priority = self._priority_for(cue.id)
-        self.cue_identity_label.setText(f"{cue.id}   {cue.start_time:.3f}s – {cue.end_time:.3f}s")
+        cue_idx = next((i + 1 for i, c in enumerate(self._cues) if c.id == cue.id), 1)
+        duration = cue.end_time - cue.start_time
+        self.cue_identity_label.setText(
+            f"Cue #{cue_idx} · {cue.start_time:.3f}s – {cue.end_time:.3f}s ({duration:.2f}s)"
+        )
+        self.cue_identity_label.setToolTip(f"Cue ID: {cue.id}")
+        self.review_state_label.setText(f"Review State: {review_state_badge(cue.review_state)}")
         self.priority_label.setText(_priority_label(priority))
         self.diagnostics_view.setPlainText(_diagnostics_text(priority))
         self.language_layers_panel.set_cue(cue)
@@ -551,7 +797,8 @@ class ReconstructionQaWorkspace:
             shown.sort(key=lambda observation: observation.start_time)
 
         self.evidence_view.setPlainText(
-            "\n".join(f"{observation.start_time:.3f}s  {observation.text}" for observation in shown)
+            "\n".join(caption_evidence_summary(observation) or
+                      f"{observation.start_time:.3f}s  {observation.text}" for observation in shown)
         )
 
     def approve_and_advance(self) -> None:
@@ -560,7 +807,12 @@ class ReconstructionQaWorkspace:
         if cue is None:
             return
         self._cues = approve_cue(self._cues, cue.id)
-        self.go_to_next()
+        self._refresh_queue_labels()
+        self._notify_cues_changed()
+        if self.queue.currentRow() + 1 < self.queue.count():
+            self.go_to_next()
+        else:
+            self._refresh_active_pane()
 
     def discard_active_cue(self) -> None:
         self._commit_displayed_edits()
@@ -568,6 +820,8 @@ class ReconstructionQaWorkspace:
         if cue is None:
             return
         self._cues = discard_cue(self._cues, cue.id)
+        self._refresh_queue_labels()
+        self._notify_cues_changed()
         self._rebuild_queue(select_cue_id=cue.id)
 
     def _nudge_active(self, *, start_delta: float = 0.0, end_delta: float = 0.0) -> None:
@@ -579,6 +833,9 @@ class ReconstructionQaWorkspace:
             self._cues = nudge_cue_timing(self._cues, cue.id, start_delta=start_delta, end_delta=end_delta)
         except ValueError:
             return  # invalid nudge (e.g. would invert the range) -- silently refused, not applied
+        self._refresh_queue_labels()
+        self._notify_cues_changed()
+        self._refresh_active_pane()
         self._rebuild_queue(select_cue_id=cue.id)
 
     def split_active_cue(self) -> None:
@@ -604,6 +861,7 @@ class ReconstructionQaWorkspace:
                     components=parent_priority.components,
                 )
                 next_select = next_select or new_cue.id
+        self._notify_cues_changed()
         self._rebuild_queue(select_cue_id=next_select)
 
     def _temporal_next_cue(self, cue: Cue) -> Cue | None:
@@ -640,6 +898,7 @@ class ReconstructionQaWorkspace:
             self._priorities_by_cue_id[merged_id] = ReviewPriority(
                 cue_id=merged_id, score=best.score, level=best.level, components=best.components
             )
+        self._notify_cues_changed()
         self._rebuild_queue(select_cue_id=merged_id)
 
     def go_to_next(self) -> None:
@@ -676,9 +935,9 @@ class ReconstructionQaWorkspace:
         self._right_layout.addWidget(widget)
 
     def add_left_pane_widget(self, widget: QWidget) -> None:
-        """Appends `widget` below the review queue in the left pane --
-        the seam a caller uses for path-specific structural context
-        that legitimately differs from Path A (DESIGN.md section 15's
-        Path B ingestion/normalization profile: source filename,
-        format, source/output cue counts, source-protected status)."""
-        self._left_layout.addWidget(widget)
+        """Appends `widget` into the SOURCE CONTEXT collapsible section."""
+        self.context_section.add_widget(widget)
+
+    def insert_left_pane_widget(self, index: int, widget: QWidget) -> None:
+        """Inserts `widget` into the STRUCTURE & REGION collapsible section."""
+        self.structure_section.insert_widget(index, widget)

@@ -164,10 +164,13 @@ def test_han_hint_tie_stays_unresolved_by_classification_not_broken_by_counter_o
     # geometry, so they cluster together), pure Han text, hints tied
     # 1:1 between zh and ja -- there is genuinely no decisive evidence.
     # This must NOT be silently resolved by Counter.most_common()'s
-    # insertion-order tie-break; it must fall through to the geometry
-    # fallback (here, the only cluster, so it lands under whichever
-    # configured language comes first) and be flagged ambiguous, never
-    # quietly guessed as "whichever tag was seen first."
+    # insertion-order tie-break, AND (M11 Architecture B corrective
+    # contract) must not be defaulted to whichever expected language
+    # happens to be configured first either -- a tied hint vote is real,
+    # undecidable ambiguity between exactly zh and ja, the same
+    # fail-closed case as a pure-Han cluster with no hint evidence at
+    # all (see test_pure_han_zh_ja_has_no_winner_and_preserves_ambiguity):
+    # neither language gets a fabricated winner.
     observations = [
         _obs("tagged-zh", "早上好", language="zh", geometry=_same_line_geometry()),
         _obs("tagged-ja", "早上好", language="ja", geometry=_same_line_geometry()),
@@ -175,14 +178,9 @@ def test_han_hint_tie_stays_unresolved_by_classification_not_broken_by_counter_o
 
     buckets, ambiguous = assign_observations_to_languages(observations, ("zh", "ja"))
 
-    # The single cluster (both readings of one real line) landed
-    # entirely under "zh" -- the first configured language, since
-    # geometry fallback pairs unresolved clusters against
-    # expected_languages' own order -- and is flagged ambiguous, since
-    # nothing decisive placed it there. "ja" is left genuinely empty.
-    assert set(_ids(buckets["zh"])) == {"tagged-zh", "tagged-ja"}
+    assert buckets["zh"] == []
     assert buckets["ja"] == []
-    assert ambiguous == {"zh"}
+    assert ambiguous == {"zh", "ja"}
 
 
 def test_han_tie_resolution_is_independent_of_engine_input_order():
@@ -226,3 +224,204 @@ def test_kana_cluster_claiming_ja_lets_a_plain_han_cluster_resolve_to_zh():
     assert _ids(buckets["zh"]) == ["han"]
     assert _ids(buckets["ja"]) == ["kana"]
     assert ambiguous == set()
+
+
+# Architecture B corrective contract (M11 Multilingual Performance
+# Corrective Gate): three of the twelve acceptance cases live here
+# because they're pure assign_observations_to_languages behavior, with
+# no cross-frame/cue-boundary dimension. See
+# test_multilingual_reconstruction.py for the temporal position-swap
+# case, which needs a real multi-frame run to reproduce.
+
+
+def test_numeric_punctuation_line_is_not_silently_claimed_by_elimination():
+    # A bare digits/punctuation line (e.g. a burned-in timestamp) carries
+    # no script evidence at all. Once "en" resolves decisively elsewhere,
+    # elimination must not treat "no evidence" as "matches every
+    # remaining expected language" and silently hand this line to "zh" --
+    # that's a confident-looking guess with zero real support.
+    observations = [
+        _obs("en", "Price USD", language=None),
+        _obs("digits", "2026-09-03", language=None),
+    ]
+
+    _buckets, ambiguous = assign_observations_to_languages(observations, ("en", "zh"))
+
+    assert "zh" in ambiguous
+
+
+def test_pure_han_zh_ja_has_no_winner_and_preserves_ambiguity():
+    # Two pure-Han clusters, zh-or-ja Track Group, zero disambiguating
+    # evidence anywhere (no Kana, no hints, nothing to eliminate
+    # against). Fail-closed: neither language may get a fabricated
+    # winner just because geometry has to put them somewhere.
+    observations = [
+        _obs("han-a", "東京", language=None),
+        _obs("han-b", "天気", language=None),
+    ]
+
+    buckets, ambiguous = assign_observations_to_languages(observations, ("zh", "ja"))
+
+    assert ambiguous == {"zh", "ja"}
+    assert all(not clusters for clusters in buckets.values())
+
+
+def test_mixed_script_ocr_error_is_not_silently_claimed():
+    # "H你llo" is what a real OCR misread of English text corrupted by
+    # one stray Han glyph looks like -- not genuine Chinese. Picking
+    # "han" as this cluster's dominant script (because a Han character
+    # is present at all) would silently misclassify OCR corruption as a
+    # confident Chinese reading instead of surfacing it as ambiguous.
+    observations = [
+        _obs("corrupt-en", "H你llo", language=None),
+        _obs("zh", "你好", language=None),
+    ]
+
+    _buckets, ambiguous = assign_observations_to_languages(observations, ("en", "zh"))
+
+    assert ambiguous
+
+
+def test_duplicate_universal_reads_add_votes_but_no_new_classification_information():
+    # A single universal engine can read the same physical line more
+    # than once per triggered frame in some pipeline configurations
+    # (Architecture B doesn't currently do this, but the contract must
+    # hold regardless): repeating an identical reading may add votes to
+    # an existing bucket, it must never manufacture a NEW, independently
+    # counted cluster/bucket shape that a single reading wouldn't have
+    # produced.
+    def _box(y):
+        return ((0.0, y), (100.0, y), (100.0, y + 8.0), (0.0, y + 8.0))
+
+    single = [
+        _obs("zh", "你好", language=None, geometry=_box(10)),
+        _obs("en", "Hello", language=None, geometry=_box(40)),
+    ]
+    duplicated = [
+        _obs("zh-1", "你好", language=None, geometry=_box(10)),
+        _obs("zh-2", "你好", language=None, geometry=_box(10)),
+        _obs("en-1", "Hello", language=None, geometry=_box(40)),
+        _obs("en-2", "Hello", language=None, geometry=_box(40)),
+    ]
+
+    single_buckets, single_ambiguous = assign_observations_to_languages(single, ("zh", "en"))
+    dup_buckets, dup_ambiguous = assign_observations_to_languages(duplicated, ("zh", "en"))
+
+    single_shape = {language: len(clusters) for language, clusters in single_buckets.items()}
+    dup_shape = {language: len(clusters) for language, clusters in dup_buckets.items()}
+    assert single_shape == dup_shape
+    assert single_ambiguous == dup_ambiguous
+    assert sum(len(_ids(v)) for v in dup_buckets.values()) == 2 * sum(
+        len(_ids(v)) for v in single_buckets.values()
+    )
+
+
+# Visual-Line Clustering Corrective (M11 Architecture B, root cause of the
+# DirectML h/f/c speed-vs-correctness finding): real detector geometry is
+# not pixel-perfect, so two visually and linguistically DIFFERENT physical
+# lines stacked close together can report Y-ranges overlapping by a few
+# pixels of detection noise. Pure Y-overlap clustering merged them into one
+# cluster, and _cluster_script_candidates' first-decisive-member-wins rule
+# then silently attributed the WHOLE cluster (including the other line's
+# real text) to one language -- the exact "layer swap" / garbled-reading
+# pattern the DirectML smoke surfaced. The fix is a deterministic veto:
+# no new numeric overlap threshold, just refusing to merge across a
+# decisive script mismatch.
+
+
+def _box(y0: float, y1: float) -> tuple:
+    return ((0.0, y0), (100.0, y0), (100.0, y1), (0.0, y1))
+
+
+def test_script_incompatible_regions_with_tiny_y_overlap_are_not_merged():
+    # 2px of Y-overlap (28-30) between a decisively-English line and a
+    # decisively-Chinese line stacked right below it -- exactly the kind
+    # of detector rounding noise real geometry produces. Before the veto,
+    # pure Y-overlap merged these into one cluster and one language
+    # silently absorbed the other's text.
+    observations = [
+        _obs("en", "Hello there", geometry=_box(10, 30)),
+        _obs("zh", "你好朋友", geometry=_box(28, 48)),
+    ]
+
+    buckets, ambiguous = assign_observations_to_languages(observations, ("en", "zh"))
+
+    assert _ids(buckets["en"]) == ["en"]
+    assert _ids(buckets["zh"]) == ["zh"]
+    assert ambiguous == set()
+
+
+def test_same_script_horizontal_fragments_with_y_overlap_still_merge():
+    # Two word-level detector boxes of the SAME real English line,
+    # genuinely overlapping in Y (multi-box detection of one line) --
+    # the veto must not touch this: same decisive language, real overlap,
+    # still one cluster.
+    observations = [
+        _obs("frag-1", "Hello", geometry=_box(10, 30)),
+        _obs("frag-2", "there", geometry=_box(15, 35)),
+    ]
+
+    buckets, ambiguous = assign_observations_to_languages(observations, ("en", "zh"))
+
+    assert set(_ids(buckets["en"])) == {"frag-1", "frag-2"}
+    assert buckets["zh"] == []
+    assert ambiguous == set()
+
+
+def test_same_language_multiline_with_no_overlap_stays_separated():
+    # Two real, physically separate English lines (no Y-overlap at all) --
+    # governed by the overlap check exactly as before the veto existed;
+    # the veto (same decisive language on both sides) never even applies.
+    observations = [
+        _obs("line-1", "First line", geometry=_box(10, 30)),
+        _obs("line-2", "Second line", geometry=_box(50, 70)),
+    ]
+
+    buckets, ambiguous = assign_observations_to_languages(observations, ("en", "zh"))
+
+    assert len(buckets["en"]) == 2
+    assert _ids(buckets["en"]) == ["line-1", "line-2"]
+    assert ambiguous == set()
+
+
+def test_non_decisive_neighbor_never_triggers_a_false_veto():
+    # A decisively-English region overlapping with a region carrying NO
+    # script signal at all (bare digits) -- the veto only fires between
+    # two DECISIVE, DIFFERENT languages; ambiguous-or-no-signal text is
+    # never itself evidence of incompatibility, so this still merges by
+    # geometry exactly as before the veto existed.
+    observations = [
+        _obs("en", "Hello there", geometry=_box(10, 30)),
+        _obs("digits", "42", geometry=_box(28, 48)),
+    ]
+
+    buckets, _ambiguous = assign_observations_to_languages(observations, ("en", "zh"))
+
+    assert set(_ids(buckets["en"])) == {"en", "digits"}
+
+
+def test_mixed_script_observation_adjacent_to_decisive_neighbor_is_not_absorbed():
+    # Real DirectML sample_f 566-568.4s observation: a legitimate mixed
+    # Han+Latin reading of a Chinese line ("srs有效的原因是") whose
+    # detector box has a few pixels of Y-overlap with the decisively-
+    # English line stacked above it. `_dominant_script` correctly reports
+    # None for text that mixes han and latin with no kana (see its own
+    # docstring) -- but that None means two DIFFERENT real things: bare
+    # digits/punctuation with NO script evidence at all, and a
+    # genuinely mixed-script line that DOES carry real (if ambiguous)
+    # evidence. Only the former is safe to treat as "no signal" for the
+    # visual-line veto; treating the latter the same way let it merge
+    # into the neighboring decisive English cluster and lose the real
+    # Chinese content into the en layer. The mixed-script evidence must
+    # veto the merge on its own, keeping the line its own cluster --
+    # fail-closed/ambiguous, never silently classified as English.
+    observations = [
+        _obs("en", "and the reason why srs works is", geometry=_box(69, 154)),
+        _obs("mixed", "srs有效的原因是", geometry=_box(149, 218)),
+    ]
+
+    buckets, ambiguous = assign_observations_to_languages(observations, ("en", "zh"))
+
+    assert _ids(buckets["en"]) == ["en"]
+    assert _ids(buckets["zh"]) == ["mixed"]
+    assert "zh" in ambiguous

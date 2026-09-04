@@ -50,8 +50,10 @@ class ObservationRepository:
     def __init__(self, conn: sqlite3.Connection) -> None:
         self._conn = conn
 
-    def add(self, observation: Observation, evidence_run_id: str) -> None:
-        """Persist `observation` as belonging to `evidence_run_id`.
+    def add(
+        self, observation: Observation, evidence_run_id: str, source_id: str = ""
+    ) -> None:
+        """Persist `observation` as belonging to `evidence_run_id` and optional `source_id`.
 
         Every OCR evidence job run produces observations under one run
         id (ROADMAP M4: observations must not silently pool across
@@ -63,8 +65,8 @@ class ObservationRepository:
                 "INSERT INTO observations "
                 "(id, evidence_run_id, text, start_time, end_time, language, confidence, "
                 "roi_x, roi_y, roi_width, roi_height, geometry, frame_reference, "
-                "provenance_kind, provenance_source, provenance_detail) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "provenance_kind, provenance_source, provenance_detail, source_id) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     observation.id,
                     evidence_run_id,
@@ -82,6 +84,7 @@ class ObservationRepository:
                     observation.provenance.kind.value,
                     observation.provenance.source,
                     _encode_detail(observation.provenance.detail),
+                    source_id,
                 ),
             )
 
@@ -97,12 +100,42 @@ class ObservationRepository:
             return None
         return self._build_observation(row)
 
+    def get_by_ids(self, observation_ids: list[str] | tuple[str, ...]) -> dict[str, Observation]:
+        ids = list(observation_ids)
+        if not ids:
+            return {}
+        placeholders = ",".join("?" for _ in ids)
+        rows = self._conn.execute(
+            "SELECT id, text, start_time, end_time, language, confidence, "
+            "roi_x, roi_y, roi_width, roi_height, geometry, frame_reference, "
+            "provenance_kind, provenance_source, provenance_detail "
+            f"FROM observations WHERE id IN ({placeholders})",
+            ids,
+        ).fetchall()
+        result = {}
+        for row in rows:
+            obs = self._build_observation(row)
+            result[obs.id] = obs
+        return result
+
     def list_all(self) -> list[Observation]:
         rows = self._conn.execute(
             "SELECT id, text, start_time, end_time, language, confidence, "
             "roi_x, roi_y, roi_width, roi_height, geometry, frame_reference, "
             "provenance_kind, provenance_source, provenance_detail "
             "FROM observations ORDER BY start_time"
+        ).fetchall()
+        return [self._build_observation(row) for row in rows]
+
+    def list_for_source(self, source_id: str) -> list[Observation]:
+        if not source_id:
+            return []
+        rows = self._conn.execute(
+            "SELECT id, text, start_time, end_time, language, confidence, "
+            "roi_x, roi_y, roi_width, roi_height, geometry, frame_reference, "
+            "provenance_kind, provenance_source, provenance_detail "
+            "FROM observations WHERE source_id = ? ORDER BY start_time",
+            (source_id,),
         ).fetchall()
         return [self._build_observation(row) for row in rows]
 

@@ -3,9 +3,11 @@
 **Document type:** Authoritative V1 milestone roadmap  
 **Project:** GlyphCue  
 **Repository:** `Peter-S-Shi/glyphcue`  
-**Lifecycle phase:** Production Development in progress → Milestone 10 complete (evidence/evaluation closure accepted; representative-video gate transferred to Milestone 11, not waived — see §17's gate audit disposition), Feature Freeze ACTIVE, Milestone 11 (Product Hardening & Full Regression) next  
+**Lifecycle phase:** Production Development → Milestone 10 complete (evidence/evaluation closure accepted; representative-video gate transferred to Milestone 11, not waived — see §17's gate audit disposition). **Milestone 11 (Product Hardening & Full Regression) is CLOSED (2026-09-04)** — every acceptance-gate item (regression, the transferred M10 representative-video evaluation, Stage ⑦ packaging/DirectML-default work) executed with real evidence (see `docs/m11_targeted_regression.md`, `docs/m11_representative_evaluation.md`, `PROJECT_STATUS.md`) — **but Release Acceptance for the resulting product was REJECTED BY HUMAN ADJUDICATION (§18 closure disposition)**: the repository owner's hands-on retest of the approved DirectML production path found final reconstructed Cue output unacceptable for release (too many low-value/duplicate/fragmented Cues; root cause open, deferred to Milestone 12 — not yet attributed to the DirectML backend itself), QA review UX is not acceptable (Discard doesn't remove Cues from view, review ordering isn't linear), and Windows packaging remains exploratory. **Release Ready = NO. Release/Packaging work is SUSPENDED.** Feature Freeze is lifted only for corrective rework. **Milestone 12 — Product Rework & Cue Quality Recovery** (§19) is the next engineering milestone, QUEUED but NOT YET STARTED; the originally-next Release Candidate milestone is renumbered to Milestone 13 (§20) and does not begin until Milestone 12 is complete and accepted, followed by a second Product Hardening & Full Regression pass.
 **Status:** Current V1 execution roadmap  
-**Last updated:** 2026-08-31
+
+**Last updated:** 2026-09-04
+
 
 ---
 
@@ -143,19 +145,28 @@ Evaluated candidates:
 
 ## Packaging
 
-Primary:
+Current release-packaging decision:
 
-> `pyside6-deploy / Nuitka`
+> **NO ACTIVE RELEASE PACKAGING PATH** — selection deferred until
+> Milestone 12 is accepted and Product Hardening II passes.
 
-Hardening / RC packaging form:
+Historical M11 evidence: Nuitka/pyside6-deploy was retired after
+repeated build-system/resource blockers (RAM exhaustion and an
+indeterminate codegen stall across multiple controlled attempts on the
+actual build machine — see `PROJECT_STATUS.md`'s Stage ⑦-A/⑦-B section
+for the full evidence). PyInstaller onedir was technically demonstrated
+and partially hardened, but it is not accepted as a release-grade path
+and is not the current active packaging choice. Briefcase /
+embedded-CPython remain research candidates only. Packaging technology
+selection is deliberately deferred.
 
-> standalone directory first
+Future Packaging / RC form:
 
-Final installer:
+> TBD after Milestone 12 acceptance and Product Hardening II.
 
-> Inno Setup 7
+Final installer technology:
 
-PyInstaller remains a fallback if the primary deployment path produces unresolved blocking defects.
+> TBD. No installer technology is currently selected.
 
 ---
 
@@ -213,7 +224,9 @@ STAGE C — Path B Deepening + Product Completion
 M8–M9
 
 STAGE D — Evidence Closure + Shipping
-M10–M13
+M10–M14 (M12 is a corrective rework interlude inserted after M11's
+closure disposition rejected Release Acceptance — see ROADMAP.md §18/§19;
+it is not part of the originally-planned shipping sequence)
 ```
 
 The project should resist milestone inflation.
@@ -237,9 +250,10 @@ New milestones should be created only if a real dependency or acceptance gate ca
 | M8 | Path B CJK / Rolling Normalization Deepening | Robust multilingual/noisy caption normalization |
 | M9 | V1 Product Completion & Feature Freeze | Accepted exports/workflows complete; no open feature blockers |
 | M10 | Evaluation & Career Evidence Closure | Benchmark, metrics, failure report, performance evidence, ADR closure |
-| M11 | Product Hardening & Full Regression | Product-quality convergence on frozen scope |
-| M12 | Release Candidate & Signed Release | Clean-install accepted V1 release |
-| M13 | Portfolio Packaging & Stop-Building Closure | Public technical story complete; V1 development formally stops |
+| M11 | Product Hardening & Full Regression | Product-quality convergence on frozen scope — CLOSED; Release Acceptance REJECTED BY HUMAN ADJUDICATION (§18 closure disposition) |
+| M12 | Product Rework & Cue Quality Recovery | Recover Cue quality and QA review UX without giving back M11's speed gains (§19) |
+| M13 | Release Candidate & Signed Release | Clean-install accepted V1 release |
+| M14 | Portfolio Packaging & Stop-Building Closure | Public technical story complete; V1 development formally stops |
 
 ---
 
@@ -1239,13 +1253,13 @@ M9 closes only when:
 | 31 | Progress and Job UX | Satisfied — phase/processed-time/cancel |
 | 32 | Scroll Ownership | Satisfied — independent `QListWidget`/`QTextEdit` scroll regions inside the `QSplitter` shell, by construction |
 | 33 | Layout Density | Visual/hardening — directional principle, no concrete artifact to close |
-| 37, 38, 40, 41, 43, 44 | Color / Accent / Typography / Radius / Depth tokens | Visual/hardening — tokens exist (`design_tokens.py`); real contrast validation is explicitly `REQUIRED BEFORE RELEASE` (section 89), i.e. M12, not M9 |
+| 37, 38, 40, 41, 43, 44 | Color / Accent / Typography / Radius / Depth tokens | Visual/hardening — tokens exist (`design_tokens.py`); real contrast validation is explicitly `REQUIRED BEFORE RELEASE` (section 89), i.e. M13 (renumbered per M11 §18), not M9 |
 | 46 | One Region, One Visual Hero | Satisfied |
 | 47 | Inputs and Text Editing | Satisfied — per-layer focused fields |
 | 49 | Timeline | **Was missing entirely** — **closed this round**: `CompactTimeline`, shared by both paths |
 | 53 | Filters and Queue States | **Was missing entirely** — **closed this round**: `filter_combo` with the frozen baseline labels per path |
 | 55 | Error States | Satisfied — Failed/Cancelled/partial states never hidden behind a generic toast |
-| 57 | Accessibility Requirements | Visual/accessibility/release-hardening — `REQUIRED BEFORE RELEASE` per section 89/90, i.e. M12 |
+| 57 | Accessibility Requirements | Visual/accessibility/release-hardening — `REQUIRED BEFORE RELEASE` per section 89/90, i.e. M13 (renumbered per M11 §18) |
 | 58 | Motion | Visual/hardening |
 | 61 | Production Terminology | Satisfied — "Review Priority", "Source Protected", etc. already in use; no invented jargon |
 | 63 | Advanced Settings | Scope prohibition, respected — no CV tuning exposed by default |
@@ -1256,7 +1270,7 @@ M9 closes only when:
 | 78 | Review Flow | Satisfied |
 | 80 | Data Integrity UX | Satisfied |
 | 84 | Processing Range | Contract-drift wording fixed (third round) — V1 frozen truth stated (absolute source timeline; rebasing is not a V1 output mode) |
-| 88 | Theme | Satisfied — Dark Precision is the only V1 visual identity; `design_tokens.py`'s dark tokens + `base_stylesheet` are its production implementation. No light theme, no OS-integration theming was added. This is a table-completeness correction only (the section was previously omitted from this inventory, not previously in doubt) — it triggers no new UI work and does not reopen accessibility/contrast hardening (still M12, section 89) |
+| 88 | Theme | Satisfied — Dark Precision is the only V1 visual identity; `design_tokens.py`'s dark tokens + `base_stylesheet` are its production implementation. No light theme, no OS-integration theming was added. This is a table-completeness correction only (the section was previously omitted from this inventory, not previously in doubt) — it triggers no new UI work and does not reopen accessibility/contrast hardening (still M13 per M11 §18's renumbering, section 89) |
 
 **Remaining-gap count after this round: 0** across every FROZEN/`V1 FROZEN` section. The only non-blocking item logged (10.2's full recommended shortcut list) is explicitly named above, not silently deferred.
 
@@ -1275,7 +1289,7 @@ No ROI/timeline/path-switching/export/processing-range/M4–M8 algorithm code wa
 
 1. Accepted V1 workflows complete — Path A import → setup(ROI/languages/validated processing range) → process → QA → export, and Path B import → normalize + import-warning visibility → QA → export, both reachable end-to-end from `main()`, with direct in-workbench switching between them.
 2. No known feature blocker remains for the required V1 output surface — Path B, like Path A, now genuinely reaches all 4 formats (SRT, VTT, Readable Transcript, AI-ready Transcript) from the same source.
-3. UI conforms to every FROZEN/`V1 FROZEN` functional requirement in `DESIGN.md`, per the complete inventory above — not a hand-picked subset. Only GUIDELINE-level visual/contrast/resize polish and release-required accessibility/contrast hardening (sections 33, 37–44, 57, 58, 89, 90) are left to M11/M12, and are named as such, not silently assumed.
+3. UI conforms to every FROZEN/`V1 FROZEN` functional requirement in `DESIGN.md`, per the complete inventory above — not a hand-picked subset. Only GUIDELINE-level visual/contrast/resize polish and release-required accessibility/contrast hardening (sections 33, 37–44, 57, 58, 89, 90) are left to M11/M13 (M13 per M11 §18's renumbering), and are named as such, not silently assumed.
 4. Automated regression suite is green on GitHub Actions CI (Ubuntu).
 5. Known issues are classified honestly: soft-mux/burn-in is an unselected optional V1 integration deferred beyond V1 (re-enters scope only via the Stop-Building Rule); the 10.2 shortcut-list gap is logged as minor M11 polish, not silently dropped.
 6. **Feature Freeze is formally declared** as of this milestone's merge.
@@ -1433,7 +1447,9 @@ below) — M11 is the milestone actually responsible for the Path A
 performance hardening this evaluation needs to be safely re-attempted,
 so it is also the milestone responsible for completing it.
 
-**M12 (Release Candidate & Signed Release) must not begin until this
+**M13 (Release Candidate & Signed Release, renumbered by M11's closure
+disposition §18 to make room for the M12 Product Rework interlude) must
+not begin until this
 transferred evaluation has actually completed and its results — whatever
 they are, including any further negative findings — have been folded
 back into `EVALUATION_REPORT.md` and, where relevant,
@@ -1471,8 +1487,8 @@ M11 acceptance condition, not a nice-to-have:
   be reported honestly, exactly as M10's own evidence was; this gate is
   about the evaluation actually completing and being reported, not about
   achieving a specific score.
-- M12 must not begin until this item is closed (§17's gate audit
-  disposition).
+- M13 (renumbered per M11's closure disposition, §18) must not begin
+  until this item is closed (§17's gate audit disposition).
 
 ### Automated regression
 
@@ -1526,15 +1542,26 @@ Ensure failures preserve:
 
 Primary target:
 
-> Nuitka / pyside6-deploy standalone directory
+> PyInstaller standalone directory (onedir) — see §3 Packaging above for
+> why this replaced the originally-targeted Nuitka/pyside6-deploy path.
 
-Resolve:
+Resolved (2026-09-04, PyInstaller onedir, see `PROJECT_STATUS.md`):
 
-- Qt plugins;
-- FFmpeg path;
-- OCR model assets;
-- runtime DLLs;
-- local resource paths.
+- Qt plugins (including QtMultimedia's FFmpeg/Windows Media Foundation
+  backends);
+- FFmpeg path (PyAV's own bundled DLLs);
+- OCR model assets: Paddle manages its own runtime cache, unaffected by
+  packaging; RapidOCR/DirectML's `.onnx` models ARE bundled directly in
+  the package (`--collect-all rapidocr`, added 2026-09-04 by the Stage ⑦
+  Runtime Default Corrective Gate — see `PROJECT_STATUS.md`), so a fresh
+  install never needs network access for them;
+- runtime DLLs (`onnxruntime`'s `DirectML.dll`, and Paddle's own
+  runtime-dynamically-loaded DLLs such as `mklml.dll` which needed an
+  explicit `--collect-binaries paddle`, confirmed present);
+- local resource paths (`migrations_sql` package data, and `paddlex`'s
+  own pipeline config YAML which needed explicit `--collect-data
+  paddlex` plus `--copy-metadata` for its dependency-presence checks,
+  confirmed present and applied correctly at runtime).
 
 ## Acceptance gate
 
@@ -1554,9 +1581,147 @@ M11 passes only when:
    `FAILURE_MODE_REPORT.md` — mandatory, not optional debt; M11 does not
    pass without it.**
 
+## Closure disposition (2026-09-04) — CLOSED by Human Adjudication; Release Acceptance REJECTED
+
+**Milestone 11 Product Hardening I is CLOSED.** Every acceptance-gate item
+above (1–9) was executed and its automated/CI evidence is real — regression
+is green, the transferred M10 representative-video evaluation actually
+completed, and Stage ⑦'s packaging/DirectML-default work produced real,
+verified evidence (see `PROJECT_STATUS.md`). Hardening did what this
+milestone exists to do: it found real, release-blocking product defects.
+
+**Release Acceptance for the resulting product is REJECTED BY HUMAN
+ADJUDICATION, not passed.** After hands-on re-testing of the packaged
+product (not just its automated evidence), the repository owner
+identified three release-blocking findings the automated gates above do
+not and cannot catch, because they are product-quality judgments, not
+regression/CI facts:
+
+1. The repository owner's hands-on product-level retest of the approved
+   ≤5× realtime DirectML production path found the final reconstructed
+   Cue output unacceptable for release: too many low-value / duplicate /
+   fragmented Cues despite acceptable processing speed. The fail-closed
+   DirectML DevQA verifier proves only that the intended DirectML
+   backend is reachable and genuinely active; periodic raw Observation
+   confirmations are expected diagnostic behavior and are not, by
+   themselves, evidence of defective final Cue output. The root cause of
+   the final Cue-quality failure remains open for Milestone 12.
+2. Human-usable QA review UX quality is unacceptable: high volume of
+   low-value/junk Cues reaching the review surface, `Discard` not
+   actually removing a discarded Cue from the visible workspace, and
+   Pending/Needs-Review/Approved state interleaving breaking the
+   chronological review flow the QA workbench depends on.
+3. Windows packaging remains exploratory, not release-grade — Nuitka was
+   already retired mid-milestone, and PyInstaller's own collection-gap
+   fixes (Stage ⑦-C) are evidence the packaging path itself is still
+   immature, independent of items 1–2.
+
+**Disposition:** `Release Ready = NO`. Current Release / Packaging work is
+**SUSPENDED** — no further PyInstaller/Briefcase/Inno-Setup work is
+scheduled until the rework below is complete and accepted. Feature Freeze
+(Milestone 9's gate) is lifted **specifically and only** to allow
+corrective product rework on the three findings above — it does not
+reopen general V1 feature scope. Milestone 12, immediately below, replaces
+"begin Release Candidate work" as the next engineering action; the
+originally-next Release Candidate milestone is renumbered to Milestone 13
+(§20) and does not begin until Milestone 12 is complete and the owner is
+satisfied with the result. See `PROJECT_STATUS.md` for the current
+git/PR mechanics of this closure.
+
 ---
 
-# 19. Milestone 12 — Release Candidate & Signed Release
+# 19. Milestone 12 — Product Rework & Cue Quality Recovery
+
+## Goal
+
+Recover Cue production quality and QA review usability without giving
+back Milestone 11's processing-speed gains, in direct response to the
+three release-blocking findings in Milestone 11's closure disposition
+above. This milestone exists because Human Adjudication rejected Release
+Acceptance following Milestone 11's hardening — it is corrective rework,
+not new V1 feature scope, and the Feature Freeze exception below is
+scoped to it accordingly.
+
+This milestone is intentionally **not** pre-scoped to a specific
+implementation. Per the repository owner's own instruction, no candidate
+direction below is an approved solution — this section records the
+problem and the candidate directions considered, and stays open until a
+direction is actually chosen and scoped.
+
+## Scope
+
+### Problem 1 — final Cue production quality is unacceptable for release
+
+The DirectML-accelerated production path meets its ≤5× realtime target,
+but the repository owner's hands-on product-level retest found the
+final reconstructed Cue output unacceptable for release (too many
+low-value / duplicate / fragmented Cues). The root cause is not yet
+established: the fail-closed DevQA DirectML verifier (Milestone 11
+Stage ⑦) only proved the intended DirectML backend is reachable and
+genuinely active — its periodic raw Observation confirmations are
+expected diagnostic behavior, not evidence of where the final-output
+defect originates. Milestone 12 must first determine the actual causal
+seam (detection, recognition, Observation aggregation, caption
+identity, reconstruction, downstream cleanup, or an interaction among
+them) before selecting a direction. Candidate directions to investigate
+(not yet decided between,
+none pre-approved):
+
+- Keep the current recognition/detection backend and speed, and insert a
+  deterministic, programmatic cue-cleanup / fragmentation-consolidation
+  stage downstream of raw observations, rather than changing the OCR
+  backend itself.
+- Re-evaluate the detector/recognizer backend combination itself against
+  real evidence, rather than assuming the current DirectML pairing is
+  fixed.
+- Investigate local speech recognition (ASR) as an assist/calibration
+  signal alongside OCR — check first for any existing prior prototype or
+  artifacts (repo history, sibling working folders, `prompt-drafts/`)
+  before starting from scratch.
+
+### Problem 2 — QA review UX
+
+- `Discard` must actually remove a discarded Cue from the visible
+  QA list/layout, not merely change its review-state label while it
+  stays visually present.
+- Cue ordering in the review queue must support a genuinely linear,
+  chronological read, rather than letting Pending/Needs-Review/Approved
+  state interleaving scramble the reading order.
+- Reduce the volume of low-value/junk Cues reaching the review surface in
+  the first place (upstream of the two items above, and related to
+  Problem 1's cleanup-stage candidate direction).
+
+### Explicitly out of scope for Milestone 12
+
+- Packaging work (PyInstaller/Briefcase/Nuitka/Inno Setup) — deferred to
+  Milestone 13, not resumed here.
+- Any second round of general Product Hardening / Full Regression — that
+  is Milestone 12's own exit criterion (below), not concurrent work.
+- Any change to Architecture B, OCR recognition logic, or detector
+  thresholds that is not directly required to address Problem 1 above.
+
+## Acceptance gate
+
+Milestone 12 passes only when:
+
+1. a concrete direction for Problem 1 has been chosen (from the
+   candidates above or otherwise) on real evidence, scoped, implemented,
+   and evaluated against representative material without giving back the
+   ≤5× realtime target Milestone 11 already achieved;
+2. `Discard` genuinely removes a Cue from the visible QA workspace;
+3. Cue review ordering reads linearly/chronologically regardless of
+   Pending/Needs-Review/Approved state interleaving;
+4. the repository owner is satisfied with the resulting product quality
+   and UX — this is a human-adjudicated gate, not an automated one, same
+   as Milestone 11's own closure above;
+5. only after this gate closes does Milestone 13 (Release Candidate &
+   Signed Release, immediately below) become the next engineering action,
+   preceded by a second Product Hardening & Full Regression pass scoped
+   at that time.
+
+---
+
+# 20. Milestone 13 — Release Candidate & Signed Release
 
 ## Goal
 
@@ -1570,9 +1735,10 @@ Create release candidate from frozen accepted source.
 
 ### Installer
 
-Package standalone application with:
-
-> Inno Setup 7
+Package standalone application with an installer technology selected at
+that time — per §3 Packaging, no installer technology is currently
+selected; `Inno Setup 7` was M11's working assumption before packaging
+work was suspended and is not a pre-committed choice for this milestone.
 
 ### Signing
 
@@ -1631,7 +1797,7 @@ At this point V1 is a shipped product.
 
 ---
 
-# 20. Milestone 13 — Portfolio Packaging & Stop-Building Closure
+# 21. Milestone 14 — Portfolio Packaging & Stop-Building Closure
 
 ## Goal
 
@@ -1721,7 +1887,7 @@ M13 passes only when the project can be shown to a technical recruiter / intervi
 
 ---
 
-# 21. Evaluation Is Continuous, Not a Late Milestone
+# 22. Evaluation Is Continuous, Not a Late Milestone
 
 M10 is evidence closure.
 
@@ -1746,7 +1912,7 @@ An implementation milestone that adds an AI/reconstruction seam without adding t
 
 ---
 
-# 22. Documentation Discipline
+# 23. Documentation Discipline
 
 Each milestone should update macro records when the product truth changes.
 
@@ -1771,7 +1937,7 @@ This rule exists to prevent repeated lifecycle-record drift.
 
 ---
 
-# 23. Milestone PR Discipline
+# 24. Milestone PR Discipline
 
 Default implementation pattern:
 
@@ -1801,7 +1967,7 @@ A Milestone is not complete merely because an agent says “done.”
 
 ---
 
-# 24. Agent Prompt Discipline
+# 25. Agent Prompt Discipline
 
 Future production implementation prompts should remain milestone-oriented and concise.
 
@@ -1823,7 +1989,7 @@ The Prototype Decision Loop is closed.
 
 ---
 
-# 25. Architecture / Design Change Control
+# 26. Architecture / Design Change Control
 
 If implementation reveals a contradiction:
 
@@ -1845,7 +2011,7 @@ Prototype HTML must not be treated as authority over current macro documents.
 
 ---
 
-# 26. V1 Non-Goals
+# 27. V1 Non-Goals
 
 The roadmap explicitly excludes:
 
@@ -1865,7 +2031,7 @@ The roadmap explicitly excludes:
 
 ---
 
-# 27. Stop-Building Rule
+# 28. Stop-Building Rule
 
 The V1 project does not continue until every imaginable useful feature exists.
 
@@ -1894,7 +2060,7 @@ Reasons that do **not** justify V1 expansion:
 
 ---
 
-# 28. V1 Completion Definition
+# 29. V1 Completion Definition
 
 GlyphCue V1 is complete only when all are true:
 
@@ -1949,7 +2115,7 @@ Only then should the roadmap be considered complete.
 
 ---
 
-# 29. Current Lifecycle State
+# 30. Current Lifecycle State
 
 ```text
 Repository created                     ✓
@@ -1978,42 +2144,68 @@ Milestone 7 — Reconstruction QA & Review Priority ✓ complete
 Milestone 8 — Path B Deepening: CJK / Rolling Normalization ✓ complete
 Milestone 9 — V1 Product Completion & Feature Freeze ✓ complete
 Milestone 10 — Evaluation & Career Evidence Closure ✓ complete (gate audit accepted 2026-08-31; representative-video target transferred to Milestone 11 as a mandatory gate, not waived — see §17)
+Milestone 11 — Product Hardening & Full Regression ✓ hardening complete / CLOSED (2026-09-04) — Release Acceptance REJECTED BY HUMAN ADJUDICATION (§18 closure disposition); see PROJECT_STATUS.md
 
-Production Development                 IN PROGRESS
-Feature Freeze                          ACTIVE
+Corrective Product Rework               QUEUED — Milestone 12 NOT YET STARTED
+Feature Freeze                          LIFTED FOR REWORK ONLY (Milestone 9's freeze remains the default outside Milestone 12's named scope)
+Release / Packaging                     SUSPENDED
 ```
 
 ---
 
-# 30. Immediate Next Action
+# 31. Immediate Next Action
 
 The next engineering action is:
 
-> **Milestone 11 — Product Hardening & Full Regression**
+> **Milestone 12 — Product Rework & Cue Quality Recovery** (§19; queued, not yet started)
+
+**Milestone 11 — Product Hardening & Full Regression is CLOSED (2026-09-04).**
+Stage ④ Targeted Regression, Stage ⑤ Representative Evaluation (including
+the transferred M10 gate), Stage ⑥ Full Regression, and Stage ⑦ Formal
+Human QA & Packaging Hardening (including the Runtime Default Corrective
+Gate) all executed with real, CI-verified evidence — see
+`docs/m11_targeted_regression.md`, `docs/m11_representative_evaluation.md`,
+and `PROJECT_STATUS.md` for the full record. Every M11 acceptance-gate
+item (§18) was executed and adjudicated. M11 is CLOSED because the
+hardening process completed and surfaced release-blocking product
+findings; Release Acceptance itself did NOT pass.
+
+**Human Adjudication (2026-09-04) rejected Release Acceptance for the
+resulting product** after hands-on re-testing surfaced three
+release-blocking findings the automated gates above cannot catch — see
+§18's closure disposition for the full reasoning:
+
+1. the approved ≤5× realtime DirectML production path's final
+   reconstructed Cue output is unacceptable for release (too many
+   low-value/duplicate/fragmented Cues); root cause open, deferred to
+   Milestone 12, not yet attributed to the DirectML backend itself;
+2. QA review UX is not acceptable (junk-Cue volume, `Discard` not
+   removing Cues from view, non-linear review ordering);
+3. Windows packaging remains exploratory, not release-grade.
+
+`Release Ready = NO`. Release/Packaging work is **SUSPENDED**. Feature
+Freeze is lifted only for the corrective scope named in Milestone 12
+(§19) — it is not a general reopening of V1 feature scope.
 
 Do not ask AG2.0 to implement the whole roadmap.
 
 Advance one milestone at a time.
 
-Feature Freeze remains ACTIVE (Milestone 9's gate 7): any new feature proposed from here forward must be justified against the Stop-Building Rule before it is accepted, not built by default.
+Milestone 12 carries no mandatory pre-scoped implementation — per its own
+acceptance gate (§19), a concrete direction for the Cue-quality trade-off
+must first be chosen on real evidence before implementation begins.
 
-M11 carries one mandatory item beyond its own original scope: the M10
-representative-video evaluation transferred to it by §17's gate audit
-disposition (§18's acceptance gate 9). This is not optional debt — M11
-does not pass without it.
+After Milestone 12 is genuinely accepted by the repository owner (§19's
+acceptance gate):
 
-After M11 is pushed:
-
-1. inspect the remote repository;
-2. verify the milestone against its acceptance gate, including the
-   transferred M10 item;
-3. correct deficiencies;
-4. merge only when the milestone is genuinely accepted;
-5. then issue the M12 prompt.
+1. scope and run a second Product Hardening & Full Regression pass;
+2. verify it against a gate equivalent to §18's;
+3. only then does Milestone 13 (Release Candidate & Signed Release, §20)
+   become the next engineering action.
 
 ---
 
-# 31. Roadmap Summary
+# 32. Roadmap Summary
 
 ```text
 M0
@@ -2050,12 +2242,17 @@ M10
 Evaluation & Career Evidence Closure
         ↓
 M11
-Product Hardening + Full Regression
+Product Hardening + Full Regression (CLOSED; Release Acceptance REJECTED)
         ↓
 M12
-Release Candidate + Signed Release
+Product Rework & Cue Quality Recovery (corrective; current stage)
+        ↓
+(second Product Hardening & Full Regression pass, scoped when M12 closes)
         ↓
 M13
+Release Candidate + Signed Release
+        ↓
+M14
 Portfolio Packaging + Stop-Building Closure
 ```
 
@@ -2073,7 +2270,7 @@ M10–M13 convert engineering work into a finished, evaluated, hardened, shipped
 
 ---
 
-# 32. Final Roadmap Principle
+# 33. Final Roadmap Principle
 
 GlyphCue should not optimize for the number of features completed.
 

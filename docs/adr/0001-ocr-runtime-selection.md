@@ -63,3 +63,94 @@ Full methodology, environment, corpus definition, and raw results: `docs/benchma
 **Re-verification note (Milestone 3, first corrective pass):** the benchmark was re-run in full on Windows Python 3.12.10 — the interpreter version V1 actually targets — after fixing two measurement bugs: a missing per-language warm-up call (which had folded first-call JIT/session-setup cost into PaddleOCR's Chinese/Japanese "steady-state" latency) and a mislabeled single post-run RSS snapshot then called "peak memory". The `paddleocr`/`paddlepaddle` version pair was independently re-resolved on Python 3.12 rather than assumed from the earlier Python 3.11 run, and is now pinned exactly (not `>=`) in `pyproject.toml`'s `[ocr]` extra to prevent future installs from silently drifting onto an unverified pair.
 
 **Re-verification note (Milestone 3, second corrective pass):** two further wording/methodology issues were fixed and the benchmark re-run again: (1) the RSS running-maximum was still being described as a "true"/"genuine" peak, which overstates what discrete post-step sampling with a pre-sample `gc.collect()` can actually observe — it is now reported as `max_observed_rss_mb` and documented as an approximation that can miss transient in-call spikes; no new memory measurement was needed for this, only the relabeling. (2) `startup_seconds` was asymmetric between the two engines — RapidOCR measured import+construction, but PaddleOCR's measurement window extended past its warm-up call — so both are now defined identically as import+default-language-construction-only, with warm-up excluded from both. Re-running surfaced real, substantial run-to-run latency variance on this developer workstation (per-item latency has ranged from under 1s to over 3s across different re-runs of identical code), which the benchmark report now documents explicitly rather than presenting a single run's numbers as if they were precise or stable. Across every re-run, including this one, the CER results and PaddleOCR's relative latency advantage have stayed consistent — the runtime decision is unaffected by either fix.
+
+## Milestone 11 addendum: opt-in DirectML accelerator (P3)
+
+This ADR rejected RapidOCR as the **default** runtime (above), but explicitly left the door open ("What remains swappable") for a second `OcrEngine`/`RegionOcrEngine` implementation if real evidence justified one. Milestone 11's **initial** P3 gate (private evidence: `private_samples/phase0b/PHASE0B_REPORT.md`, not tracked) measured RapidOCR + ONNX Runtime DirectML (`DmlExecutionProvider`) as a genuine GPU accelerator option and found real upside (fixed-crop recognition-only latency 0.184–0.294s vs Paddle's CPU path) alongside a real, then-unresolved risk: RapidOCR's bundled small recognition model showed non-zero CER against Paddle's zero-CER result on at least one sample, and Chinese/Japanese coverage in that first pass was a single synthetic case each — not enough to support a broad accuracy claim. That initial gate's own conclusion was risk: medium-to-high, priority: medium, opt-in only.
+
+**P3 Confirmation Gate (final, supersedes the initial risk rating above):** the thin-evidence gap was the open item, not a settled defect, and was closed by re-running against 10 harder cases rather than the initial gate's small sample: 8/10 exact matches, and the remaining 2 showed no meaningful business degradation (readable, correctly-timed output, not silent failures). The `g`/`e` entries' Cue-level parity against Paddle was 36/36. Interleaved A/B timing across this expanded set measured a real ~1.7–1.95x end-to-end incremental speedup for the DirectML path. On this evidence, the Confirmation Gate's final verdict is **ACCEPT-AS-WINDOWS-OPT-IN**: the initial gate's medium/high-risk rating was a function of thin ZH/JA evidence, not a fundamental quality problem, and that gap is now closed for this scope — opt-in, non-default, exactly as this addendum ships it.
+
+**What shipped:** `glyphcue.adapters.directml_ocr_engine.DirectMlOcrEngine`, a `RegionOcrEngine` implementation identical in shape to `PaddleOcrEngine`'s P2 recognition-only path — it uses RapidOCR's own public standalone method (`RapidOCR.recognize_txt`, which only calls `self.text_rec`, never `self.text_det`) for `recognize_regions`, and reuses GlyphCue's own `_sort_polygons_in_reading_order`/`_crop_polygon_region` (the same functions `PaddleOcrEngine` uses) rather than any RapidOCR-internal geometry helper. `glyphcue.adapters.ocr_engine_selection.create_ocr_engine(language, prefer_directml=...)` is the only sanctioned construction path: `prefer_directml` defaults to `False` (existing callers are unaffected), and even when a caller opts in, `PaddleOcrEngine` is returned unless a real DirectML initialization probe on this machine succeeds — a missing `[directml]` install, a non-Windows platform, or a genuine provider-initialization failure (e.g. no DX12-capable adapter) all fall back to Paddle, not to a crash. This is reachable from the real product, not just tests: `glyphcue.ui.app.create_path_a_app` wires `ocr_engine_factory` to a small function reading the `GLYPHCUE_PREFER_DIRECTML_OCR` env var (unset/anything but `"1"` keeps the shipped default of Paddle, unconditionally) — there is no in-app UI toggle, matching the "not a V1 product feature" framing already used for this file's other env-var-gated developer switch.
+
+**Dependency/packaging contract:** `[project.optional-dependencies].directml` in `pyproject.toml` pins `rapidocr==3.9.2` and `onnxruntime-directml==1.24.4` (the exact pair re-verified for this gate), both marked `sys_platform == 'win32'` so the extra is inert on Linux/macOS and cannot affect GitHub CI. It is a separate extra from `[ocr]`, not merged into it. **Update (M11 Stage ⑦-A packaging hardening, 2026-09-04):** the caution below that `[ocr]` and `[directml]` "must be installed into separate environments" was written from the upstream `onnxruntime`-name-collision risk in the abstract, but was never actually tested against this project's exact pinned pair until Stage ⑦-A's packaging preflight — `pip install -e ".[ocr,directml]"` together in one environment was verified to work cleanly (`rapidocr` does not pull in a conflicting bare `onnxruntime`), and all four backend combinations (Paddle×2, DirectML×2) were verified to construct and run real inference in the same process. GlyphCue's shipped PyInstaller package now bundles both extras together in one environment (see `PROJECT_STATUS.md`'s canonical build command) — this is empirically proven for the pinned versions above, not merely assumed; a version bump to either package should re-verify this before relying on it again. The ~21.2MB `PP-OCRv6_rec_small.onnx` recognition model (same PP-OCRv6 family as the Paddle P2 `TextRecognition` model, ONNX-exported) is not bundled or version-tracked by GlyphCue in source control — RapidOCR downloads and caches its own default model set on first use, the same pattern paddleocr/paddlepaddle already use; the packaged product does bundle these `.onnx` files directly (via `--collect-all rapidocr`, see below) so a fresh install never needs network access for them. `GLYPHCUE_DIRECTML_MODELS_DIR`/`GLYPHCUE_DIRECTML_PACKAGES_DIR` exist only as optional local overrides for offline/pinned-artifact test environments.
+
+**What stays frozen:** this addendum does not touch `occupancy_normalized_distance`, the 0.300 grouping threshold, Beta-S, the 5fps scheduler, medoid calibration, caption identity evidence semantics, or the P2 recognition-only Paddle path in any way — `DirectMlOcrEngine` is a second, entirely separate implementation of the same frozen `OcrEngine`/`RegionOcrEngine` contract.
+
+## Milestone 11 Stage ⑦ addendum: DirectML becomes the default-preferred backend, not opt-in (2026-09-04)
+
+**Runtime policy corrected — superseding "opt-in only" above.** The
+P3/P4B Confirmation Gates above proved DirectML real, safe (genuine
+preflight + automatic Paddle fallback), and within the ≤5× realtime
+performance target — but shipping it as a hidden opt-in meant a normal
+Windows user launching `GlyphCue.exe` never actually got that
+performance, silently defaulting instead to the CPU Paddle path's
+19.7×–108.4× realtime cost (`enable_mkldnn=False`, a real workaround for
+a `paddleocr==3.7.0`/`paddlepaddle==3.3.1` crash — see the base ADR
+above; `PaddleOcrEngine` remains correct, just slow). A packaging
+investigation (Stage ⑦-A/⑦-B/⑦-C, `PROJECT_STATUS.md`) surfaced this gap
+concretely when a real packaged run measured ~20× realtime, prompting
+Human Adjudication to close it as a small **Stage ⑦ Runtime Default
+Corrective Gate**.
+
+**What changed:** `src/glyphcue/ui/app.py`'s `_ocr_engine_factory`/
+`_hybrid_detector_factory` now call `create_ocr_engine`/
+`create_text_detector` with `prefer_directml=True` **by default** (no env
+var needed). `GLYPHCUE_PREFER_DIRECTML_OCR`/`GLYPHCUE_PREFER_DIRECTML_DETECTOR`
+were renamed to `GLYPHCUE_DISABLE_DIRECTML_OCR`/
+`GLYPHCUE_DISABLE_DIRECTML_DETECTOR` and their polarity flipped: they are
+now a DevQA/support override to force Paddle-only, not a switch a normal
+user has to find and set to get accelerated performance.
+
+**What did not change:** `create_ocr_engine`/`create_text_detector`
+themselves (this ADR's `prefer_directml` parameter, its real
+platform/package preflight, and its real DirectML initialization probe)
+are byte-for-byte unchanged — only the caller's default flipped. Paddle
+remains the automatic, correctness-preserving fallback on any
+unsupported platform, missing install, or provider-init failure; there
+is still exactly one product pipeline (`PRODUCTION_TRIGGER`) and
+`DirectMlOcrEngine`/`DirectMlTextDetector` remain a second *backend*
+inside it, not a second pipeline. The documented correctness trade-off
+(RapidOCR's bundled recognition model showing non-zero CER on some
+content where Paddle showed zero, per the Confirmation Gate above) is
+unchanged and still applies — this policy change is about which backend
+runs by default, not a claim that the trade-off no longer exists.
+
+**Packaging:** the canonical PyInstaller build command
+(`PROJECT_STATUS.md`) gained `--collect-all rapidocr` in the same gate —
+without it, the packaged product had zero DirectML capacity at all (the
+`rapidocr` package was entirely absent from the frozen bundle), which
+would have made this default-preference change silently inert in the
+shipped product even though it worked correctly from source.
+
+## Milestone 11 closure addendum: final Cue quality judged release-blocking; root cause not yet established (2026-09-04)
+
+**Status of the decision above: unchanged, not reverted.** DirectML
+remains the default-preferred backend with verified automatic Paddle
+fallback, exactly as the Stage ⑦ addendum describes.
+
+The fail-closed DevQA verification (`tools/devqa_directml_verify.py`,
+see `PROJECT_STATUS.md`) does not establish the root cause of the
+release-blocking final Cue-quality problem. It proves that the intended
+DirectML backend and `DmlExecutionProvider` are genuinely active and
+reachable. The repository owner's separate product-level retest found
+the final reconstructed Cue output unacceptable for release. That
+final-output defect may arise in detection, recognition, Observation
+aggregation, caption identity, reconstruction, downstream cleanup, or an
+interaction among those seams; Milestone 12 must determine the first
+real divergence before any runtime-selection decision is revised.
+
+Milestone 11's closure disposition (`ROADMAP.md` §18) records that the
+repository owner judged the final Cue output release-blocking on
+rehandling the packaged product, and rejected Release Acceptance on that
+basis (among other findings — see `PROJECT_STATUS.md`). **This ADR does
+not prescribe a resolution, and does not assert that the cause is the
+recognition-model trade-off previously named above** ("What was
+rejected", the P3 Confirmation Gate) — that remains an open hypothesis,
+not a confirmed root cause. Milestone 12 (Product Rework & Cue Quality
+Recovery, `ROADMAP.md` §19) records candidate directions under
+consideration — a downstream deterministic cleanup/consolidation stage,
+re-evaluating the detector/recognizer combination, or a local-ASR assist
+signal — none yet chosen or approved. Whatever direction Milestone 12
+selects, any resulting change to this ADR's runtime-selection decision
+should be recorded as a further addendum here, not by rewriting the
+history above.

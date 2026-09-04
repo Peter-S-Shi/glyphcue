@@ -75,3 +75,119 @@ def test_list_all_returns_every_added_cue(repository):
     repository.add(second)
 
     assert {cue.id for cue in repository.list_all()} == {"a", "b"}
+
+
+def test_save_cues_for_source_and_list_for_source_roundtrips(repository):
+    source_a = "video_a.mp4"
+    source_b = "video_b.mp4"
+
+    cues_a = [
+        Cue(
+            id="cue-a1",
+            start_time=0.0,
+            end_time=1.0,
+            language_layers=(LanguageLayer(language="en", text="a1", observation_ids=("obs-1",)),),
+            review_state=ReviewState.APPROVED,
+        ),
+        Cue(
+            id="cue-a2",
+            start_time=1.5,
+            end_time=2.5,
+            language_layers=(LanguageLayer(language="ja", text="a2"),),
+            review_state=ReviewState.PENDING,
+        ),
+    ]
+    cues_b = [
+        Cue(
+            id="cue-b1",
+            start_time=0.5,
+            end_time=1.5,
+            language_layers=(LanguageLayer(language="zh", text="b1"),),
+            review_state=ReviewState.NEEDS_REVIEW,
+        ),
+    ]
+
+    repository.save_cues_for_source(source_a, cues_a)
+    repository.save_cues_for_source(source_b, cues_b)
+
+    assert repository.list_for_source(source_a) == cues_a
+    assert repository.list_for_source(source_b) == cues_b
+    assert repository.list_for_source("unknown_source.mp4") == []
+
+
+def test_save_cues_for_source_replaces_atomically_without_fk_violation(repository):
+    source_a = "video_a.mp4"
+    initial_cues = [
+        Cue(
+            id="cue-1",
+            start_time=0.0,
+            end_time=1.0,
+            language_layers=(LanguageLayer(language="en", text="hello"),),
+        ),
+        Cue(
+            id="cue-2",
+            start_time=2.0,
+            end_time=3.0,
+            language_layers=(LanguageLayer(language="en", text="world"),),
+        ),
+    ]
+    repository.save_cues_for_source(source_a, initial_cues)
+
+    updated_cues = [
+        Cue(
+            id="cue-3",
+            start_time=0.5,
+            end_time=1.5,
+            language_layers=(LanguageLayer(language="en", text="replaced"),),
+            review_state=ReviewState.APPROVED,
+        ),
+    ]
+    repository.save_cues_for_source(source_a, updated_cues)
+
+    assert repository.list_for_source(source_a) == updated_cues
+    assert repository.get("cue-1") is None
+    assert repository.get("cue-2") is None
+    assert repository.get("cue-3") == updated_cues[0]
+
+
+def test_delete_for_source_removes_cues_and_layers_without_fk_violation(repository):
+    source_a = "video_a.mp4"
+    source_b = "video_b.mp4"
+    repository.save_cues_for_source(
+        source_a,
+        [Cue(id="cue-a", start_time=0.0, end_time=1.0, language_layers=(LanguageLayer("en", "a"),))],
+    )
+    repository.save_cues_for_source(
+        source_b,
+        [Cue(id="cue-b", start_time=0.0, end_time=1.0, language_layers=(LanguageLayer("en", "b"),))],
+    )
+
+    repository.delete_for_source(source_a)
+
+    assert repository.list_for_source(source_a) == []
+    assert len(repository.list_for_source(source_b)) == 1
+
+
+def test_update_cue_state_persists_review_state(repository):
+    cue = Cue(
+        id="cue-update",
+        start_time=0.0,
+        end_time=1.0,
+        language_layers=(LanguageLayer("en", "text"),),
+        review_state=ReviewState.PENDING,
+    )
+    repository.add(cue, source_id="source.mp4")
+
+    repository.update_cue_state("cue-update", ReviewState.APPROVED)
+
+    fetched = repository.get("cue-update")
+    assert fetched.review_state == ReviewState.APPROVED
+
+
+def test_legacy_cues_with_empty_source_id_are_isolated_from_specific_sources(repository):
+    legacy = Cue(id="legacy-1", start_time=0.0, end_time=1.0, language_layers=(LanguageLayer("en", "legacy"),))
+    repository.add(legacy)  # legacy add without source_id
+
+    assert repository.list_for_source("video_a.mp4") == []
+    assert [c.id for c in repository.list_all()] == ["legacy-1"]
+

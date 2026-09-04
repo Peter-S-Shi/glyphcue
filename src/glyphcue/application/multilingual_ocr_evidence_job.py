@@ -3,9 +3,11 @@ from __future__ import annotations
 import time
 import uuid
 from pathlib import Path
-from typing import Mapping
+from typing import Any, Callable
 
-from glyphcue.adapters.ocr_engine import OcrEngine
+import numpy as np
+
+from glyphcue.adapters.ocr_engine import OcrEngine, RegionOcrEngine
 from glyphcue.adapters.pyav_media_source import PyAvMediaFrameSource, probe_media
 from glyphcue.application.ocr_evidence_job import STATE_TRIGGER_DETAIL_KEY, INSTANT_SPAN_SECONDS
 from glyphcue.application.ocr_invocation_policy import (
@@ -15,6 +17,7 @@ from glyphcue.application.ocr_invocation_policy import (
 from glyphcue.application.pipeline_metrics import PipelineMetrics
 from glyphcue.application.processing_range import ProcessingRange
 from glyphcue.application.roi_crop import crop_to_roi
+from glyphcue.application.source_identity import normalize_source_id
 from glyphcue.domain.observation import Observation
 from glyphcue.domain.provenance import Provenance, ProvenanceKind
 from glyphcue.domain.track_group import TrackGroup
@@ -23,77 +26,70 @@ from glyphcue.persistence.database import connect
 from glyphcue.persistence.observation_repository import ObservationRepository
 
 
+TextDetector = Callable[[np.ndarray], Any]
+
+
 def build_multilingual_ocr_evidence_job(
     path: Path,
     processing_range: ProcessingRange,
     track_group: TrackGroup,
-    ocr_engines: Mapping[str, OcrEngine],
+    ocr_engine: OcrEngine,
     db_path: Path,
     metrics: PipelineMetrics,
     evidence_run_id: str,
     *,
+    detect: TextDetector,
     policy: OcrInvocationPolicy | None = None,
 ) -> Job:
-    """Milestone 6's real evidence-production seam: the M4 job
-    architecture (`ocr_evidence_job.build_ocr_evidence_job`) extended
-    from one `OcrEngine` to one engine PER Track Group-expected
-    language, so genuinely multilingual evidence can exist in the first
-    place.
+    """Milestone 11 Architecture B: the M4 job architecture
+    (`ocr_evidence_job.build_ocr_evidence_job`) extended for genuinely
+    multilingual evidence via ONE shared detector plus ONE universal
+    recognizer per triggered frame -- not, as Milestone 6's original
+    design had it, one full detect+recognize call per Track Group
+    language.
 
-    This is NOT because a configured-language engine instance only
-    reads its own language -- real multi-engine verification
+    Milestone 6's own real multi-engine verification
     (`benchmarks/multilingual_reconstruction/`, see
     docs/multilingual/track_group_reconstruction.md's "Evidence
-    hygiene") found the opposite: every `PaddleOcrEngine` instance
-    detects and transcribes EVERY text region in the frame regardless
-    of which language it was constructed for, tagging all of its own
-    output with its own configured language either way. One engine call
-    per expected language still matters -- it's what gives each
-    physical line a genuine reading from a model actually tuned for
-    that script, real per-region geometry from that engine's own
-    detector, and a real (if not fully trustworthy on its own -- see
-    `assign_observations_to_languages`) language hint to work with,
-    rather than only ever seeing whatever a single engine's own script
-    bias happens to favor.
+    hygiene") found that every `PaddleOcrEngine` instance already
+    detects and transcribes EVERY text region in the frame regardless of
+    which language it was constructed for -- the "engine per language"
+    design was paying for N full detection+recognition passes over
+    IDENTICAL frame content to get N engines' opinions on the same
+    regions, when only the RECOGNITION step's underlying model varies at
+    all by configured language (and P2/P3's own `RegionOcrEngine` work
+    showed even that isn't true: `PaddleOcrEngine`/`DirectMlOcrEngine`'s
+    recognizer is the same multi-script-capable model regardless of the
+    `language=` an instance happens to be labeled with).
 
-    `ocr_engines` must have exactly one entry per language in
-    `track_group.languages` (raises `ValueError` otherwise) -- callers
-    construct each engine themselves (e.g.
-    `{"en": PaddleOcrEngine("en"), "zh": PaddleOcrEngine("zh")}`), same
-    as M4 callers construct their single engine.
+    `detect` runs ONCE per triggered frame, producing this frame's
+    ordered polygons; `ocr_engine` (typically constructed via
+    `glyphcue.adapters.ocr_engine_selection.create_ocr_engine` --
+    Windows DirectML opt-in with the same real preflight/fallback to
+    PaddleOcrEngine as the Hybrid P2/P3 path, never a silent behavior
+    change to the default) then runs its `recognize_regions` (or plain
+    `recognize`, for a caller-supplied `OcrEngine` that doesn't implement
+    `RegionOcrEngine`) exactly ONCE against those polygons -- one
+    detect + one recognize per triggered frame, full stop, regardless of
+    how many languages `track_group` expects.
 
-    The OCR-invocation decision (`policy.should_ocr`) is made exactly
-    ONCE per frame, shared across every language's engine call for that
-    frame -- not once per engine. This is what lets Milestone 6's
-    reconstruction reuse M5's `group_into_state_runs` state-run grouping
-    unchanged: every language layer sees the identical trigger cadence
-    and `state_trigger` reason for a given frame, because they are
-    literally evidence about the same physical frame, read multiple
-    times.
+    Every returned region is persisted as its own Observation, tagged
+    with `ocr_engine`'s own `language` label as a real-but-not-fully-
+    trustworthy hint (unchanged from Milestone 6 -- see
+    `assign_observations_to_languages`'s docstring for why the actual
+    per-language split happens downstream from real script content, not
+    from this tag). A triggered frame with zero detected regions still
+    gets a single blank-candidate marker Observation (M4's "OCR-empty is
+    candidate evidence, not silence" rule -- see `ocr_evidence_job.py`),
+    so an empty frame is real recorded evidence, not an absence
+    indistinguishable from "this frame was never processed."
 
-    Every region every engine finds is persisted as its own Observation
-    (tagged with that engine's own `language`, exactly like M4), sharing
-    one `evidence_run_id` and one `frame_reference`/timestamp per frame
-    regardless of which engine produced it. An engine that finds nothing
-    on a triggered frame still gets a blank-candidate marker Observation
-    persisted for it (M4's existing "OCR-empty is candidate evidence,
-    not silence" rule -- see `ocr_evidence_job.py`), so a genuinely
-    missing language layer for that frame is real recorded evidence, not
-    an absence indistinguishable from "this frame was never OCR'd."
-
-    `metrics.ocr_calls` counts real engine invocations (one per
-    triggered frame per language) -- for a 2-language Track Group, a
-    triggered frame costs 2 OCR calls, not 1, and the metric reports
-    that honestly (ROADMAP: "metrics must come from a real execution
-    path, no fake telemetry").
+    `metrics.ocr_calls` counts real recognition invocations -- one per
+    triggered frame, regardless of `track_group.languages`' length; a
+    2-language and a 4-language Track Group cost the same one call per
+    frame (ROADMAP: "metrics must come from a real execution path, no
+    fake telemetry").
     """
-    expected_languages = set(track_group.languages)
-    if set(ocr_engines) != expected_languages:
-        raise ValueError(
-            "ocr_engines must have exactly one entry per Track Group language: "
-            f"expected {sorted(expected_languages)}, got {sorted(ocr_engines)}"
-        )
-
     active_policy = policy if policy is not None else ChangeTriggeredOcrPolicy()
 
     def work(context: JobContext) -> None:
@@ -102,13 +98,14 @@ def build_multilingual_ocr_evidence_job(
         range_start, range_end = processing_range.resolve(metadata.duration_seconds)
         range_duration = range_end - range_start
 
-        initialized_languages: list[str] = []
+        engine_initialized = False
         conn = None
         source = None
         try:
-            for language, engine in ocr_engines.items():
-                engine.initialize()
-                initialized_languages.append(language)
+            init_start = time.monotonic()
+            ocr_engine.initialize()
+            engine_initialized = True
+            metrics.engine_initialization_seconds = time.monotonic() - init_start
 
             conn = connect(db_path)
             observation_repository = ObservationRepository(conn)
@@ -123,46 +120,49 @@ def build_multilingual_ocr_evidence_job(
                 roi_frame = crop_to_roi(frame, track_group.roi)
 
                 if active_policy.should_ocr(roi_frame, timestamp):
-                    trigger_reason = getattr(active_policy, "last_trigger_reason", None)
+                    trigger_reason = getattr(active_policy, "last_trigger_reason", "unspecified")
+                    diff_score = getattr(active_policy, "last_difference_score", None)
+                    struct_score = getattr(active_policy, "last_structural_score", None)
+                    h, w = roi_frame.shape[:2]
                     frame_reference = f"{path}@{timestamp:.6f}s"
 
-                    for engine in ocr_engines.values():
-                        metrics.ocr_calls += 1
-                        regions = engine.recognize(roi_frame)
-                        runtime_info = engine.runtime_info()
-                        detail = {
-                            "engine_version": runtime_info.version,
-                            "backend": runtime_info.backend,
-                            "backend_version": runtime_info.backend_version or "",
-                        }
-                        if trigger_reason is not None:
-                            detail[STATE_TRIGGER_DETAIL_KEY] = trigger_reason
+                    # ONE shared detection pass, then ONE universal
+                    # recognition batch against its ordered polygons --
+                    # not one full detect+recognize per expected
+                    # language. See RegionOcrEngine's contract
+                    # (glyphcue/adapters/ocr_engine.py) and P2/P3's own
+                    # PaddleOcrEngine/DirectMlOcrEngine.recognize_regions.
+                    polygons = detect(roi_frame)
+                    t0 = time.monotonic()
+                    if isinstance(ocr_engine, RegionOcrEngine) and polygons:
+                        regions = ocr_engine.recognize_regions(roi_frame, polygons)
+                    else:
+                        regions = ocr_engine.recognize(roi_frame)
+                    call_latency = time.monotonic() - t0
 
-                        non_empty_regions = [region for region in regions if region.text]
-                        if non_empty_regions:
-                            for region in non_empty_regions:
-                                observation = Observation(
-                                    id=str(uuid.uuid4()),
-                                    text=region.text,
-                                    start_time=timestamp,
-                                    end_time=timestamp + INSTANT_SPAN_SECONDS,
-                                    provenance=Provenance(
-                                        kind=ProvenanceKind.OCR_ENGINE,
-                                        source=runtime_info.engine_name,
-                                        detail=detail,
-                                    ),
-                                    language=region.language,
-                                    confidence=region.confidence,
-                                    roi=track_group.roi,
-                                    geometry=region.geometry,
-                                    frame_reference=frame_reference,
-                                )
-                                observation_repository.add(observation, evidence_run_id)
-                                metrics.observations_created += 1
-                        else:
+                    metrics.record_invocation(
+                        timestamp=timestamp,
+                        trigger_reason=trigger_reason,
+                        difference_score=diff_score,
+                        dimensions=(w, h),
+                        latency_seconds=call_latency,
+                        structural_score=struct_score,
+                    )
+                    runtime_info = ocr_engine.runtime_info()
+                    detail = {
+                        "engine_version": runtime_info.version,
+                        "backend": runtime_info.backend,
+                        "backend_version": runtime_info.backend_version or "",
+                    }
+                    if trigger_reason != "unspecified":
+                        detail[STATE_TRIGGER_DETAIL_KEY] = trigger_reason
+
+                    non_empty_regions = [region for region in regions if region.text]
+                    if non_empty_regions:
+                        for region in non_empty_regions:
                             observation = Observation(
                                 id=str(uuid.uuid4()),
-                                text="",
+                                text=region.text,
                                 start_time=timestamp,
                                 end_time=timestamp + INSTANT_SPAN_SECONDS,
                                 provenance=Provenance(
@@ -170,28 +170,59 @@ def build_multilingual_ocr_evidence_job(
                                     source=runtime_info.engine_name,
                                     detail=detail,
                                 ),
-                                language=None,
-                                confidence=None,
+                                language=region.language,
+                                confidence=region.confidence,
                                 roi=track_group.roi,
-                                geometry=None,
+                                geometry=region.geometry,
                                 frame_reference=frame_reference,
                             )
-                            observation_repository.add(observation, evidence_run_id)
+                            source_id = normalize_source_id(path)
+                            observation_repository.add(observation, evidence_run_id, source_id)
                             metrics.observations_created += 1
+                    else:
+                        observation = Observation(
+                            id=str(uuid.uuid4()),
+                            text="",
+                            start_time=timestamp,
+                            end_time=timestamp + INSTANT_SPAN_SECONDS,
+                            provenance=Provenance(
+                                kind=ProvenanceKind.OCR_ENGINE,
+                                source=runtime_info.engine_name,
+                                detail=detail,
+                            ),
+                            language=None,
+                            confidence=None,
+                            roi=track_group.roi,
+                            geometry=None,
+                            frame_reference=frame_reference,
+                        )
+                        source_id = normalize_source_id(path)
+                        observation_repository.add(observation, evidence_run_id, source_id)
+                        metrics.observations_created += 1
 
                 processed_in_range = timestamp - range_start
                 metrics.media_seconds_processed = processed_in_range
                 metrics.elapsed_seconds = time.monotonic() - wall_start
+                metrics.candidate_transition_episodes = getattr(active_policy, "candidate_transition_episodes", 0)
+                metrics.confirmed_transition_episodes = getattr(active_policy, "confirmed_transition_episodes", 0)
+                metrics.rejected_transition_episodes = getattr(active_policy, "rejected_transition_episodes", 0)
+                metrics.transition_episodes = getattr(active_policy, "transition_episodes", 0)
+                metrics.suppressed_candidate_triggers = getattr(active_policy, "suppressed_candidate_triggers", 0)
                 context.report_progress("multilingual_ocr_evidence", processed_in_range, range_duration)
 
             metrics.media_seconds_processed = range_duration
             metrics.elapsed_seconds = time.monotonic() - wall_start
+            metrics.candidate_transition_episodes = getattr(active_policy, "candidate_transition_episodes", 0)
+            metrics.confirmed_transition_episodes = getattr(active_policy, "confirmed_transition_episodes", 0)
+            metrics.rejected_transition_episodes = getattr(active_policy, "rejected_transition_episodes", 0)
+            metrics.transition_episodes = getattr(active_policy, "transition_episodes", 0)
+            metrics.suppressed_candidate_triggers = getattr(active_policy, "suppressed_candidate_triggers", 0)
             context.report_progress("multilingual_ocr_evidence", range_duration, range_duration)
         finally:
             if source is not None:
                 source.close()
-            for language in initialized_languages:
-                ocr_engines[language].shutdown()
+            if engine_initialized:
+                ocr_engine.shutdown()
             if conn is not None:
                 conn.close()
             metrics.elapsed_seconds = time.monotonic() - wall_start

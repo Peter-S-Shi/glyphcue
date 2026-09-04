@@ -361,6 +361,9 @@ class PathBWorkspace:
     def export(self) -> Path:
         return self.export_controls.export()
 
+    def commit_pending_edits(self) -> None:
+        self.qa.commit_pending_edits()
+
     def switch_to_video(self, path: Path) -> None:
         """Reaches Path A directly from an already-open Path B
         workbench (DESIGN.md section 9): switching paths is changing
@@ -368,6 +371,7 @@ class PathBWorkspace:
         app. Delegates to the shared entry (`GlyphCueEntry`) via the
         injected callback so the same window-transition logic used at
         first launch is reused, not duplicated."""
+        self.commit_pending_edits()
         if self._on_open_video is not None:
             self._on_open_video(path)
 

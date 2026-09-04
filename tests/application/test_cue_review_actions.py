@@ -56,6 +56,7 @@ def test_edit_cue_language_text_updates_only_the_named_layer():
     assert layers["zh"].text == "你好"
     # Provenance is not discarded just because the text was hand-edited.
     assert layers["en"].observation_ids == ("c1-en",)
+    assert result[0].review_state == ReviewState.NEEDS_REVIEW
 
 
 def test_edit_cue_language_text_raises_for_unknown_language():
@@ -72,6 +73,7 @@ def test_nudge_cue_timing_shifts_start_and_end():
 
     assert result[0].start_time == pytest.approx(0.9)
     assert result[0].end_time == pytest.approx(2.2)
+    assert result[0].review_state == ReviewState.NEEDS_REVIEW
 
 
 def test_nudge_cue_timing_rejects_a_nudge_that_would_make_end_before_start():

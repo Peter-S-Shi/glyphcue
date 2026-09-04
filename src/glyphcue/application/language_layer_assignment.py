@@ -20,24 +20,63 @@ own."""
 
 
 def _dominant_script(text: str) -> str | None:
-    """The first recognized script found in `text`'s characters, in
-    priority order (kana beats han: pure-kanji Japanese exists, but a
-    single kana character firmly rules out Chinese). None if nothing in
-    `text` matches a known range -- not a supported signal for that
-    region, callers fall through to another signal."""
+    """The recognized script `text`'s characters decisively belong to,
+    in priority order (kana beats han: pure-kanji Japanese exists, but a
+    single kana character firmly rules out Chinese -- real Japanese
+    text routinely mixes kana with han, and occasionally with latin
+    loanwords, so kana presence alone stays decisive regardless of what
+    else is in the string). None if nothing in `text` matches a known
+    range, OR if `text` mixes han and latin with no kana present: real
+    single-language OCR output doesn't interleave CJK ideographs with
+    Latin letters that way, so that specific combination is a signal of
+    OCR corruption (garbled mixed-script misread), not evidence for
+    either script -- callers must treat it as no decisive signal, never
+    silently pick the more "exotic" script found."""
+    has_kana = False
     has_han = False
+    has_latin = False
     for character in text:
         code = ord(character)
         if 0x3040 <= code <= 0x30FF:  # Hiragana + Katakana
-            return "kana"
-        if 0x4E00 <= code <= 0x9FFF:  # CJK Unified Ideographs
+            has_kana = True
+        elif 0x4E00 <= code <= 0x9FFF:  # CJK Unified Ideographs
             has_han = True
+        elif character.isascii() and character.isalpha():
+            has_latin = True
+    if has_kana:
+        return "kana"
+    if has_han and has_latin:
+        return None
     if has_han:
         return "han"
-    for character in text:
-        if character.isascii() and character.isalpha():
-            return "latin"
+    if has_latin:
+        return "latin"
     return None
+
+
+def _has_mixed_script_evidence(text: str) -> bool:
+    """True when `text` contains both Han and Latin alphabetic characters
+    with no Hiragana/Katakana -- the exact character-level condition
+    `_dominant_script` reports as None ("no decisive signal"). That None
+    collapses two different real cases: text with NO recognized script at
+    all (bare digits/punctuation/noise), and text that DOES carry real
+    script evidence, just evidence for two scripts at once (e.g. a
+    legitimate Han+Latin line, or genuine OCR-corruption garbling).
+    `_cluster_by_visual_line`'s veto needs to tell them apart: only the
+    former is safe to treat as no evidence at all when deciding whether
+    an adjacent DECISIVE cluster may absorb it by geometry alone."""
+    has_kana = False
+    has_han = False
+    has_latin = False
+    for character in text:
+        code = ord(character)
+        if 0x3040 <= code <= 0x30FF:
+            has_kana = True
+        elif 0x4E00 <= code <= 0x9FFF:
+            has_han = True
+        elif character.isascii() and character.isalpha():
+            has_latin = True
+    return has_han and has_latin and not has_kana
 
 
 def _reading_order_key(observation: Observation) -> tuple[float, float]:
@@ -59,7 +98,24 @@ def _y_range(observation: Observation) -> tuple[float, float] | None:
     return (min(ys), max(ys))
 
 
-def _cluster_by_visual_line(observations: list[Observation]) -> list[list[Observation]]:
+def _decisive_language(text: str, expected_languages: tuple[str, ...]) -> str | None:
+    """`text`'s own script, resolved to a single expected language --
+    None if its script carries no signal at all, or is genuinely
+    ambiguous between more than one expected language (e.g. Han between
+    zh/ja). Used only as a veto signal for `_cluster_by_visual_line`:
+    ambiguous/no-signal text is never treated as evidence AGAINST a
+    merge, only a text whose own script decisively picks one language
+    can veto merging with a decisively DIFFERENT one."""
+    script = _dominant_script(text)
+    if script is None:
+        return None
+    matches = _SCRIPT_CANDIDATE_LANGUAGES.get(script, set()) & set(expected_languages)
+    return next(iter(matches)) if len(matches) == 1 else None
+
+
+def _cluster_by_visual_line(
+    observations: list[Observation], expected_languages: tuple[str, ...]
+) -> list[list[Observation]]:
     """Groups `observations` into one cluster per real physical text
     line, using vertical geometry overlap -- the same "same visual
     thing, multiple boxes" signal `aggregate_same_frame_observations`
@@ -71,26 +127,75 @@ def _cluster_by_visual_line(observations: list[Observation]) -> list[list[Observ
     `assign_observations_to_languages`), not to join genuinely
     different lines. Observations with no geometry can't be matched
     this way and always become their own singleton cluster -- there is
-    no evidence they're duplicates of anything."""
+    no evidence they're duplicates of anything.
+
+    Real detector geometry (DirectML's own box_thresh included) is not
+    pixel-perfect: two visually and linguistically DIFFERENT physical
+    lines stacked close together can report Y-ranges that overlap by a
+    few pixels of detection/rounding noise, which pure Y-overlap alone
+    would merge into one cluster -- silently mixing one language's real
+    text into another's vote (see docs/multilingual/track_group_reconstruction.md's
+    Milestone 11 Architecture B corrective addendum). A DECISIVE script
+    veto closes this without adding any new numeric overlap threshold:
+    an incoming observation whose own script decisively picks one
+    expected language never merges into a cluster whose already-accumulated
+    decisive language is a DIFFERENT one, even when their Y-ranges
+    technically overlap -- it starts a new cluster instead. Real
+    same-line horizontal fragments (word-level boxes of one sentence)
+    share one script and are unaffected; ambiguous-or-no-signal text
+    (candidate count != 1, e.g. pure Han between zh/ja, or non-text
+    noise) never vetoes anything, since it isn't decisive evidence of
+    incompatibility either way -- it merges by geometry exactly as
+    before, and downstream classification handles the ambiguity.
+
+    A second, narrower veto (see `_has_mixed_script_evidence`) catches a
+    case real DirectML geometry produced: an observation whose own text
+    legitimately mixes Han and Latin (e.g. a Chinese line an engine read
+    with a few bled-in Latin characters) sits right next to a decisively
+    single-language cluster with a few pixels of Y-overlap. That
+    observation has no single decisive language of its own -- but unlike
+    genuinely no-signal text (bare digits/punctuation), it carries real,
+    if dual, script evidence, so it must not be silently absorbed into
+    the neighboring decisive cluster by geometry alone either. It starts
+    its own cluster instead, staying fail-closed/ambiguous for
+    `assign_observations_to_languages` to resolve, exactly like any other
+    unresolved cluster with no single decisive script."""
     ordered = sorted(observations, key=_reading_order_key)
     clusters: list[list[Observation]] = []
     cluster_ranges: list[tuple[float, float] | None] = []
+    cluster_decisive_languages: list[str | None] = []
+    cluster_has_mixed_script: list[bool] = []
     for observation in ordered:
         current_range = _y_range(observation)
+        current_decisive = _decisive_language(observation.text, expected_languages)
+        current_mixed = _has_mixed_script_evidence(observation.text)
         if clusters and current_range is not None and cluster_ranges[-1] is not None:
             previous_range = cluster_ranges[-1]
             overlap = min(previous_range[1], current_range[1]) - max(
                 previous_range[0], current_range[0]
             )
-            if overlap > 0:
+            previous_decisive = cluster_decisive_languages[-1]
+            previous_mixed = cluster_has_mixed_script[-1]
+            script_incompatible = (
+                previous_decisive is not None
+                and current_decisive is not None
+                and previous_decisive != current_decisive
+            ) or (previous_decisive is not None and current_mixed) or (
+                current_decisive is not None and previous_mixed
+            )
+            if overlap > 0 and not script_incompatible:
                 clusters[-1].append(observation)
                 cluster_ranges[-1] = (
                     min(previous_range[0], current_range[0]),
                     max(previous_range[1], current_range[1]),
                 )
+                cluster_decisive_languages[-1] = previous_decisive or current_decisive
+                cluster_has_mixed_script[-1] = previous_mixed or current_mixed
                 continue
         clusters.append([observation])
         cluster_ranges.append(current_range)
+        cluster_decisive_languages.append(current_decisive)
+        cluster_has_mixed_script.append(current_mixed)
     return clusters
 
 
@@ -138,7 +243,7 @@ def _strict_hint_winner(cluster: list[Observation], candidates: set[str]) -> str
 
 def _classify_clusters(
     clusters: list[list[Observation]], expected_languages: tuple[str, ...]
-) -> tuple[dict[str, list[list[Observation]]], list[list[Observation]]]:
+) -> tuple[dict[str, list[list[Observation]]], list[tuple[list[Observation], set[str]]]]:
     """Resolves each visual-line cluster to one expected language, as a
     single fixed-point process across ALL clusters together -- not
     independently per cluster. This is what lets a cluster whose own
@@ -154,12 +259,23 @@ def _classify_clusters(
     `_strict_hint_winner` -- when elimination alone doesn't narrow
     things to exactly one candidate, and the hint has a strict unique
     winner among what elimination left. A cluster that still can't be
-    resolved after all of that is returned unresolved, for
-    `assign_observations_to_languages`'s geometry fallback -- never
-    silently guessed here.
+    resolved after all of that is returned unresolved (paired with its
+    last-computed script candidates), for `assign_observations_to_languages`
+    to decide between two DIFFERENT fallbacks -- never silently guessed
+    here.
+
+    A cluster whose script candidates are the EMPTY set (no recognized
+    script at all -- e.g. bare digits/punctuation) is never narrowed by
+    elimination: substituting "every expected language" for "no evidence"
+    would let elimination alone (every OTHER language slot filling up)
+    silently hand it a language it has zero actual textual evidence for.
+    It always stays unresolved here; `assign_observations_to_languages`'s
+    geometry fallback is the only path that may place it, and always
+    marks the result ambiguous.
     """
     resolved: dict[str, list[list[Observation]]] = {language: [] for language in expected_languages}
-    remaining = list(clusters)
+    remaining: list[list[Observation]] = list(clusters)
+    last_candidates: dict[int, set[str]] = {}
     made_progress = True
     while made_progress and remaining:
         made_progress = False
@@ -168,11 +284,12 @@ def _classify_clusters(
         newly_resolved: list[tuple[str, list[Observation]]] = []
         for cluster in remaining:
             candidates = _cluster_script_candidates(cluster, expected_languages)
+            last_candidates[id(cluster)] = candidates
             language: str | None = None
             if len(candidates) == 1:
                 language = next(iter(candidates))
-            else:
-                narrowed = (candidates or set(expected_languages)) - claimed
+            elif candidates:
+                narrowed = candidates - claimed
                 if len(narrowed) == 1:
                     language = next(iter(narrowed))
                 elif len(narrowed) > 1:
@@ -185,7 +302,7 @@ def _classify_clusters(
         for language, cluster in newly_resolved:
             resolved[language].append(cluster)
         remaining = still_remaining
-    return resolved, remaining
+    return resolved, [(cluster, last_candidates[id(cluster)]) for cluster in remaining]
 
 
 def assign_observations_to_languages(
@@ -250,10 +367,26 @@ def assign_observations_to_languages(
       real ambiguity/degraded evidence for callers to surface as a
       diagnostic, not silently hidden inside a confident-looking result.
     """
-    clusters = _cluster_by_visual_line(observations)
-    resolved, unresolved_clusters = _classify_clusters(clusters, expected_languages)
+    clusters = _cluster_by_visual_line(observations, expected_languages)
+    resolved, unresolved = _classify_clusters(clusters, expected_languages)
 
     ambiguous_languages: set[str] = set()
+
+    # A cluster left unresolved WITH real (but undecidable) script
+    # candidates -- e.g. pure Han with no elimination/hint evidence to
+    # pick zh vs ja -- is genuine ambiguity between those specific
+    # languages, not a missing-layer gap a geometry guess may fill: every
+    # candidate language is marked ambiguous and the cluster is placed
+    # nowhere (fail-closed: no fabricated winner beats a wrong one). Only
+    # a cluster with NO script evidence at all (empty candidates) is
+    # eligible for the geometry fallback below.
+    geometry_eligible: list[list[Observation]] = []
+    for cluster, candidates in unresolved:
+        if candidates:
+            ambiguous_languages |= candidates
+        else:
+            geometry_eligible.append(cluster)
+    unresolved_clusters = geometry_eligible
 
     empty_languages = [language for language in expected_languages if not resolved[language]]
     unresolved_clusters.sort(key=_cluster_anchor_key)

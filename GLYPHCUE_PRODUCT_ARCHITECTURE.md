@@ -3,9 +3,9 @@
 **Document type:** Authoritative post-Grill product architecture baseline  
 **Project:** GlyphCue  
 **Repository:** `Peter-S-Shi/glyphcue`  
-**Lifecycle phase:** Production Development in progress → Milestone 10 complete (evidence/evaluation closure accepted; representative-video gate transferred to Milestone 11, not waived — see `ROADMAP.md` §17's gate audit disposition), Feature Freeze ACTIVE, Milestone 11 (Product Hardening & Full Regression) next  
+**Lifecycle phase:** Production Development → Milestone 10 complete; Milestone 11 (Product Hardening & Full Regression) CLOSED (2026-09-04), Release Acceptance REJECTED BY HUMAN ADJUDICATION — Release Ready = NO, Release/Packaging SUSPENDED, Feature Freeze lifted only for **Milestone 12 (Product Rework & Cue Quality Recovery)**'s named corrective scope. See `ROADMAP.md` §18/§19 and `PROJECT_STATUS.md` for the full disposition.  
 **Status:** Authoritative V1 product architecture for production development  
-**Last updated:** 2026-08-31
+**Last updated:** 2026-09-04
 
 ---
 
@@ -1257,8 +1257,11 @@ Milestone 9 — V1 Product Completion & Feature Freeze
 Milestone 10 — Evaluation & Career Evidence Closure
 ✓ complete (gate audit accepted 2026-08-31; representative-video target transferred to Milestone 11 as a mandatory gate, not waived — see `ROADMAP.md` §17)
 
+Milestone 11 — Product Hardening & Full Regression
+✓ hardening complete / CLOSED (2026-09-04) — Release Acceptance REJECTED BY HUMAN ADJUDICATION, see `ROADMAP.md` §18
+
 Production Development
-IN PROGRESS — Feature Freeze ACTIVE — Milestone 11 (Product Hardening & Full Regression) next
+IN PROGRESS — corrective rework, Milestone 12 (Product Rework & Cue Quality Recovery, `ROADMAP.md` §19) — Feature Freeze lifted only for that named scope, Release/Packaging SUSPENDED
 ```
 
 ---
