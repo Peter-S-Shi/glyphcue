@@ -145,7 +145,7 @@ precision (a sparse point sample cannot vouch for every real Cue GlyphCue
 produces — an unmatched real Cue is not evidence of a false positive) —
 this scope limitation is stated in the evaluation script's own docstring
 (`benchmarks/private_video_corpus/run_evaluation.py`). In M11 Stage ⑤,
-point-recall was measured across all completed windows: 90–100% (29/31)
+point-recall was measured across all completed windows: 90–100% (30/31)
 across verified instants on single-language windows (`sample_g`, `sample_e`, reserve
 `sample_a`), and 100.0% (**31/31**) across verified instants on bilingual windows
 (`sample_h`, `sample_f`, `sample_c`) under Architecture B + DirectML (0 missing
