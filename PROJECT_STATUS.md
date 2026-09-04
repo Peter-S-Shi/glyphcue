@@ -799,7 +799,7 @@ appears anywhere in the repository.
 
 - Authoritative baseline: `main` (`ab2a8588941a3a3c599cea314061969f8c3ee5cc`).
 - Active working branch: `milestone/12-ui-review-workflow-recovery`.
-- Milestone 12 Stage ① vehicle: Pull request for Milestone 12 Stage ① (UI / Review Workflow Recovery) submitted for human review and adjudication. Strictly no force push; do not auto-merge.
+- Milestone 12 Stage ① vehicle: PR [#14](https://github.com/Peter-S-Shi/glyphcue/pull/14) — Milestone 12 Stage ①: UI / Review Workflow Recovery. Submitted for human review and adjudication. Strictly no force push; do not auto-merge.
 
 ## Unresolved
 
