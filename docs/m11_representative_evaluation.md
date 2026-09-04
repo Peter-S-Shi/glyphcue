@@ -10,8 +10,13 @@ Caption Identity Gate); and the bilingual completion supplement (§17, 1800 s
 timeout, Architecture B + DirectML product path) completed `sample_h`,
 `sample_f`, and `sample_c` at 180/180 s coverage, 2.71× / 3.66× / 4.16×
 realtime, 31/31 point recall, and 0/0 multilingual missing/wrong assignment
-errors. Per formal human adjudication, Stage ⑤ is CLOSED. Milestone 11
-remains incomplete pending Stage ⑥ Full Regression and Stage ⑦ Formal Human QA.
+errors. Per formal human adjudication, Stage ⑤ is CLOSED. At the time
+Stage ⑤ closed on 2026-09-03, Milestone 11 remained incomplete pending
+Stage ⑥ Full Regression and Stage ⑦ Formal Human QA. Milestone 11
+subsequently CLOSED on 2026-09-04 with Release Acceptance REJECTED BY
+HUMAN ADJUDICATION; the product is now queued for Milestone 12
+corrective rework. See `PROJECT_STATUS.md` and `ROADMAP.md` §18/§19 for
+the current lifecycle truth.
 
 | Step | State |
 |---|---|

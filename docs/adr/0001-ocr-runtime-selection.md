@@ -122,28 +122,31 @@ without it, the packaged product had zero DirectML capacity at all (the
 would have made this default-preference change silently inert in the
 shipped product even though it worked correctly from source.
 
-## Milestone 11 closure addendum: the documented correctness/speed trade-off became release-blocking (2026-09-04)
+## Milestone 11 closure addendum: final Cue quality judged release-blocking; root cause not yet established (2026-09-04)
 
 **Status of the decision above: unchanged, not reverted.** DirectML
 remains the default-preferred backend with verified automatic Paddle
-fallback, exactly as the Stage ⑦ addendum describes. What changed is the
-product-lifecycle judgment applied to the trade-off this ADR already
-documented: a new fail-closed DevQA verification entrypoint
-(`tools/devqa_directml_verify.py`, see `PROJECT_STATUS.md`) made the
-approved DirectML path's real observation behavior directly visible —
-re-confirming a single static 10s caption roughly every 0.4s (25 OCR
-calls → 65 stored observations on one `sample_g` window). This is not a
-new defect; it is the same recognition-model quality trade-off this ADR
-already named (RapidOCR's bundled model showing non-zero CER against
-Paddle's zero-CER result on some content, "What was rejected" and the P3
-Confirmation Gate above) becoming directly observable rather than
-filtered through the UI's downstream grouping/reconstruction layer.
+fallback, exactly as the Stage ⑦ addendum describes.
+
+The fail-closed DevQA verification (`tools/devqa_directml_verify.py`,
+see `PROJECT_STATUS.md`) does not establish the root cause of the
+release-blocking final Cue-quality problem. It proves that the intended
+DirectML backend and `DmlExecutionProvider` are genuinely active and
+reachable. The repository owner's separate product-level retest found
+the final reconstructed Cue output unacceptable for release. That
+final-output defect may arise in detection, recognition, Observation
+aggregation, caption identity, reconstruction, downstream cleanup, or an
+interaction among those seams; Milestone 12 must determine the first
+real divergence before any runtime-selection decision is revised.
 
 Milestone 11's closure disposition (`ROADMAP.md` §18) records that the
-repository owner judged this trade-off release-blocking on rehandling
-the packaged product, and rejected Release Acceptance on that basis
-(among other findings — see `PROJECT_STATUS.md`). **This ADR does not
-prescribe a resolution.** Milestone 12 (Product Rework & Cue Quality
+repository owner judged the final Cue output release-blocking on
+rehandling the packaged product, and rejected Release Acceptance on that
+basis (among other findings — see `PROJECT_STATUS.md`). **This ADR does
+not prescribe a resolution, and does not assert that the cause is the
+recognition-model trade-off previously named above** ("What was
+rejected", the P3 Confirmation Gate) — that remains an open hypothesis,
+not a confirmed root cause. Milestone 12 (Product Rework & Cue Quality
 Recovery, `ROADMAP.md` §19) records candidate directions under
 consideration — a downstream deterministic cleanup/consolidation stage,
 re-evaluating the detector/recognizer combination, or a local-ASR assist

@@ -3,7 +3,7 @@
 **Document type:** Authoritative V1 milestone roadmap  
 **Project:** GlyphCue  
 **Repository:** `Peter-S-Shi/glyphcue`  
-**Lifecycle phase:** Production Development → Milestone 10 complete (evidence/evaluation closure accepted; representative-video gate transferred to Milestone 11, not waived — see §17's gate audit disposition). **Milestone 11 (Product Hardening & Full Regression) is CLOSED (2026-09-04)** — every acceptance-gate item (regression, the transferred M10 representative-video evaluation, Stage ⑦ packaging/DirectML-default work) executed with real evidence (see `docs/m11_targeted_regression.md`, `docs/m11_representative_evaluation.md`, `PROJECT_STATUS.md`) — **but Release Acceptance for the resulting product was REJECTED BY HUMAN ADJUDICATION (§18 closure disposition)**: the DirectML production path still trades Cue quality for speed, QA review UX is not acceptable (Discard doesn't remove Cues from view, review ordering isn't linear), and Windows packaging remains exploratory. **Release Ready = NO. Release/Packaging work is SUSPENDED.** Feature Freeze is lifted only for corrective rework. The product is now in **Milestone 12 — Product Rework & Cue Quality Recovery** (§19); the originally-next Release Candidate milestone is renumbered to Milestone 13 (§20) and does not begin until Milestone 12 is complete and accepted, followed by a second Product Hardening & Full Regression pass.
+**Lifecycle phase:** Production Development → Milestone 10 complete (evidence/evaluation closure accepted; representative-video gate transferred to Milestone 11, not waived — see §17's gate audit disposition). **Milestone 11 (Product Hardening & Full Regression) is CLOSED (2026-09-04)** — every acceptance-gate item (regression, the transferred M10 representative-video evaluation, Stage ⑦ packaging/DirectML-default work) executed with real evidence (see `docs/m11_targeted_regression.md`, `docs/m11_representative_evaluation.md`, `PROJECT_STATUS.md`) — **but Release Acceptance for the resulting product was REJECTED BY HUMAN ADJUDICATION (§18 closure disposition)**: the repository owner's hands-on retest of the approved DirectML production path found final reconstructed Cue output unacceptable for release (too many low-value/duplicate/fragmented Cues; root cause open, deferred to Milestone 12 — not yet attributed to the DirectML backend itself), QA review UX is not acceptable (Discard doesn't remove Cues from view, review ordering isn't linear), and Windows packaging remains exploratory. **Release Ready = NO. Release/Packaging work is SUSPENDED.** Feature Freeze is lifted only for corrective rework. The product is now in **Milestone 12 — Product Rework & Cue Quality Recovery** (§19); the originally-next Release Candidate milestone is renumbered to Milestone 13 (§20) and does not begin until Milestone 12 is complete and accepted, followed by a second Product Hardening & Full Regression pass.
 **Status:** Current V1 execution roadmap  
 
 **Last updated:** 2026-09-04
@@ -145,25 +145,28 @@ Evaluated candidates:
 
 ## Packaging
 
-Primary (as of M11 Stage ⑦-A, 2026-09-04):
+Current release-packaging decision:
 
-> `PyInstaller` (onedir)
+> **NO ACTIVE RELEASE PACKAGING PATH** — selection deferred until
+> Milestone 12 is accepted and Product Hardening II passes.
 
-`pyside6-deploy / Nuitka` was the original primary target but was
-retired during M11 Packaging Hardening after repeated build-system/
-resource blockers on the actual build machine (RAM exhaustion and an
-indeterminate codegen stall across multiple controlled attempts — see
-`PROJECT_STATUS.md`'s Stage ⑦-A/⑦-B section for the full evidence).
-PyInstaller was already documented here as the fallback; that fallback
-is now the active primary path, not a newly invented architecture.
+Historical M11 evidence: Nuitka/pyside6-deploy was retired after
+repeated build-system/resource blockers (RAM exhaustion and an
+indeterminate codegen stall across multiple controlled attempts on the
+actual build machine — see `PROJECT_STATUS.md`'s Stage ⑦-A/⑦-B section
+for the full evidence). PyInstaller onedir was technically demonstrated
+and partially hardened, but it is not accepted as a release-grade path
+and is not the current active packaging choice. Briefcase /
+embedded-CPython remain research candidates only. Packaging technology
+selection is deliberately deferred.
 
-Hardening / RC packaging form:
+Future Packaging / RC form:
 
-> standalone directory (onedir) first
+> TBD after Milestone 12 acceptance and Product Hardening II.
 
-Final installer:
+Final installer technology:
 
-> Inno Setup 7
+> TBD. No installer technology is currently selected.
 
 ---
 
@@ -1594,13 +1597,15 @@ identified three release-blocking findings the automated gates above do
 not and cannot catch, because they are product-quality judgments, not
 regression/CI facts:
 
-1. The ≤5× realtime DirectML production path — the same path Stage ⑦'s
-   Runtime Default Corrective Gate approved as meeting its performance
-   target — still trades Cue *production quality* for speed at a level
-   the owner will not ship. (`docs/adr/0001-ocr-runtime-selection.md`'s
-   Stage ⑦ addendum already documented this trade-off as a known,
-   unresolved cost; this closure is that cost being judged
-   release-blocking by the person the product ships to.)
+1. The repository owner's hands-on product-level retest of the approved
+   ≤5× realtime DirectML production path found the final reconstructed
+   Cue output unacceptable for release: too many low-value / duplicate /
+   fragmented Cues despite acceptable processing speed. The fail-closed
+   DirectML DevQA verifier proves only that the intended DirectML
+   backend is reachable and genuinely active; periodic raw Observation
+   confirmations are expected diagnostic behavior and are not, by
+   themselves, evidence of defective final Cue output. The root cause of
+   the final Cue-quality failure remains open for Milestone 12.
 2. Human-usable QA review UX quality is unacceptable: high volume of
    low-value/junk Cues reaching the review surface, `Discard` not
    actually removing a discarded Cue from the visible workspace, and
@@ -1645,13 +1650,21 @@ direction is actually chosen and scoped.
 
 ## Scope
 
-### Problem 1 — Cue production quality vs. speed trade-off
+### Problem 1 — final Cue production quality is unacceptable for release
 
-The DirectML-accelerated production path meets its ≤5× realtime target
-but still produces materially worse Cue quality (more re-confirmation/
-duplicate observations, noisier fragmentation) than the slower CPU
-Paddle path, per Milestone 11 Stage ⑦'s DevQA DirectML verification
-evidence. Candidate directions to investigate (not yet decided between,
+The DirectML-accelerated production path meets its ≤5× realtime target,
+but the repository owner's hands-on product-level retest found the
+final reconstructed Cue output unacceptable for release (too many
+low-value / duplicate / fragmented Cues). The root cause is not yet
+established: the fail-closed DevQA DirectML verifier (Milestone 11
+Stage ⑦) only proved the intended DirectML backend is reachable and
+genuinely active — its periodic raw Observation confirmations are
+expected diagnostic behavior, not evidence of where the final-output
+defect originates. Milestone 12 must first determine the actual causal
+seam (detection, recognition, Observation aggregation, caption
+identity, reconstruction, downstream cleanup, or an interaction among
+them) before selecting a direction. Candidate directions to investigate
+(not yet decided between,
 none pre-approved):
 
 - Keep the current recognition/detection backend and speed, and insert a
@@ -1722,9 +1735,10 @@ Create release candidate from frozen accepted source.
 
 ### Installer
 
-Package standalone application with:
-
-> Inno Setup 7
+Package standalone application with an installer technology selected at
+that time — per §3 Packaging, no installer technology is currently
+selected; `Inno Setup 7` was M11's working assumption before packaging
+work was suspended and is not a pre-committed choice for this milestone.
 
 ### Signing
 
@@ -2159,8 +2173,10 @@ resulting product** after hands-on re-testing surfaced three
 release-blocking findings the automated gates above cannot catch — see
 §18's closure disposition for the full reasoning:
 
-1. the ≤5× realtime DirectML production path still trades Cue quality for
-   speed;
+1. the approved ≤5× realtime DirectML production path's final
+   reconstructed Cue output is unacceptable for release (too many
+   low-value/duplicate/fragmented Cues); root cause open, deferred to
+   Milestone 12, not yet attributed to the DirectML backend itself;
 2. QA review UX is not acceptable (junk-Cue volume, `Discard` not
    removing Cues from view, non-linear review ordering);
 3. Windows packaging remains exploratory, not release-grade.

@@ -12,14 +12,18 @@ unchanged from how it happened). After hands-on re-testing of the
 packaged product, the repository owner rejected Release Acceptance for
 three release-blocking reasons not caught by the automated gates below:
 
-1. The ≤5× realtime DirectML production path (Stage ⑦ Runtime Default
-   Corrective Gate, below) still trades Cue production quality for
-   speed — confirmed directly via a new fail-closed DevQA DirectML
-   verification entrypoint (see "DevQA DirectML verification asset",
-   below), which showed the approved pipeline re-confirming a single
-   static 10s caption roughly every 0.4s (25 OCR calls → 65 stored
-   observations), a duplicate/re-confirmation-heavy behavior that is the
-   pipeline's real characteristic, not a packaging artifact.
+1. The release-blocking Cue-quality finding comes from the repository
+   owner's hands-on product-level retest of the approved ≤5× DirectML
+   production path, where the final reconstructed Cue output contained
+   too many low-value / duplicate / fragmented Cues to be accepted for
+   release. The fail-closed DirectML DevQA verifier (see "DevQA DirectML
+   verification asset", below) separately proved that the intended
+   DirectML backend and `DmlExecutionProvider` were genuinely reachable
+   and active. Its periodic raw Observation confirmations are expected
+   diagnostic behavior and are not, by themselves, evidence of defective
+   final Cue output. The first causal seam responsible for the
+   unacceptable final Cue quality remains unresolved and is explicitly
+   deferred to Milestone 12.
 2. QA review UX is not acceptable: `Discard` does not remove a discarded
    Cue from the visible workspace, Pending/Needs-Review/Approved state
    interleaving breaks linear/chronological review, and junk-Cue volume
@@ -59,8 +63,11 @@ independent of the UI's downstream grouping/reconstruction layer:
 - Uses a dedicated, disposable venv (`.venv-directml-devqa/`, gitignored)
   with the `[directml]` extra installed, kept separate from the trusted
   `.venv`. Not part of the shipped product; diagnostic-only.
-- This is the tool that produced the ~0.4s re-confirmation-cadence
-  evidence behind reason 1 above.
+- This tool proves backend reachability/provider activation and
+  preserves a deterministic way to reproduce the intended DirectML
+  production runtime. Its periodic raw Observation confirmations are
+  diagnostic evidence only; they must not be cited as proof of defective
+  final Cue quality.
 Stage ④ **Targeted Regression is CLOSED** — its automated evidence passed
 the human gate on 2026-09-02. Stage ⑤ **Representative Evaluation is
 CLOSED by Human Adjudication (2026-09-03)** — the M10 transferred
@@ -246,8 +253,12 @@ kept)`. Diagnosed under the `diagnosing-bugs` discipline:
   (`diagnosing-bugs` Phase 6 cleanup); nothing left in the repo or on
   disk beyond the fixed real build.
 
-**Canonical PyInstaller onedir build command (supersedes the ⑦-A command
-above — this is the one to use going forward):**
+**Historical last-verified M11 PyInstaller onedir reproduction/build
+command (preserved as engineering evidence only; not an active release
+path and not a forward packaging decision — supersedes the ⑦-A command
+above only in the sense that it reflects the latest state this
+investigation reached, preserved only so the M11 packaging investigation
+remains reproducible if future research needs it):**
 
 ```
 pyinstaller --noconfirm --clean \
@@ -772,12 +783,8 @@ appears anywhere in the repository.
 
 ## Git / PR status
 
-- Branch: `milestone/11-product-hardening-full-regression`
-- PR: [#13](https://github.com/Peter-S-Shi/glyphcue/pull/13) — **Lifecycle
-  Closure PR**, ready for review/merge as the formal close-out of
-  Milestone 11 (hardening complete, Release Acceptance rejected). Not
-  self-merged by the agent that prepared it — the repository owner
-  performs the final Pre-Merge Governance Review and merge decision.
+- Authoritative post-closure baseline: `main`.
+- Milestone 11 closure vehicle: PR [#13](https://github.com/Peter-S-Shi/glyphcue/pull/13) — Milestone 11 Lifecycle Closure. After merge, `main` is the authoritative baseline. The `milestone/11-product-hardening-full-regression` branch is historical and may be removed during the subsequent workspace/branch cleanup pass.
 
 ## Unresolved
 
