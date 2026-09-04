@@ -3,7 +3,7 @@
 **Document type:** Production-facing UI / UX design authority  
 **Project:** GlyphCue  
 **Repository:** `Peter-S-Shi/glyphcue`  
-**Lifecycle phase:** Production Development → Milestone 10 complete; Milestone 11 (Product Hardening & Full Regression) CLOSED (2026-09-04), Release Acceptance REJECTED BY HUMAN ADJUDICATION — Release Ready = NO, Release/Packaging SUSPENDED, Feature Freeze lifted only for **Milestone 12 (Product Rework & Cue Quality Recovery)**'s named corrective scope, which includes two of this document's own workflows (Discard visibility, review ordering). See `ROADMAP.md` §18/§19 and `PROJECT_STATUS.md` for the full disposition.  
+**Lifecycle phase:** Production Development → Milestone 10 complete; Milestone 11 (Product Hardening & Full Regression) CLOSED (2026-09-04), Release Acceptance REJECTED BY HUMAN ADJUDICATION — Release Ready = NO, Release/Packaging SUSPENDED. **Milestone 12 (Product Rework & Cue Quality Recovery) Stage ① (UI / Review Workflow Recovery) COMPLETED (2026-09-04)**: review workflow recovery delivered linear chronological cue ordering, multi-select batch purge for discarded cues, continuous OCR seam indicator & click-to-seek, and destructive video cue reset. Stage ② (Cue Production Quality Recovery) next. See `ROADMAP.md` §18/§19 and `PROJECT_STATUS.md`.  
 **Status:** Authoritative V1 design specification  
 **Last updated:** 2026-09-04
 
@@ -243,7 +243,7 @@ It is not:
 - a complete project navigator;
 - a place for all metadata.
 
-The queue should prioritize items that require user attention.
+The queue strictly enforces chronological timeline order `(start_time, end_time, cue.id)` so review reading order remains linear across all states. Review states and priority levels are communicated via discrete badges and subtle semantic token colors (`Color.SUCCESS` for Approved, `Color.TEXT_MUTED` for Discarded, `Color.WARNING` for Needs Review, `Color.TEXT_PRIMARY` for Pending) without breaking linear time. To prevent clutter, the queue supports multi-selection (`ExtendedSelection`) and a dedicated `Purge Discarded` button to permanently clear rejected cues from the visible workspace, with strict data safety preserving non-rejected cues.
 
 ---
 
@@ -1451,15 +1451,17 @@ Examples:
 - close;
 - local view actions.
 
-## 45.4 Danger
-
+## 45.4 Danger and Subtle Danger
+ 
 Danger semantics must be clear.
-
-Example:
-
-- Discard Cue.
-
-Danger should not visually compete with the primary action until hovered / focused unless the state is destructive and urgent.
+ 
+Examples:
+ 
+- Discard Cue;
+- Purge Discarded (`#subtleDangerBtn`);
+- Clear Video Cues… (`#subtleDangerBtn`, destructive with modal confirmation).
+ 
+Danger should not visually compete with the primary action until hovered / focused unless the state is destructive and urgent. Batch purge and cue history clearing use subtle danger styling (`#subtleDangerBtn`) with muted foregrounds that escalate to danger red on hover, and destructive workspace clears require explicit confirmation.
 
 ---
 
@@ -1543,6 +1545,8 @@ Path B:
 - flagged boundaries.
 
 The timeline should explain temporal structure, not mimic a full NLE/video-editing timeline.
+
+In addition to Cue spans and the active playhead, the timeline renders a continuous OCR seam endpoint marker (cyan vertical line + top indicator cap) at `last_processed_end` to visualize processed boundaries. It supports click-to-seek playback navigation via direct mouse interaction and pairs with a "Resume from Last End" action to streamline iterative video range processing.
 
 Avoid adding tracks, keyframes, editing tools, and media-editor complexity that GlyphCue does not need.
 

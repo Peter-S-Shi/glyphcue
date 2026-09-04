@@ -344,9 +344,8 @@ def test_overlapping_machine_observations_do_not_multiply_user_facing_cues(
 # --- Seam 9/10: Review Priority ordering vs. the playback timeline --------
 
 
-def test_review_priority_orders_the_queue_without_reordering_the_cues(qapp_guard):
-    """The queue is a triage order; `cues` -- what playback, the timeline
-    and export all read -- stays strictly temporal."""
+def test_queue_orders_cues_chronologically_by_timeline(qapp_guard):
+    """The queue and `cues` both follow strictly temporal ordering per M12 workflow recovery."""
     early = Cue(
         id="early",
         start_time=0.0,
@@ -369,7 +368,8 @@ def test_review_priority_orders_the_queue_without_reordering_the_cues(qapp_guard
         },
     )
 
-    assert qa.cue_id_for_row(0) == "late"  # highest priority first in the queue
+    assert qa.cue_id_for_row(0) == "early"  # strictly chronological timeline order
+    assert qa.cue_id_for_row(1) == "late"
     assert [cue.id for cue in qa.cues] == ["early", "late"]  # timeline untouched
 
 

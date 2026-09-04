@@ -1679,17 +1679,31 @@ none pre-approved):
   artifacts (repo history, sibling working folders, `prompt-drafts/`)
   before starting from scratch.
 
-### Problem 2 — QA review UX
+### Problem 2 — QA review UX (Stage ① Completed)
 
 - `Discard` must actually remove a discarded Cue from the visible
   QA list/layout, not merely change its review-state label while it
-  stays visually present.
+  stays visually present. → **RESOLVED in Stage ①**: multi-selection of
+  discarded cues and batch purge (`Purge Discarded`) permanently clears
+  rejected cues from the visible workspace and updates SQLite persistence,
+  with strict data safety protecting non-rejected cues.
 - Cue ordering in the review queue must support a genuinely linear,
   chronological read, rather than letting Pending/Needs-Review/Approved
-  state interleaving scramble the reading order.
-- Reduce the volume of low-value/junk Cues reaching the review surface in
-  the first place (upstream of the two items above, and related to
-  Problem 1's cleanup-stage candidate direction).
+  state interleaving scramble the reading order. → **RESOLVED in Stage ①**:
+  the queue strictly enforces chronological timeline order `(start_time, end_time)`
+  as the primary sorting principle; review states and priority levels are
+  communicated via discrete badges and subtle semantic token colors (`Color.SUCCESS`,
+  `Color.TEXT_MUTED`, `Color.WARNING`, `Color.TEXT_PRIMARY`) without breaking
+  linear time.
+- Continuous timeline workflow: `CompactTimeline` renders the last processed
+  endpoint seam marker, supports click-to-seek, provides a "Resume from Last End"
+  button, and automatically pre-fills the next range start on successful OCR runs.
+- Current video cue reset: a dedicated "Clear Video Cues…" action provides
+  destructive cue history clearing specifically for the active video with
+  explicit confirmation, preserving raw observations and other videos.
+- Low-disturbance OCR completion chime: a synthesized hotel desk bell "ding"
+  plays upon genuine OCR job success (`JobState.SUCCEEDED`).
+- Upstream junk-Cue volume reduction remains scoped to Stage ② (Problem 1).
 
 ### Explicitly out of scope for Milestone 12
 
@@ -2145,8 +2159,11 @@ Milestone 8 — Path B Deepening: CJK / Rolling Normalization ✓ complete
 Milestone 9 — V1 Product Completion & Feature Freeze ✓ complete
 Milestone 10 — Evaluation & Career Evidence Closure ✓ complete (gate audit accepted 2026-08-31; representative-video target transferred to Milestone 11 as a mandatory gate, not waived — see §17)
 Milestone 11 — Product Hardening & Full Regression ✓ hardening complete / CLOSED (2026-09-04) — Release Acceptance REJECTED BY HUMAN ADJUDICATION (§18 closure disposition); see PROJECT_STATUS.md
+Milestone 12 — Product Rework & Cue Quality Recovery IN PROGRESS (Stage ① complete, Stage ② next)
+  ├─ Stage ① UI / Review Workflow Recovery           ✓ complete (2026-09-04)
+  └─ Stage ② Cue Production Quality Recovery          QUEUED / NEXT
 
-Corrective Product Rework               QUEUED — Milestone 12 NOT YET STARTED
+Corrective Product Rework               IN PROGRESS — Milestone 12 Stage ① complete
 Feature Freeze                          LIFTED FOR REWORK ONLY (Milestone 9's freeze remains the default outside Milestone 12's named scope)
 Release / Packaging                     SUSPENDED
 ```
@@ -2157,7 +2174,16 @@ Release / Packaging                     SUSPENDED
 
 The next engineering action is:
 
-> **Milestone 12 — Product Rework & Cue Quality Recovery** (§19; queued, not yet started)
+> **Milestone 12 Stage ② — Cue Production Quality Recovery** (§19; Problem 1 investigation and recovery)
+
+**Milestone 12 Stage ① UI / Review Workflow Recovery is COMPLETE (2026-09-04).**
+Stage ① resolved the UX review workflow deficiencies identified in Problem 2:
+1. Multi-select & batch purge (`Purge Discarded`) permanently removes rejected Cues from the visible workspace and SQLite persistence while safely protecting non-rejected cues.
+2. Queue sorting strictly follows linear subtitle timeline `(start_time, end_time)` as the primary sort order; review state and priority levels are communicated cleanly through badges and subtle semantic token colors without disrupting chronological order.
+3. Continuous OCR timeline workflow: `CompactTimeline` provides an endpoint seam marker, click-to-seek, a "Resume from Last End" action, and automatic pre-fill of the next range start.
+4. "Clear Video Cues…" provides destructive cue history clearing specifically for the active video with an explicit warning modal, safely preserving raw observations and other videos.
+5. A low-disturbance synthesized hotel desk bell chime sounds upon genuine OCR job success (`JobState.SUCCEEDED`).
+6. Full test suite passes: 305 passed / 1 xfailed in UI suite; 913 passed / 1 skipped / 1 xfailed across the entire repository.
 
 **Milestone 11 — Product Hardening & Full Regression is CLOSED (2026-09-04).**
 Stage ④ Targeted Regression, Stage ⑤ Representative Evaluation (including
@@ -2178,9 +2204,8 @@ release-blocking findings the automated gates above cannot catch — see
 1. the approved ≤5× realtime DirectML production path's final
    reconstructed Cue output is unacceptable for release (too many
    low-value/duplicate/fragmented Cues); root cause open, deferred to
-   Milestone 12, not yet attributed to the DirectML backend itself;
-2. QA review UX is not acceptable (junk-Cue volume, `Discard` not
-   removing Cues from view, non-linear review ordering);
+   Milestone 12 Stage ②, not yet attributed to the DirectML backend itself;
+2. QA review UX was not acceptable (addressed in Stage ① above);
 3. Windows packaging remains exploratory, not release-grade.
 
 `Release Ready = NO`. Release/Packaging work is **SUSPENDED**. Feature
