@@ -3,10 +3,10 @@
 **Document type:** Authoritative V1 milestone roadmap  
 **Project:** GlyphCue  
 **Repository:** `Peter-S-Shi/glyphcue`  
-**Lifecycle phase:** Production Development in progress → Milestone 10 complete (evidence/evaluation closure accepted; representative-video gate transferred to Milestone 11, not waived — see §17's gate audit disposition), Feature Freeze ACTIVE, **Milestone 11 (Product Hardening & Full Regression) IN PROGRESS — stage ④ Targeted Regression CLOSED (automated evidence accepted at the human gate, see `docs/m11_targeted_regression.md`), stage ⑤ Representative Evaluation CLOSED by Human Adjudication (2026-09-03) (all five frozen windows `sample_g`, `sample_e`, `sample_h`, `sample_f`, `sample_c` plus reserve `sample_a` completed to full 180s coverage; acceptance gate 9 satisfied; see `docs/m11_representative_evaluation.md` §17). The Chinese-CER finding has been investigated and CLOSED by the Caption Identity Corrective Gate; performance hardening passes P2 (recognition-only), P3 (Windows DirectML OCR recognizer), and P4B (Windows DirectML same-detector text detector) are INTEGRATED; Parallel Chunking was evaluated via evidence gate and REJECTED; Stage ⑥ Full Regression is READY TO BEGIN** (see `docs/m11_representative_evaluation.md`)
+**Lifecycle phase:** Production Development in progress → Milestone 10 complete (evidence/evaluation closure accepted; representative-video gate transferred to Milestone 11, not waived — see §17's gate audit disposition), Feature Freeze ACTIVE, **Milestone 11 (Product Hardening & Full Regression) IN PROGRESS — stage ④ Targeted Regression CLOSED (automated evidence accepted at the human gate, see `docs/m11_targeted_regression.md`), stage ⑤ Representative Evaluation CLOSED by Human Adjudication (2026-09-03) (all five frozen windows `sample_g`, `sample_e`, `sample_h`, `sample_f`, `sample_c` plus reserve `sample_a` completed to full 180s coverage; acceptance gate 9 satisfied; see `docs/m11_representative_evaluation.md` §17). The Chinese-CER finding has been investigated and CLOSED by the Caption Identity Corrective Gate; performance hardening passes P2 (recognition-only), P3 (Windows DirectML OCR recognizer), and P4B (Windows DirectML same-detector text detector) are INTEGRATED; Parallel Chunking was evaluated via evidence gate and REJECTED; **Stage ⑥ Full Regression is CLOSED by Human Adjudication (2026-09-03); Stage ⑦ Formal Human QA & Packaging Hardening is IN PROGRESS — Stage ⑦-A (packaging build) and ⑦-B (technical smoke) have automated evidence as of 2026-09-04 via the PyInstaller onedir path (Nuitka/pyside6-deploy retired as the primary path after repeated build-system/resource blockers; PyInstaller was already this document's documented fallback, see §3 Packaging below), pending human adjudication; Stage ⑦-C Human QA checklist remains** (see `docs/m11_representative_evaluation.md`, `PROJECT_STATUS.md`)
 **Status:** Current V1 execution roadmap  
 
-**Last updated:** 2026-09-03
+**Last updated:** 2026-09-04
 
 
 ---
@@ -145,19 +145,25 @@ Evaluated candidates:
 
 ## Packaging
 
-Primary:
+Primary (as of M11 Stage ⑦-A, 2026-09-04):
 
-> `pyside6-deploy / Nuitka`
+> `PyInstaller` (onedir)
+
+`pyside6-deploy / Nuitka` was the original primary target but was
+retired during M11 Packaging Hardening after repeated build-system/
+resource blockers on the actual build machine (RAM exhaustion and an
+indeterminate codegen stall across multiple controlled attempts — see
+`PROJECT_STATUS.md`'s Stage ⑦-A/⑦-B section for the full evidence).
+PyInstaller was already documented here as the fallback; that fallback
+is now the active primary path, not a newly invented architecture.
 
 Hardening / RC packaging form:
 
-> standalone directory first
+> standalone directory (onedir) first
 
 Final installer:
 
 > Inno Setup 7
-
-PyInstaller remains a fallback if the primary deployment path produces unresolved blocking defects.
 
 ---
 
@@ -1528,15 +1534,19 @@ Ensure failures preserve:
 
 Primary target:
 
-> Nuitka / pyside6-deploy standalone directory
+> PyInstaller standalone directory (onedir) — see §3 Packaging above for
+> why this replaced the originally-targeted Nuitka/pyside6-deploy path.
 
-Resolve:
+Resolved (2026-09-04, PyInstaller onedir, see `PROJECT_STATUS.md`):
 
-- Qt plugins;
-- FFmpeg path;
-- OCR model assets;
-- runtime DLLs;
-- local resource paths.
+- Qt plugins (including QtMultimedia's FFmpeg/Windows Media Foundation
+  backends);
+- FFmpeg path (PyAV's own bundled DLLs);
+- OCR model assets (not bundled — Paddle/RapidOCR manage their own
+  runtime cache, unaffected by packaging);
+- runtime DLLs (`onnxruntime`'s `DirectML.dll` confirmed present);
+- local resource paths (`migrations_sql` package data confirmed present
+  and applied correctly at runtime).
 
 ## Acceptance gate
 

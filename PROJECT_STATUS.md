@@ -1,6 +1,6 @@
 # GlyphCue — PROJECT_STATUS.md
 
-**Last updated:** 2026-09-03
+**Last updated:** 2026-09-04
 
 ## Current milestone
 
@@ -62,10 +62,78 @@ explicitly:
   `DmlExecutionProvider` confirmed present) and complete real end-to-end
   multilingual evidence jobs when it is.
 - **Deliberately NOT Stage ⑥ evidence, deferred to Stage ⑦:** actual
-  Nuitka/pyside6-deploy packaging, clean-machine package execution, and
-  Formal Human QA. No pytest re-run and no private-corpus re-evaluation
-  were performed for this closure — documentation/lifecycle reconciliation
-  only.
+  packaging, clean-machine package execution, and Formal Human QA. No
+  pytest re-run and no private-corpus re-evaluation were performed for
+  this closure — documentation/lifecycle reconciliation only.
+
+### Stage ⑦-A/⑦-B Packaging Hardening & Technical Smoke (2026-09-04)
+
+**Nuitka/pyside6-deploy retired as the packaging path.** Five controlled
+build attempts (2026-09-03/04, diagnosed under strict single-variable-
+change discipline) hit repeated build-system/resource blockers on this
+machine — a MinGW64 cache-extraction race, RAM exhaustion during the
+Scons/gcc compile phase, an indeterminate codegen-phase stall, an
+unclassified near-instant silent exit, and RAM exhaustion again during
+Nuitka's own Python-analysis phase even under `--jobs=2`. Human
+adjudication (2026-09-04) retired Nuitka as the V1 packaging path rather
+than continuing to chase compiler-toolchain issues, and activated
+**PyInstaller — already documented in ROADMAP.md's Packaging section as
+the existing fallback**, not a newly invented path. A concise diagnostic
+summary of the abandoned Nuitka attempts is preserved locally
+(`prompt-drafts/M11-Stage7A-Nuitka-Abandoned-Summary-2026-09-04.md`,
+git-excluded); the large disposable Nuitka cache, build output, watchdog
+scripts/logs, and probe venv have been deleted.
+
+**PyInstaller onedir build: real, successful, on the formal baseline**
+(commit `81ace857`, dedicated disposable venv
+`.glyphcue-pyinstaller-venv`, Python 3.12, `pip install -e ".[ocr,directml]"`
++ `pyinstaller`/`pyinstaller-hooks-contrib`, entry `src/glyphcue/__main__.py`,
+`--collect-data glyphcue.persistence.migrations_sql --collect-submodules glyphcue --windowed`).
+Build completed in ~161s (pure analysis/packaging, no C compilation —
+no RAM pressure observed), producing a 779 MB onedir directory. Verified
+present in the bundle: `migrations_sql/*.sql` (all 5 migrations),
+`onnxruntime/capi/DirectML.dll`, PyAV's own bundled FFmpeg DLLs
+(`av.libs/avcodec-62-*.dll` etc.), and Qt Multimedia's FFmpeg/Windows
+Media Foundation backend plugins (`PySide6/plugins/multimedia/*.dll`) —
+all auto-discovered by PyInstaller's standard hooks with no product-code
+changes.
+
+**Technical smoke, all real (no mocks):**
+- Launch/exit: packaged `GlyphCue.exe` launched cleanly under an
+  isolated `USERPROFILE` (never touching real user data), showed the
+  correct window title, stayed alive, and closed cleanly via `WM_CLOSE`
+  (exercises `closeEvent`/`commit_pending_edits`) with zero orphan
+  processes.
+- Default-mode/UI rendering: a foreground-verified native screenshot
+  (method per persisted session convention) confirmed the packaged app
+  renders identically to source — defaults to Path A: Video Extraction
+  with ROI fields, Play/Pause, and "Run OCR Evidence" all visible and
+  styled correctly, proving Qt plugins/stylesheet/fonts loaded correctly
+  from the frozen bundle. (One earlier capture showed Path B active;
+  root-caused to a concurrent manual click during that capture window,
+  not a packaging defect — reproduced clean twice after.)
+- Persistence initialization: packaged app created
+  `<profile>\.glyphcue\glyphcue.sqlite3` and applied all 5 migrations
+  (`schema_migrations` = `[1,2,3,4,5]`; `cues`, `language_layers`,
+  `track_groups`, `observations` tables all present) — confirmed by
+  direct SQLite inspection.
+- OCR/DirectML provider selection: `create_ocr_engine`/
+  `create_text_detector` invoked directly against the exact dependency
+  versions bundled into the package (same `.glyphcue-pyinstaller-venv`)
+  — `prefer_directml=False` resolves to `PaddleOcrEngine`/
+  `PaddleOcrTextDetector` (CPU-safe, no error); `prefer_directml=True`
+  resolves to `DirectMlOcrEngine`/`DirectMlTextDetector` with RapidOCR's
+  own log confirming `"try to use DirectML as primary provider"` — both
+  directions real, both directions correct.
+- Not automated (no native UI-automation tool available in this
+  session): a full click-driven Path B / caption-import / OCR-run pass
+  through the actual packaged GUI. Application logic itself is unchanged
+  by packaging and already covered by the pytest suite; this gap is
+  listed under Stage ⑦-C below.
+
+No GlyphCue product code was changed for any of this — the whole
+packaging-contract audit resolved through PyInstaller's standard hook
+discovery plus explicit `--collect-data`/`--collect-submodules` flags.
 
 **Stage ⑥ evidence baseline refreshed to `4afb8d4`** (human-adjudicated;
 not a reopening of Stage ⑥ itself). Between `906f9e7` and `4afb8d4`, the
@@ -391,9 +459,13 @@ appears anywhere in the repository.
 - Residual non-blocking evaluation findings preserved:
   - `sample_c`: Isolated window-boundary non-text reading (`"zh": "3\n8"`) on Cue 1 (1.1s), safely fail-closed with `ambiguous_languages: ["zh"]`; non-contaminating.
   - `sample_f`: One illegible Chinese layer at 661.1s left untranscribed in GT rather than guessed; rapid b-roll editor button glyphs flagged ambiguous.
-- Packaging hardening (Qt plugins, FFmpeg path, OCR model assets, runtime DLLs) — unstarted, Stage ⑦.
-- Formal human Manual QA — unstarted, Stage ⑦.
-- Actual Nuitka/pyside6-deploy packaging and clean-machine package execution — unstarted, Stage ⑦.
+- Formal human Manual QA — unstarted, Stage ⑦-C.
+- Packaging hardening: Stage ⑦-A (build) and ⑦-B (technical smoke)
+  automated evidence is complete as of 2026-09-04 via the PyInstaller
+  onedir path (see "Current milestone" below for the full evidence);
+  this evidence awaits human adjudication before Stage ⑦ itself is
+  considered closed. Remaining: Inno Setup installer work (deliberately
+  not started), and the Stage ⑦-C human-QA checklist below.
 
 ## Next action
 
@@ -410,8 +482,31 @@ baselines — this refresh did not reopen Stage ⑥).
 The subsequent execution sequence is strictly:
 **Stage ⑥ Full Regression (CLOSED) → Stage ⑦ Formal Human QA & Packaging Hardening**.
 
-Immediate next step: **Begin Stage ⑦ Formal Human QA & Packaging Hardening**
-once authorized — Nuitka/pyside6-deploy packaging, clean-machine install
-verification, and formal manual QA critical paths. Not started yet; this
-session stops here for review before Stage ⑦ begins. Milestone 11 remains **IN PROGRESS**
-and incomplete; PR #13 stays **Draft**.
+Stage ⑦-A (PyInstaller onedir build) and ⑦-B (technical smoke) have real,
+automated evidence as of 2026-09-04 (see "Current milestone" above).
+This evidence has **not yet been human-adjudicated**; Stage ⑦ itself and
+Milestone 11 remain **IN PROGRESS**; PR #13 stays **Draft**.
+
+**Stage ⑦-C — minimal remaining Human QA checklist:**
+1. Open the packaged `GlyphCue.exe` (from
+   `.glyphcue-pyinstaller-build\dist\GlyphCue\`, or a fresh rebuild from
+   the same command) on a real machine and manually click through: open
+   a real video (Path A), run OCR evidence end-to-end, switch to Path B,
+   open/import a real `.srt`/`.vtt` caption file, edit and Approve a cue,
+   export, reopen. This is the one path this session could not automate
+   (no native Windows UI-automation tool available) — everything else
+   (launch/exit, persistence, resource bundling, DirectML/Paddle
+   provider selection) already has real automated evidence above.
+2. Confirm the packaged app behaves correctly on a genuinely clean
+   machine/profile that has never had the `.venv` dev environment
+   installed (this session's smoke used an isolated `USERPROFILE` on the
+   *same* machine, not a separate machine — still real evidence, but not
+   a literal "clean machine" test).
+3. Decide whether the onedir output (779 MB) is acceptable to ship as-is
+   or should be reduced (e.g. excluding unused Paddle/RapidOCR model
+   variants, unused Qt translations/plugins) before Inno Setup work
+   begins — a product/packaging-size judgment call, not a technical
+   blocker.
+4. Once 1–3 are reviewed: explicit "Human adjudication APPROVED" closes
+   Stage ⑦-A/⑦-B/⑦-C together, and Inno Setup installer work (ROADMAP.md
+   §3, "Final installer") can begin as its own next step.
