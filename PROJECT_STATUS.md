@@ -42,7 +42,8 @@ explicitly:
   regression required by ROADMAP §18 ("Automated regression" — Path A,
   Path B, persistence, jobs, export, cancellation, migrations, settings,
   offscreen UI): clean `ubuntu-latest`/Python 3.12, unfiltered `pytest`,
-  green on every push (latest run `33823586648`). Not duplicated locally.
+  green on the Stage ⑥ evidence baseline `906f9e7` (run `33823586648`).
+  Not duplicated locally.
 - **Stage ⑥ additionally audited platform-specific branches** —
   `sys.platform == "win32"` appears in 7 source files; 6 were already
   exercised by CI-run mocks. The one meaningful Linux-CI coverage gap
@@ -301,7 +302,7 @@ deliberately left unfixed.
 | `pytest` (targeted P4B selection, contract & UI seams) | **40 passed** in 1.19s |
 | `pytest` (whole repository, full suite) | **902 passed, 1 skipped, 1 xfailed** in 118s |
 | `tests/ui` (one process) | 295 passed, 1 xfailed |
-| GitHub Actions CI (`milestone/11-product-hardening-full-regression`) | **All green**, latest run `33823586648` on `906f9e7` |
+| GitHub Actions CI (Stage ⑥ evidence baseline `906f9e7`) | GREEN — run `33823586648` |
 | `pytest` (`tests/application/test_source_identity.py`, Stage ⑥ Windows-branch gap closure) | **3 passed** |
 
 Privacy check: no secrets, credentials, real user data, personal
