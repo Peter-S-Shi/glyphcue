@@ -221,6 +221,70 @@ first item of Stage ⑦-C**: re-run the same manual click-through
 not just "no crash") on the rebuilt `.exe` at
 `.glyphcue-pyinstaller-build\dist\GlyphCue\GlyphCue.exe`.
 
+### Stage ⑦-C manual testing — packaged-performance isolation (2026-09-04)
+
+Real human testing on the (Paddle-fixed) packaged `.exe` measured
+`sample_g` (10.05–20.05s, monolingual) at **~20× slower than realtime**,
+far outside the ≤5× target the user recalled from earlier M11 performance
+hardening. Diagnosed under `diagnosing-bugs`: is this a packaging
+regression, or expected behavior of whichever code path actually ran?
+
+**Isolation benchmark** (`build_ocr_evidence_job` invoked directly,
+identical video/ROI/range/code path, no competing CPU-heavy process —
+verified via CPU-delta sampling before each run):
+
+| Environment | Engine | OCR call latency (mean/median/P95) | Realtime ratio |
+|---|---|---|---|
+| dev `.venv`, unfrozen, CPU Paddle (default) | `PaddleOcrEngine` | 41724 / 42219 / 62219 ms | **0.009× (108× slower)** |
+| Packaged `.exe`, CPU Paddle (default, no env var) | `PaddleOcrEngine` | (user's original report) 5896 / 3625 / 11351 ms | 0.05× (20× slower) |
+| pyinstaller-venv, unfrozen, DirectML (`prefer_directml=True`) | `DirectMlOcrEngine` | 270.6 / 188.0 / 359.0 ms | **0.249× (4.02× slower)** |
+| Packaged `.exe` (throwaway repro, DirectML forced) | `DirectMlOcrEngine` | 308.7 / 203.0 / 375.0 ms | **0.239× (4.19× slower)** |
+
+**Finding: not a packaging regression.** The unfrozen dev `.venv` running
+the exact same default CPU path was, if anything, *slower* than the
+user's packaged run (108× vs 20× — noise/thermal/content-dependent, not
+a meaningful "packaging made it faster" claim either). `PaddleOcrEngine`
+explicitly sets `enable_mkldnn=False` (`paddleocr_engine.py:41`, a
+deliberate workaround for a real paddleocr==3.7.0/paddlepaddle==3.3.1
+crash — see the code comment and ADR-0001), which disables Intel's CPU
+inference acceleration; this repo's own history already documents plain
+CPU-path runs at 7×–159× depending on content (see the Chinese-CER
+integration smoke and the Hybrid/Production profile comparison earlier
+in this file). The **≤5× realtime target was only ever met via the
+opt-in DirectML acceleration** (`GLYPHCUE_PREFER_DIRECTML_OCR=1` /
+`GLYPHCUE_PREFER_DIRECTML_DETECTOR=1`, the P3/P4B performance-hardening
+gates) — not the shipped default. The packaged DirectML run (4.19×)
+closely reproduces the unfrozen DirectML run (4.02×): packaging is
+performance-neutral once the same code path is actually exercised.
+
+**Real DirectML provider confirmation on the packaged repro** (not just
+the "try to use DirectML" log line): `text_det.session.session.get_providers()`
+and `text_rec.session.session.get_providers()` both returned
+`['DmlExecutionProvider', 'CPUExecutionProvider']` — DirectML genuinely
+active, not silently falling back to CPU.
+
+**Model provenance confirmed clean:** the packaged repro's RapidOCR
+models resolved to `_internal\rapidocr\models\*.onnx`
+(`PP-OCRv6_det_small.onnx` 9,929,594 bytes, `PP-OCRv6_rec_small.onnx`
+21,234,383 bytes, `ch_ppocr_mobile_v2.0_cls_mobile.onnx` 585,532 bytes) —
+RapidOCR's own "File exists and is valid" check passed against the
+already-installed venv copies (via `--collect-all rapidocr`), so nothing
+was silently downloaded or hand-copied to make the number look good.
+
+**New, separate packaging-completeness finding (not a performance issue):**
+the `rapidocr` package is **entirely absent** from the current real
+`GlyphCue.exe` build (`_internal\rapidocr\` does not exist) — the
+canonical build command above only fixed the CPU Paddle path
+(`--collect-binaries paddle` etc.); it never added `--collect-all
+rapidocr` for the DirectML path. This means **the packaged product today
+cannot use DirectML at all**, even with the opt-in env vars set — it
+would fail with `ModuleNotFoundError`, not silently fall back (the
+`create_ocr_engine`/`create_text_detector` preflight only catches
+*platform/init* failures, not a missing module in a frozen bundle it
+never expected). This needs its own fix (`--collect-all rapidocr` added
+to the canonical build command) before Stage ⑦-C can close — tracked as
+a new checklist item below, separate from the release-policy question.
+
 **Stage ⑥ evidence baseline refreshed to `4afb8d4`** (human-adjudicated;
 not a reopening of Stage ⑥ itself). Between `906f9e7` and `4afb8d4`, the
 **M11 Legacy Pipeline Retirement Corrective Gate** removed
@@ -596,6 +660,32 @@ Milestone 11 remain **IN PROGRESS**; PR #13 stays **Draft**.
    variants, unused Qt translations/plugins) before Inno Setup work
    begins — a product/packaging-size judgment call, not a technical
    blocker.
-4. Once 1–3 are reviewed: explicit "Human adjudication APPROVED" closes
+4. **New (2026-09-04, packaging-completeness):** add `--collect-all
+   rapidocr` to the canonical build command and rebuild — the `rapidocr`
+   package (and its bundled `.onnx` models) is currently entirely absent
+   from the real `GlyphCue.exe`, so the opt-in DirectML path
+   (`GLYPHCUE_PREFER_DIRECTML_OCR`/`GLYPHCUE_PREFER_DIRECTML_DETECTOR`)
+   would fail with `ModuleNotFoundError` in the packaged product today,
+   even though it works correctly unpackaged and in a throwaway repro
+   build. This is a packaging-completeness gap, not a performance
+   question — the real build has not been rebuilt with this fix yet
+   (only the throwaway DirectML repro was, to isolate the performance
+   question cleanly; see "Stage ⑦-C manual testing — packaged-performance
+   isolation" above).
+5. **Separate release-policy question (not decided by this session,
+   needs human adjudication):** should Windows production automatically
+   prefer DirectML (with the existing real preflight/fallback-to-Paddle
+   behavior) instead of shipping today's CPU-Paddle-by-default behavior?
+   The CPU default is ~20–100× slower than realtime depending on content
+   (expected, documented, not a bug); DirectML reaches the ≤5× target
+   reliably. Today there is no in-app toggle — only the two env vars —
+   so a normal user launching `GlyphCue.exe`/`Launch-GlyphCue.bat` never
+   gets DirectML acceleration even on capable hardware. This is a product
+   decision (default behavior, user-facing performance, and the real
+   correctness trade-off already documented earlier in this file — a
+   prior integration smoke found DirectML showing "real correctness
+   degradation not seen on CPU" on some content), not a technical
+   blocker this session can resolve.
+6. Once 1–5 are reviewed: explicit "Human adjudication APPROVED" closes
    Stage ⑦-A/⑦-B/⑦-C together, and Inno Setup installer work (ROADMAP.md
    §3, "Final installer") can begin as its own next step.
