@@ -3,7 +3,7 @@
 **Document type:** Authoritative V1 milestone roadmap  
 **Project:** GlyphCue  
 **Repository:** `Peter-S-Shi/glyphcue`  
-**Lifecycle phase:** Production Development → Milestone 10 complete (evidence/evaluation closure accepted; representative-video gate transferred to Milestone 11, not waived — see §17's gate audit disposition). **Milestone 11 (Product Hardening & Full Regression) is CLOSED (2026-09-04)** — every acceptance-gate item (regression, the transferred M10 representative-video evaluation, Stage ⑦ packaging/DirectML-default work) executed with real evidence (see `docs/m11_targeted_regression.md`, `docs/m11_representative_evaluation.md`, `PROJECT_STATUS.md`) — **but Release Acceptance for the resulting product was REJECTED BY HUMAN ADJUDICATION (§18 closure disposition)**: the repository owner's hands-on retest of the approved DirectML production path found final reconstructed Cue output unacceptable for release (too many low-value/duplicate/fragmented Cues; root cause open, deferred to Milestone 12 — not yet attributed to the DirectML backend itself), QA review UX is not acceptable (Discard doesn't remove Cues from view, review ordering isn't linear), and Windows packaging remains exploratory. **Release Ready = NO. Release/Packaging work is SUSPENDED.** Feature Freeze is lifted only for corrective rework. The product is now in **Milestone 12 — Product Rework & Cue Quality Recovery** (§19); the originally-next Release Candidate milestone is renumbered to Milestone 13 (§20) and does not begin until Milestone 12 is complete and accepted, followed by a second Product Hardening & Full Regression pass.
+**Lifecycle phase:** Production Development → Milestone 10 complete (evidence/evaluation closure accepted; representative-video gate transferred to Milestone 11, not waived — see §17's gate audit disposition). **Milestone 11 (Product Hardening & Full Regression) is CLOSED (2026-09-04)** — every acceptance-gate item (regression, the transferred M10 representative-video evaluation, Stage ⑦ packaging/DirectML-default work) executed with real evidence (see `docs/m11_targeted_regression.md`, `docs/m11_representative_evaluation.md`, `PROJECT_STATUS.md`) — **but Release Acceptance for the resulting product was REJECTED BY HUMAN ADJUDICATION (§18 closure disposition)**: the repository owner's hands-on retest of the approved DirectML production path found final reconstructed Cue output unacceptable for release (too many low-value/duplicate/fragmented Cues; root cause open, deferred to Milestone 12 — not yet attributed to the DirectML backend itself), QA review UX is not acceptable (Discard doesn't remove Cues from view, review ordering isn't linear), and Windows packaging remains exploratory. **Release Ready = NO. Release/Packaging work is SUSPENDED.** Feature Freeze is lifted only for corrective rework. **Milestone 12 — Product Rework & Cue Quality Recovery** (§19) is the next engineering milestone, QUEUED but NOT YET STARTED; the originally-next Release Candidate milestone is renumbered to Milestone 13 (§20) and does not begin until Milestone 12 is complete and accepted, followed by a second Product Hardening & Full Regression pass.
 **Status:** Current V1 execution roadmap  
 
 **Last updated:** 2026-09-04
@@ -2146,7 +2146,7 @@ Milestone 9 — V1 Product Completion & Feature Freeze ✓ complete
 Milestone 10 — Evaluation & Career Evidence Closure ✓ complete (gate audit accepted 2026-08-31; representative-video target transferred to Milestone 11 as a mandatory gate, not waived — see §17)
 Milestone 11 — Product Hardening & Full Regression ✓ hardening complete / CLOSED (2026-09-04) — Release Acceptance REJECTED BY HUMAN ADJUDICATION (§18 closure disposition); see PROJECT_STATUS.md
 
-Production Development                 IN PROGRESS — corrective rework (Milestone 12)
+Corrective Product Rework               QUEUED — Milestone 12 NOT YET STARTED
 Feature Freeze                          LIFTED FOR REWORK ONLY (Milestone 9's freeze remains the default outside Milestone 12's named scope)
 Release / Packaging                     SUSPENDED
 ```
@@ -2165,8 +2165,10 @@ the transferred M10 gate), Stage ⑥ Full Regression, and Stage ⑦ Formal
 Human QA & Packaging Hardening (including the Runtime Default Corrective
 Gate) all executed with real, CI-verified evidence — see
 `docs/m11_targeted_regression.md`, `docs/m11_representative_evaluation.md`,
-and `PROJECT_STATUS.md` for the full record. Every M11 acceptance-gate item
-(§18) passed.
+and `PROJECT_STATUS.md` for the full record. Every M11 acceptance-gate
+item (§18) was executed and adjudicated. M11 is CLOSED because the
+hardening process completed and surfaced release-blocking product
+findings; Release Acceptance itself did NOT pass.
 
 **Human Adjudication (2026-09-04) rejected Release Acceptance for the
 resulting product** after hands-on re-testing surfaced three
