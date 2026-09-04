@@ -63,6 +63,7 @@ from glyphcue.persistence.database import connect
 from glyphcue.persistence.observation_repository import ObservationRepository
 from glyphcue.persistence.repository import CueRepository
 from glyphcue.persistence.track_group_repository import TrackGroupRepository
+from glyphcue.ui.audio_chime import play_ocr_completion_chime
 from glyphcue.ui.compact_timeline import CompactTimeline
 from glyphcue.ui.design_tokens import Color, Spacing
 from glyphcue.ui.export_controls import ExportControls
@@ -212,6 +213,10 @@ class PathAMediaPane:
         # DESIGN.md section 49: a compact, read-only temporal strip --
         # Cue spans + playhead, not an NLE timeline.
         self.timeline = CompactTimeline()
+        self.timeline.seek_requested.connect(
+            lambda sec: self.controller.seek(sec)
+        )
+
 
         self.roi_x_spin = _roi_spin_box()
         self.roi_y_spin = _roi_spin_box()
@@ -304,6 +309,18 @@ class PathAMediaPane:
         self.cancel_ocr_button = QPushButton("Cancel")
         self.discard_latest_run_button = QPushButton("Discard Latest OCR Run")
         self.discard_latest_run_button.setEnabled(False)
+        self.resume_from_last_end_button = QPushButton("Resume from Last End")
+        self.resume_from_last_end_button.setObjectName("secondaryBtn")
+        self.resume_from_last_end_button.setToolTip(
+            "Set OCR processing start to the end of the previous OCR run and seek video."
+        )
+        self.resume_from_last_end_button.setEnabled(False)
+        self.clear_video_cues_button = QPushButton("Clear Video Cues…")
+        self.clear_video_cues_button.setObjectName("subtleDangerBtn")
+        self.clear_video_cues_button.setToolTip(
+            "Delete all reconstructed cues for the currently loaded video."
+        )
+        self.clear_video_cues_button.setEnabled(False)
         self.ocr_progress_bar = QProgressBar()
         self.ocr_progress_bar.setRange(0, 100)
         self.ocr_progress_bar.setValue(0)
@@ -315,6 +332,7 @@ class PathAMediaPane:
         self._last_dry_run_result: TriggerReplayResult | None = None
         self._ocr_start_time: float = 0.0
         self._video_duration_seconds: float = 0.0
+        self._last_processed_end_time: float | None = None
         self._update_ocr_button_enabled()
 
         self.open_button.clicked.connect(self._on_open_clicked)
@@ -326,6 +344,8 @@ class PathAMediaPane:
         self.dry_run_policy_button.clicked.connect(self._on_dry_run_policy_clicked)
         self.cancel_ocr_button.clicked.connect(self._on_cancel_ocr_clicked)
         self.discard_latest_run_button.clicked.connect(self._on_discard_latest_run_clicked)
+        self.resume_from_last_end_button.clicked.connect(self._on_resume_from_last_end_clicked)
+        self.clear_video_cues_button.clicked.connect(self._on_clear_video_cues_clicked)
 
         self.context_label = QLabel()
         self.context_label.setWordWrap(True)
@@ -492,7 +512,7 @@ class PathAMediaPane:
         ocr_header_row.addWidget(self.ocr_range_summary_label)
         ocr_box_layout.addLayout(ocr_header_row)
 
-        # Two rows of two action buttons
+        # Action buttons grid
         ocr_controls = QGridLayout()
         self.run_ocr_button.setObjectName("runOcrBtn")
         self.dry_run_policy_button.setObjectName("secondaryBtn")
@@ -502,6 +522,8 @@ class PathAMediaPane:
         ocr_controls.addWidget(self.dry_run_policy_button, 0, 1)
         ocr_controls.addWidget(self.cancel_ocr_button, 1, 0)
         ocr_controls.addWidget(self.discard_latest_run_button, 1, 1)
+        ocr_controls.addWidget(self.resume_from_last_end_button, 2, 0)
+        ocr_controls.addWidget(self.clear_video_cues_button, 2, 1)
         ocr_box_layout.addLayout(ocr_controls)
 
         # Output / Results Status Box (Inner Card)
@@ -651,6 +673,7 @@ class PathAMediaPane:
             self._cue_repository.save_cues_for_source(self._source_id, cues)
         self._last_pre_run_cues = None
         self.discard_latest_run_button.setEnabled(False)
+        self.clear_video_cues_button.setEnabled(bool(self._source_id and self.qa.cues))
         self._refresh_timeline()
         self._refresh_current_cue_relationship(self.controller.player.position() / 1000.0)
 
@@ -709,8 +732,17 @@ class PathAMediaPane:
                     for c in persisted_cues
                 }
                 self.qa.set_cues_and_priorities(persisted_cues, obs_map, priorities)
+                latest_end = max(c.end_time for c in persisted_cues)
+                self._last_processed_end_time = latest_end
+                self.timeline.set_last_processed_end(latest_end)
+                self.resume_from_last_end_button.setEnabled(True)
+                self.clear_video_cues_button.setEnabled(True)
             else:
                 self.qa.set_cues_and_priorities([], {}, {})
+                self._last_processed_end_time = None
+                self.timeline.set_last_processed_end(None)
+                self.resume_from_last_end_button.setEnabled(False)
+                self.clear_video_cues_button.setEnabled(False)
 
         self._refresh_context_label()
 
@@ -1208,6 +1240,15 @@ class PathAMediaPane:
             range_end = self._current_processing_end_time or (
                 self._processing_range.end_time or self._video_duration_seconds or 0.0
             )
+            self._last_processed_end_time = range_end
+            self.timeline.set_last_processed_end(range_end)
+            self.resume_from_last_end_button.setEnabled(True)
+            self.clear_video_cues_button.setEnabled(bool(self._source_id and self.qa.cues))
+            if self._video_duration_seconds and range_end < self._video_duration_seconds:
+                self.limit_processing_range_checkbox.setChecked(True)
+                self.processing_range_start_spin.setValue(range_end)
+            play_ocr_completion_chime()
+
             media_duration = max(0.0, range_end - range_start)
             if media_duration == 0.0 and self._video_duration_seconds:
                 media_duration = self._video_duration_seconds
@@ -1234,6 +1275,59 @@ class PathAMediaPane:
             self.ocr_status_label.setText("OCR evidence job ended in an unexpected state")
 
         self._update_diagnostics_ui()
+
+    def _on_resume_from_last_end_clicked(self) -> None:
+        if self._last_processed_end_time is None:
+            return
+        self.limit_processing_range_checkbox.setChecked(True)
+        self.processing_range_start_spin.setValue(self._last_processed_end_time)
+        self.controller.seek(self._last_processed_end_time)
+
+    def _on_clear_video_cues_clicked(self) -> None:
+        if not self._source_id or not self.qa.cues:
+            return
+
+        video_name = self._video_path.name if self._video_path else "current video"
+        cue_count = len(self.qa.cues)
+
+        msg_box = QMessageBox(self.window)
+        msg_box.setObjectName("clearVideoCuesConfirmDialog")
+        msg_box.setIcon(QMessageBox.Icon.Warning)
+        msg_box.setWindowTitle("Clear Video Cue History")
+        msg_box.setText(
+            f"Are you sure you want to clear all {cue_count} reconstructed cues for \"{video_name}\"?\n\n"
+            "This is a destructive action that permanently removes all cue work records "
+            "for this specific video. Raw OCR observations and other videos in your database "
+            "will remain unaffected. This cannot be undone."
+        )
+        clear_btn = msg_box.addButton("Clear Cues", QMessageBox.ButtonRole.DestructiveRole)
+        clear_btn.setObjectName("confirmClearVideoCuesBtn")
+        cancel_btn = msg_box.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)
+        cancel_btn.setObjectName("cancelClearVideoCuesBtn")
+        msg_box.setDefaultButton(cancel_btn)
+        msg_box.setEscapeButton(cancel_btn)
+
+        msg_box.exec()
+        if msg_box.clickedButton() != clear_btn:
+            return
+
+        self._clear_current_video_cues()
+
+    def _clear_current_video_cues(self) -> None:
+        if not self._source_id:
+            return
+        if self._cue_repository is not None:
+            self._cue_repository.delete_for_source(self._source_id)
+        self._last_pre_run_cues = None
+        self._last_processed_end_time = None
+        self.timeline.set_last_processed_end(None)
+        self.discard_latest_run_button.setEnabled(False)
+        self.resume_from_last_end_button.setEnabled(False)
+        self.clear_video_cues_button.setEnabled(False)
+        self.qa.set_cues_and_priorities([], {}, {})
+        self._refresh_timeline()
+        self._refresh_current_cue_relationship(self.controller.player.position() / 1000.0)
+        self._refresh_context_label()
 
     def _on_discard_latest_run_clicked(self) -> None:
         if self._last_pre_run_cues is None or not self._source_id:
@@ -1283,7 +1377,15 @@ class PathAMediaPane:
         self._refresh_timeline()
         self._last_pre_run_cues = None
         self.discard_latest_run_button.setEnabled(False)
+        if restored_cues:
+            self._last_processed_end_time = max(c.end_time for c in restored_cues)
+        else:
+            self._last_processed_end_time = None
+        self.timeline.set_last_processed_end(self._last_processed_end_time)
+        self.resume_from_last_end_button.setEnabled(self._last_processed_end_time is not None)
+        self.clear_video_cues_button.setEnabled(bool(self._source_id and restored_cues))
         self.ocr_status_label.setText("Latest OCR run discarded; workspace restored.")
+
 
     def _on_dry_run_policy_clicked(self) -> None:
         if self._video_path is None:

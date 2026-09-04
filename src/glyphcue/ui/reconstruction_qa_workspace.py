@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from typing import Callable
 
-from PySide6.QtCore import QEvent, QObject, Qt
-from PySide6.QtGui import QKeySequence, QShortcut
+from PySide6.QtCore import QEvent, QModelIndex, QObject, QSize, Qt
+from PySide6.QtGui import QColor, QKeySequence, QPainter, QPen, QShortcut
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
@@ -19,6 +19,9 @@ from PySide6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSplitter,
+    QStyle,
+    QStyledItemDelegate,
+    QStyleOptionViewItem,
     QTextEdit,
     QVBoxLayout,
     QWidget,
@@ -45,6 +48,89 @@ from glyphcue.ui.main_window import MainWindow
 
 _TIMING_NUDGE_STEP_SECONDS = 0.05
 _QUEUE_ITEM_ROLE_CUE_ID = "cue_id"
+REVIEW_STATE_ROLE = Qt.ItemDataRole.UserRole + 1
+
+
+def border_color_for_cue_item(
+    review_state: ReviewState | str | None, is_selected: bool
+) -> str:
+    """Returns the border color token for a cue item in the review queue.
+
+    Selection has highest visual priority:
+    - Selected: Color.ACCENT (Blue)
+    - Approved: Color.SUCCESS (Green)
+    - Rejected/Discarded: Color.DANGER (Red)
+    - Needs Review: Color.WARNING (Yellow)
+    - Pending / Default: Color.BORDER_NEUTRAL_LIGHT (#cbd5e1, White/neutral light)
+    """
+    if is_selected:
+        return Color.ACCENT
+    if review_state == ReviewState.APPROVED or review_state == "APPROVED":
+        return Color.SUCCESS
+    if review_state == ReviewState.REJECTED or review_state == "REJECTED":
+        return Color.DANGER
+    if review_state == ReviewState.NEEDS_REVIEW or review_state == "NEEDS_REVIEW":
+        return Color.WARNING
+    return Color.BORDER_NEUTRAL_LIGHT
+
+
+class CueQueueItemDelegate(QStyledItemDelegate):
+    """Renders review queue cue items as card items with review-state borders.
+
+    Card border semantics per human QA:
+    - Approved: Green border (Color.SUCCESS)
+    - Pending: Neutral light/white border (Color.BORDER_NEUTRAL_LIGHT, #cbd5e1)
+    - Needs Review: Yellow border (Color.WARNING)
+    - Discarded: Red border (Color.DANGER)
+    - User selection: Blue border (Color.ACCENT) + selection background as highest priority override.
+    - Text stays clear and readable in primary text color without coloring the entire line.
+    - Playback-active expression (prefix) is preserved.
+    """
+
+    def paint(
+        self,
+        painter: QPainter,
+        option: QStyleOptionViewItem,
+        index: QModelIndex,
+    ) -> None:
+        painter.save()
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        is_selected = bool(option.state & QStyle.StateFlag.State_Selected)
+        is_hover = bool(option.state & QStyle.StateFlag.State_MouseOver)
+        review_state = index.data(REVIEW_STATE_ROLE)
+
+        border_color = QColor(border_color_for_cue_item(review_state, is_selected))
+        if is_selected:
+            bg_color = QColor(Color.SURFACE_2)
+        elif is_hover:
+            bg_color = QColor(Color.SURFACE_HOVER)
+        else:
+            bg_color = QColor(Color.SURFACE_1)
+
+        card_rect = option.rect.adjusted(2, 2, -2, -2)
+        painter.setBrush(bg_color)
+        pen = QPen(border_color, 1.5)
+        painter.setPen(pen)
+        painter.drawRoundedRect(card_rect, 6, 6)
+
+        painter.setFont(option.font)
+        text = index.data(Qt.ItemDataRole.DisplayRole) or ""
+        text_rect = card_rect.adjusted(8, 0, -8, 0)
+        painter.setPen(QColor(Color.TEXT_PRIMARY))
+        painter.drawText(
+            text_rect,
+            Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
+            text,
+        )
+
+        painter.restore()
+
+    def sizeHint(
+        self, option: QStyleOptionViewItem, index: QModelIndex
+    ) -> QSize:
+        base_size = super().sizeHint(option, index)
+        return QSize(base_size.width(), max(base_size.height(), 32))
 
 _APPROVE_BUTTON_STYLE = f"""
     QPushButton {{
@@ -230,6 +316,17 @@ class ReconstructionQaWorkspace:
 
         self.queue = QListWidget()
         self.queue.setObjectName("cueList")
+        self.queue.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+        self.queue_delegate = CueQueueItemDelegate(self.queue)
+        self.queue.setItemDelegate(self.queue_delegate)
+
+        self.purge_discarded_button = QPushButton("Purge Discarded")
+        self.purge_discarded_button.setObjectName("subtleDangerBtn")
+        self.purge_discarded_button.setToolTip(
+            "Remove selected discarded cues from the visible workspace."
+        )
+        self.purge_discarded_button.clicked.connect(self.purge_discarded_cues)
+
         self.cue_identity_label = QLabel("")
         self.cue_identity_label.setObjectName("cueIdentityLabel")
         self.cue_identity_label.setStyleSheet(f"font-weight: 700; font-size: 13px; color: {Color.TEXT_PRIMARY};")
@@ -335,6 +432,7 @@ class ReconstructionQaWorkspace:
         queue_layout.addWidget(self.search_edit)
         queue_layout.addWidget(self.filter_combo)
         queue_layout.addWidget(self.queue, stretch=1)
+        queue_layout.addWidget(self.purge_discarded_button)
 
         self.queue_section = CollapsibleSection(
             "CUE QUEUE", content=queue_content, expanded=True, min_expanded_height=140
@@ -652,10 +750,14 @@ class ReconstructionQaWorkspace:
                     self.queue.scrollToItem(item, QAbstractItemView.ScrollHint.EnsureVisible)
                     break
 
+    def _set_queue_item_styling(self, item: QListWidgetItem, cue: Cue) -> None:
+        item.setData(REVIEW_STATE_ROLE, cue.review_state)
+        item.setForeground(QColor(Color.TEXT_PRIMARY))
+
     def _queue_item_label(self, cue: Cue) -> str:
         priority = self._priority_for(cue.id)
         prefix = "▶ " if cue.id == self._playback_active_cue_id else ""
-        return f"{prefix}[{priority.level}] [{review_state_badge(cue.review_state)}] {queue_label_for_cue(cue)}"
+        return f"{prefix}[{cue.start_time:.2f}s] [{priority.level}] [{review_state_badge(cue.review_state)}] {queue_label_for_cue(cue)}"
 
     def _refresh_queue_labels(self) -> None:
         for row in range(self.queue.count()):
@@ -666,10 +768,11 @@ class ReconstructionQaWorkspace:
             cue = next((c for c in self._cues if c.id == cue_id), None)
             if cue is not None:
                 item.setText(self._queue_item_label(cue))
+                self._set_queue_item_styling(item, cue)
 
     def _rebuild_queue(self, *, select_cue_id: str | None) -> None:
         ordered = sorted(
-            self._cues, key=lambda cue: self._priority_for(cue.id).score, reverse=True
+            self._cues, key=lambda cue: (cue.start_time, cue.end_time, cue.id)
         )
         ordered = [cue for cue in ordered if self._matches_filter(cue) and self._matches_search(cue)]
         self.queue.blockSignals(True)
@@ -678,6 +781,7 @@ class ReconstructionQaWorkspace:
         for row, cue in enumerate(ordered):
             item = QListWidgetItem(self._queue_item_label(cue))
             item.setData(Qt.ItemDataRole.UserRole, cue.id)
+            self._set_queue_item_styling(item, cue)
             self.queue.addItem(item)
             if cue.id == select_cue_id:
                 select_row = row
@@ -687,6 +791,44 @@ class ReconstructionQaWorkspace:
             self._refresh_active_pane()
         else:
             self._on_row_changed(-1)
+
+    def purge_discarded_cues(self) -> int:
+        """Purges discarded cues from the visible workspace and updates persistence.
+
+        Data safety semantics:
+        - Only cues in ReviewState.REJECTED can ever be purged.
+        - Pending, Approved, or Needs Review cues are NEVER purged.
+        - If items are selected in the queue, only selected discarded cues are purged.
+        - If no items are selected, purges all discarded cues.
+        - Returns the number of cues purged.
+        """
+        self._commit_displayed_edits()
+        selected_ids = {
+            item.data(Qt.ItemDataRole.UserRole)
+            for item in self.queue.selectedItems()
+            if item.data(Qt.ItemDataRole.UserRole) is not None
+        }
+
+        if selected_ids:
+            target_ids = {
+                cue.id
+                for cue in self._cues
+                if cue.id in selected_ids and cue.review_state == ReviewState.REJECTED
+            }
+        else:
+            target_ids = {
+                cue.id for cue in self._cues if cue.review_state == ReviewState.REJECTED
+            }
+
+        if not target_ids:
+            return 0
+
+        self._cues = [c for c in self._cues if c.id not in target_ids]
+        self._notify_cues_changed()
+        next_id = self.active_cue.id if self.active_cue else None
+        self._rebuild_queue(select_cue_id=next_id)
+        return len(target_ids)
+
 
     def _on_row_changed(self, _row: int) -> None:
         # A direct click on a different queue row reaches this signal

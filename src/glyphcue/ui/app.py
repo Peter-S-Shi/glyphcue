@@ -10,10 +10,12 @@ from PySide6.QtGui import QCloseEvent
 from PySide6.QtWidgets import (
     QApplication,
     QFileDialog,
+    QFrame,
     QHBoxLayout,
     QLabel,
     QMainWindow,
     QPushButton,
+    QScrollArea,
     QSplitter,
     QStackedWidget,
     QVBoxLayout,
@@ -79,6 +81,12 @@ def _directml_detector_disabled() -> bool:
 
 def _hybrid_detector_factory() -> TextDetector:
     return create_text_detector(prefer_directml=not _directml_detector_disabled())
+
+
+_WORKBENCH_MIN_WIDTH = 1160
+"""The minimum comfortable width for the 3-pane Evidence Workbench. Below
+this width, the outer shell activates a global horizontal scrollbar rather
+than clipping or crushing pane contents."""
 
 
 class GlyphCueWorkbench(QMainWindow):
@@ -161,8 +169,10 @@ class GlyphCueWorkbench(QMainWindow):
         header_layout.addWidget(self.open_video_button)
         header_layout.addWidget(self.open_caption_button)
 
-        # 2. Central Stacked Workspaces
+        # 2. Central Stacked Workspaces with global horizontal overflow support
         self._stack = QStackedWidget()
+        self._stack.setObjectName("workspaceStack")
+        self._stack.setMinimumWidth(_WORKBENCH_MIN_WIDTH)
 
         # Initialize Path A inside the workbench from startup
         _app, self.path_a_pane = create_path_a_app(
@@ -181,13 +191,21 @@ class GlyphCueWorkbench(QMainWindow):
         if splitter:
             splitter.setSizes([280, 640, 360])
 
+        self.workspace_scroll_area = QScrollArea()
+        self.workspace_scroll_area.setObjectName("workbenchScrollArea")
+        self.workspace_scroll_area.setWidget(self._stack)
+        self.workspace_scroll_area.setWidgetResizable(True)
+        self.workspace_scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.workspace_scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.workspace_scroll_area.setFrameShape(QFrame.Shape.NoFrame)
+
         # Container for main layout
         root_container = QWidget()
         root_layout = QVBoxLayout(root_container)
         root_layout.setContentsMargins(0, 0, 0, 0)
         root_layout.setSpacing(0)
         root_layout.addWidget(header_widget)
-        root_layout.addWidget(self._stack, stretch=1)
+        root_layout.addWidget(self.workspace_scroll_area, stretch=1)
         self.setCentralWidget(root_container)
 
         self.statusBar().showMessage("Local-first · Non-Destructive Ingestion")

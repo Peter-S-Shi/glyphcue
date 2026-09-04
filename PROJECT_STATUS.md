@@ -4,7 +4,26 @@
 
 ## Current milestone
 
-**Milestone 11 — Product Hardening & Full Regression: HARDENING COMPLETE / CLOSED (2026-09-04). Release Acceptance REJECTED BY HUMAN ADJUDICATION.**
+**Milestone 12 — Product Rework & Cue Quality Recovery: Stage ① UI / Review Workflow Recovery — Round 1 Human QA Corrections COMPLETE; Round 2 Human QA IN PROGRESS (2026-09-04). Next: Stage ② Cue Production Quality Recovery.**
+
+Authoritative post-M11 baseline: `ab2a8588941a3a3c599cea314061969f8c3ee5cc`. Milestone 11 Product Hardening & Full Regression is CLOSED; Release Acceptance was REJECTED BY HUMAN ADJUDICATION due to Cue quality, review UX, and packaging maturity. Milestone 12 lifts feature freeze strictly for targeted recovery across two problems:
+- **Problem 2 (QA Review UX & Workflow) — Stage ① IMPLEMENTED & UNDER HUMAN QA (2026-09-04):**
+  1. *Left Cue Workbench Multi-select & Batch Purge*: Multi-select already Discarded Cues (`ExtendedSelection`) and batch purge them via `Purge Discarded` button (`#subtleDangerBtn`); cues disappear from visible queue; data safety ensures non-rejected cues are never purged.
+  2. *Strict Chronological Ordering*: Queue sorting strictly follows `(cue.start_time, cue.end_time, cue.id)`; status badges (`[0.00s] [Level] [Badge]`) display state without breaking linear time.
+  3. *Continuous Timeline OCR Seam & Resume*: `CompactTimeline` renders a distinct endpoint marker (cyan vertical line + top indicator cap) at `last_processed_end`; supports click-to-seek playback navigation via `seek_requested` signal; "Resume from Last End" button pre-fills range start and seeks video; successful OCR runs auto-prefill next range start for seamless editing.
+  4. *Clear Current Video Cue History*: "Clear Video Cues…" (`#subtleDangerBtn`) with confirmation dialog (`QMessageBox` with impact warning) deletes cues specifically for `self._source_id` via `_cue_repository.delete_for_source`, safely preserving observations and other videos.
+  5. *OCR Completion Audio Chime*: Short, low-disturbance synthesized hotel desk bell "ding" (~250ms, G6 1568Hz harmonic decay in pure Python wave format) played via `winsound` / `QApplication.beep()` on `JobState.SUCCEEDED` with zero external dependencies and fail-soft exception handling.
+  6. *Visual Consistency*: Follows `DESIGN.md` tokens (`Color`, `Spacing`, `Radius`, `#subtleDangerBtn`, `#secondaryBtn`), avoiding arbitrary redesign.
+  7. *Card Border Semantics (Round 1 QA Correction)*: Replaced whole-line text coloring with distinct card border semantics: `Color.SUCCESS` green for Approved, `Color.BORDER_NEUTRAL_LIGHT` (`#cbd5e1`) white/neutral for Pending, `Color.WARNING` yellow for Needs Review, and `Color.DANGER` red for Discarded. User selection has highest visual priority with a blue border (`Color.ACCENT`) + selection background override. Text stays clear and readable in primary text color.
+  8. *Global Horizontal Overflow Support (Round 1 QA Correction)*: Outermost workbench shell wraps the 3-pane workspace stack in an outer `QScrollArea` (`_WORKBENCH_MIN_WIDTH = 1160px`). Under normal width (>=1160px), the horizontal scrollbar is hidden (`ScrollBarAsNeeded`); under constrained window width (<1160px), a global horizontal scrollbar appears at the bottom without adding per-pane horizontal scrollbars, preserving internal vertical scrolling, splitter resizing, and window maximization.
+- **Problem 1 (Cue Production Quality Recovery) — Stage ② QUEUED:**
+  Will investigate root cause of low-value/duplicate/fragmented Cues downstream of raw Observations, establish programmatic consolidation or model calibration, maintaining ≤5× realtime. Packaging work remains SUSPENDED until Milestone 12 is accepted.
+
+### Validation
+- Stage ① UI Suite: **310 passed, 1 xfailed in 50.79s** (100% UI pass rate).
+- Whole-Repository Regression: **918 passed, 1 skipped, 1 xfailed in 151.64s** (baseline was 902 passed).
+
+### Milestone 11 Retrospective Summary (CLOSED)
 
 Every acceptance-gate item in ROADMAP.md §18 executed with real,
 CI-verified evidence (see the full stage-by-stage record below,
@@ -23,11 +42,11 @@ three release-blocking reasons not caught by the automated gates below:
    diagnostic behavior and are not, by themselves, evidence of defective
    final Cue output. The first causal seam responsible for the
    unacceptable final Cue quality remains unresolved and is explicitly
-   deferred to Milestone 12.
-2. QA review UX is not acceptable: `Discard` does not remove a discarded
+   deferred to Milestone 12 Stage ②.
+2. QA review UX was not acceptable: `Discard` did not remove a discarded
    Cue from the visible workspace, Pending/Needs-Review/Approved state
-   interleaving breaks linear/chronological review, and junk-Cue volume
-   reaching the review surface is too high.
+   interleaving broke linear/chronological review, and junk-Cue volume
+   reaching the review surface was too high (addressed in Stage ①).
 3. Windows packaging remains exploratory — Nuitka was already retired
    mid-milestone, and PyInstaller's own collection-gap fixes (Stage
    ⑦-C, below) are themselves evidence of an immature packaging path.
@@ -39,10 +58,7 @@ scoped in **Milestone 12 — Product Rework & Cue Quality Recovery**
 The originally-next Release Candidate milestone is renumbered to
 Milestone 13 (ROADMAP.md §20) and does not begin until Milestone 12 is
 complete and accepted, followed by a second Product Hardening & Full
-Regression pass. See "PR Lifecycle Closure" and "Next action" below for
-the current git/PR mechanics and the rest of this document's stage
-history, preserved unchanged as the real record of how Milestone 11's
-hardening evidence was produced.
+Regression pass. See "Git / PR status" and "Next action" below.
 
 ### DevQA DirectML verification asset (added 2026-09-04, retained after closure)
 
@@ -783,75 +799,25 @@ appears anywhere in the repository.
 
 ## Git / PR status
 
-- Authoritative post-closure baseline: `main`.
-- Milestone 11 closure vehicle: PR [#13](https://github.com/Peter-S-Shi/glyphcue/pull/13) — Milestone 11 Lifecycle Closure. After merge, `main` is the authoritative baseline. The `milestone/11-product-hardening-full-regression` branch is historical and may be removed during the subsequent workspace/branch cleanup pass.
+- Authoritative baseline: `main` (`ab2a8588941a3a3c599cea314061969f8c3ee5cc`).
+- Active working branch: `milestone/12-ui-review-workflow-recovery`.
+- Milestone 12 Stage ① vehicle: PR [#14](https://github.com/Peter-S-Shi/glyphcue/pull/14) — Milestone 12 Stage ①: UI / Review Workflow Recovery. Submitted for human review and adjudication. Strictly no force push; do not auto-merge.
 
 ## Unresolved
 
+- Milestone 12 Stage ② (Cue Production Quality Recovery) is queued: investigate root cause of low-value / duplicate / fragmented Cues downstream of raw Observations, establish programmatic consolidation or model calibration, maintaining ≤5× realtime. Packaging work remains SUSPENDED until Milestone 12 is accepted.
 - Residual non-blocking evaluation findings preserved (informational,
-  not release blockers on their own — superseded as release-blocking
-  concerns by the closure disposition above):
+  not release blockers on their own):
   - `sample_c`: Isolated window-boundary non-text reading (`"zh": "3\n8"`) on Cue 1 (1.1s), safely fail-closed with `ambiguous_languages: ["zh"]`; non-contaminating.
   - `sample_f`: One illegible Chinese layer at 661.1s left untranscribed in GT rather than guessed; rapid b-roll editor button glyphs flagged ambiguous.
 - Packaging: Stage ⑦-A (build) and ⑦-B (technical smoke) automated
-  evidence completed 2026-09-04 via the PyInstaller onedir path; the
-  Stage ⑦-C human-QA checklist (clean-machine verification, package-size
-  decision) was never finished, because Release Acceptance was rejected
-  before reaching it. Packaging work of any kind (Inno Setup included)
-  is **SUSPENDED**, not merely paused mid-checklist — it does not resume
-  until Milestone 12 (Product Rework & Cue Quality Recovery) is accepted
-  and a second Product Hardening pass is scoped.
-- Milestone 12's own scope (Cue-quality direction, QA review UX fixes) is
-  entirely open — see ROADMAP.md §19. No implementation work for it has
-  started; this PR does not touch it.
+  evidence completed 2026-09-04 via the PyInstaller onedir path; packaging
+  work of any kind (Inno Setup included) is **SUSPENDED**, not merely paused
+  mid-checklist — it does not resume until Milestone 12 (Product Rework &
+  Cue Quality Recovery) is accepted and a second Product Hardening pass is scoped.
 
 ## Next action
 
-**This PR (#13) is Milestone 11's Lifecycle Closure PR, not a release
-PR.** Every M11 stage below completed with real evidence — Stage ④
-Targeted Regression, Stage ⑤ Representative Evaluation (Human
-Adjudication, 2026-09-03), Stage ⑥ Full Regression (Human Adjudication,
-2026-09-03), and Stage ⑦-A/⑦-B (PyInstaller build + technical smoke,
-2026-09-04) plus the Stage ⑦ Runtime Default Corrective Gate — but Stage
-⑦-C's human-QA checklist below was never finished, because **Human
-Adjudication (2026-09-04) rejected Release Acceptance for the product**
-on the three grounds in "Current milestone" above before reaching it.
-**Milestone 11 is CLOSED on that basis** — hardening execution complete,
-release rejected, not "hardening incomplete."
-
-The Stage ⑦-C checklist that was in flight when the halt decision was
-made (preserved here as a historical record of what remained
-technically open in the release-track sense, now moot under
-Release/Packaging SUSPENDED, not carried forward as live TODOs):
-1. Re-run the manual click-through on the rebuilt
-   `GlyphCue.exe` (Path A OCR evidence, Path B import/export) — was
-   never completed.
-2. Clean-machine (not just isolated-`USERPROFILE`) verification — was
-   never completed.
-3. Onedir output size (911 MB) ship-as-is-or-reduce decision — was never
-   made.
-4. `--collect-all rapidocr` gap — **DONE (2026-09-04)**, see "Stage ⑦
-   Runtime Default Corrective Gate" above; this item is not reopened.
-5. DirectML-default release-policy question — **RESOLVED (2026-09-04)**,
-   see "Stage ⑦ Runtime Default Corrective Gate" above and
-   `docs/adr/0001-ocr-runtime-selection.md`; this is exactly the policy
-   whose real-world quality trade-off then became closure reason 1
-   above — resolved as a packaging/policy question, then judged
-   release-blocking as a product-quality question.
-
-The previously-noted DirectML correctness trade-off on some content
-remains documented in `docs/adr/0001-ocr-runtime-selection.md` and is
-unchanged by the Stage ⑦ runtime-default policy switch itself — Paddle
-stays the real, working fallback whenever DirectML's real preflight/probe
-fails. That policy switch is not being reverted by this closure; it is
-the underlying Cue-quality-vs-speed trade-off it exposed that Milestone
-12 exists to address.
-
-**The next real engineering action is Milestone 12 — Product Rework &
-Cue Quality Recovery (ROADMAP.md §19).** Stage ⑦-C's remaining
-click-through/clean-machine/package-size items above are not carried
-forward as live checklist items — Inno Setup installer work
-(ROADMAP.md §3, "Final installer") does not begin until Milestone 12 is
-accepted and a second Product Hardening & Full Regression pass (scoped
-at that time, evaluated against a gate equivalent to §18's) has itself
-closed.
+1. Updated PR #14 with Round 1 Human QA UI corrections (item card border semantics and global horizontal overflow support).
+2. Continue Round 2 Human QA with the repository owner using `Launch-GlyphCue-DirectML-DevQA.bat`. Strictly no force push; do NOT auto-merge PR #14.
+3. Upon formal human acceptance of Stage ①, proceed to Milestone 12 Stage ② — Cue Production Quality Recovery. Packaging remains SUSPENDED.

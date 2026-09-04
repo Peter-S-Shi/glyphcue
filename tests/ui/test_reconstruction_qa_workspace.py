@@ -40,14 +40,15 @@ def _none_priority(cue_id):
     return ReviewPriority(cue_id=cue_id, score=0.0, level="None", components=())
 
 
-def test_queue_is_ordered_by_review_priority_descending(qapp_guard):
-    cues = [_cue("c1", 0.0, 1.0), _cue("c2", 1.0, 2.0), _cue("c3", 2.0, 3.0)]
+def test_queue_is_ordered_chronologically_by_subtitle_timeline(qapp_guard):
+    cues = [_cue("c3", 2.0, 3.0), _cue("c1", 0.0, 1.0), _cue("c2", 1.0, 2.0)]
     priorities = {"c1": _none_priority("c1"), "c2": _priority("c2", 0.9, "High"), "c3": _priority("c3", 0.4, "Medium")}
     workspace = ReconstructionQaWorkspace(cues, {}, priorities, QWidget())
 
     ordered_ids = [workspace.cue_id_for_row(row) for row in range(workspace.queue.count())]
 
-    assert ordered_ids == ["c2", "c3", "c1"]
+    assert ordered_ids == ["c1", "c2", "c3"]
+
 
 
 def test_search_filters_the_queue_by_active_language_layer_text(qapp_guard):
@@ -200,7 +201,7 @@ def test_active_cue_starts_as_the_top_of_the_queue(qapp_guard):
     priorities = {"c1": _none_priority("c1"), "c2": _priority("c2", 0.9, "High")}
     workspace = ReconstructionQaWorkspace(cues, {}, priorities, QWidget())
 
-    assert workspace.active_cue.id == "c2"
+    assert workspace.active_cue.id == "c1"
 
 
 def test_approve_and_advance_marks_approved_and_moves_to_the_next_queue_row(qapp_guard):
@@ -729,4 +730,75 @@ def test_timing_nudge_exact_50ms_steps_and_refreshes_ui(qapp_guard):
     workspace.nudge_end_earlier_button.click()
     assert workspace.cues[0].end_time == 2.0
     assert "2.000s" in workspace.cue_identity_label.text()
+
+
+def test_queue_item_shows_timestamp_and_chronological_order(qapp_guard):
+    cues = [
+        _cue("c2", 5.5, 7.0, texts={"en": "Later"}),
+        _cue("c1", 1.25, 3.0, texts={"en": "Earlier"}),
+    ]
+    workspace = ReconstructionQaWorkspace(cues, {}, {}, QWidget())
+
+    assert workspace.queue.count() == 2
+    assert workspace.cue_id_for_row(0) == "c1"
+    assert workspace.cue_id_for_row(1) == "c2"
+    assert "[1.25s]" in workspace.queue.item(0).text()
+    assert "[5.50s]" in workspace.queue.item(1).text()
+
+
+def test_purge_discarded_cues_removes_only_rejected_cues(qapp_guard):
+    cues = [
+        _cue("c1", 0.0, 1.0),
+        _cue("c2", 1.0, 2.0),
+        _cue("c3", 2.0, 3.0),
+    ]
+    notified: list[list[Cue]] = []
+    workspace = ReconstructionQaWorkspace(
+        cues, {}, {}, QWidget(), on_cues_changed=notified.append
+    )
+
+    # Discard c2
+    workspace.queue.setCurrentRow(1)
+    workspace.discard_active_cue()
+    assert workspace.cues[1].review_state == ReviewState.REJECTED
+
+    # Purge without selection -> purges all rejected cues (c2)
+    purged = workspace.purge_discarded_cues()
+    assert purged == 1
+    assert [c.id for c in workspace.cues] == ["c1", "c3"]
+    assert workspace.queue.count() == 2
+    assert [workspace.cue_id_for_row(i) for i in range(2)] == ["c1", "c3"]
+    assert len(notified) > 0
+
+
+def test_purge_discarded_cues_with_multi_select_protects_non_rejected(qapp_guard):
+    cues = [
+        _cue("c1", 0.0, 1.0),
+        _cue("c2", 1.0, 2.0),
+        _cue("c3", 2.0, 3.0),
+        _cue("c4", 3.0, 4.0),
+    ]
+    workspace = ReconstructionQaWorkspace(cues, {}, {}, QWidget())
+
+    # Approve c1, discard c2 and c3, leave c4 pending
+    workspace.queue.setCurrentRow(0)
+    workspace.approve_and_advance()
+    workspace.queue.setCurrentRow(1)
+    workspace.discard_active_cue()
+    workspace.queue.setCurrentRow(2)
+    workspace.discard_active_cue()
+
+    # Multi-select c1 (Approved), c2 (Discarded), c4 (Pending)
+    workspace.queue.clearSelection()
+    workspace.queue.item(0).setSelected(True)
+    workspace.queue.item(1).setSelected(True)
+    workspace.queue.item(3).setSelected(True)
+
+    # Purge should ONLY purge c2 because c1 is Approved and c4 is Pending
+    purged = workspace.purge_discarded_cues()
+    assert purged == 1
+    # Remaining: c1 (approved), c3 (discarded, but wasn't selected), c4 (pending)
+    remaining_ids = [c.id for c in workspace.cues]
+    assert remaining_ids == ["c1", "c3", "c4"]
+
 
