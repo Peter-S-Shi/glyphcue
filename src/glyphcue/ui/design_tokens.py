@@ -157,26 +157,43 @@ def base_stylesheet() -> str:
     }}
 
     /* Card Panels & Containers */
-    #structureCard, #ocrActionBox, #qaHeaderCard, #timingCard, #evidenceCard, #exportCard, #diagnosticsCard {{
+    #heroMediaCard, #structureCard, #previewLoopBox, #ocrActionBox, #qaHeaderCard, #timingCard, #evidenceCard, #observationEvidenceCard, #exportCard, #diagnosticsCard, #languageLayerCard {{
         background-color: {Color.SURFACE_1};
         border: 1px solid {Color.BORDER_SUBTLE};
         border-radius: 8px;
         padding: 10px 12px;
     }}
-    #structureCard:hover, #ocrActionBox:hover, #qaHeaderCard:hover {{
-        border-color: {Color.BORDER_MEDIUM};
-    }}
-    #previewLoopBox {{
-        background-color: {Color.SURFACE_1};
-        border: 1px solid {Color.BORDER_SUBTLE};
-        border-radius: 6px;
-        padding: 4px 8px;
-    }}
-    #previewLoopBox:hover {{
+    #heroMediaCard:hover, #structureCard:hover, #previewLoopBox:hover, #ocrActionBox:hover, #qaHeaderCard:hover, #timingCard:hover, #evidenceCard:hover, #observationEvidenceCard:hover, #exportCard:hover, #languageLayerCard:hover {{
         border-color: {Color.BORDER_MEDIUM};
     }}
 
-    .section-title, #sectionHeaderLabel {{
+    /* Inner card blocks (e.g. status summary, diagnostics inner panel, sub-sections) */
+    #ocrStatusBox, #innerCardPanel, #diagnosticsInnerBox {{
+        background-color: {Color.SURFACE_0};
+        border: 1px solid {Color.BORDER_SUBTLE};
+        border-radius: 6px;
+        padding: 8px 10px;
+    }}
+
+    /* Media Viewport Framing */
+    #videoViewport {{
+        background-color: {Color.VOID};
+        border: 1px solid {Color.BORDER_SUBTLE};
+        border-radius: 6px;
+    }}
+
+    /* Language Layer Tag / Pill */
+    #layerTag {{
+        background-color: rgba(0, 153, 255, 0.15);
+        color: {Color.ACCENT};
+        font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+        font-size: 10px;
+        font-weight: 700;
+        border-radius: 3px;
+        padding: 1px 6px;
+    }}
+
+    .section-title, #sectionHeaderLabel, .card-header-title {{
         font-size: 11px;
         font-weight: 700;
         text-transform: uppercase;

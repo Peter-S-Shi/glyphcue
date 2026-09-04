@@ -127,8 +127,9 @@ passed, 1 skipped), GitHub Actions whole-suite CI green (run
 `33829120305`).
 
 All Stage ⑤ residual non-blocking findings (below) are preserved
-unchanged. M11 is **not** complete. Next execution step: **Stage ⑦
-Formal Human QA & Packaging Hardening (NEXT / READY TO BEGIN)**.
+unchanged. M11 is **not** complete.
+
+**Workbench UI rendering & cardification pass completed (2026-09-04):** scoped cardification applied to Center Pane (`#heroMediaCard`, `#previewLoopBox`, `#ocrActionBox` with `#ocrStatusBox`) and Right Pane (`#qaHeaderCard`, `#timingCard` integrating split/merge, `#languageLayerCard` with `#layerTag` pills, `#evidenceCard`, `#observationEvidenceCard`, `#exportCard`), aligning the production workbench visual hierarchy with `UI Design/glyphcue_workbench_prototype.html` without altering any domain/pipeline logic or window layout seam budgets (full suite green: 900 passed, 1 skipped, 1 xfailed). Next execution step: **Stage ⑦ Formal Human QA & Packaging Hardening (NEXT / READY TO BEGIN)**.
 
 **Multilingual Architecture B integrated** (shared detection + universal
 recognition, corrective 12-case gate — see

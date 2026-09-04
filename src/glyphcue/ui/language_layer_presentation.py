@@ -55,16 +55,18 @@ class _LanguageLayerCard(QFrame):
         layout.setContentsMargins(
             Spacing.CARD_STANDARD, Spacing.CARD_COMPACT, Spacing.CARD_STANDARD, Spacing.CARD_COMPACT
         )
-        layout.setSpacing(Spacing.MICRO)
+        layout.setSpacing(Spacing.COMPACT)
 
         is_missing = not text
         header_text = language.upper()
         if is_missing:
             header_text += "  ⚠ missing"
         header = QLabel(header_text)
-        header.setStyleSheet(
-            f"color: {Color.WARNING if is_missing else Color.TEXT_SECONDARY}; font-weight: 600;"
-        )
+        header.setObjectName("layerTag")
+        if is_missing:
+            header.setStyleSheet(
+                f"background-color: rgba(239, 68, 68, 0.15); color: {Color.WARNING}; border-color: {Color.WARNING};"
+            )
         layout.addWidget(header)
 
         self.is_missing = is_missing
@@ -80,14 +82,18 @@ class _LanguageLayerCard(QFrame):
             # start empty, not a fabricated placeholder -- a reviewer
             # who wants to fill one in types real text themselves.
             body_edit = QTextEdit(text)
-            body_edit.setStyleSheet(f"color: {Color.TEXT_PRIMARY};")
+            body_edit.setMinimumHeight(52)
+            body_edit.setMaximumHeight(120)
+            body_edit.setStyleSheet(
+                f"background-color: {Color.SURFACE_0}; color: {Color.TEXT_PRIMARY}; border: 1px solid {Color.BORDER_SUBTLE}; border-radius: 4px; padding: 4px;"
+            )
             layout.addWidget(body_edit)
             self.text_edit = body_edit
         else:
             body_label = QLabel(text if text else "(no evidence for this language in this Cue)")
             body_label.setWordWrap(True)
             body_label.setStyleSheet(
-                f"color: {Color.TEXT_MUTED if is_missing else Color.TEXT_PRIMARY};"
+                f"color: {Color.TEXT_MUTED if is_missing else Color.TEXT_PRIMARY}; font-size: 13px; padding: 4px 0;"
                 + (" font-style: italic;" if is_missing else "")
             )
             layout.addWidget(body_label)

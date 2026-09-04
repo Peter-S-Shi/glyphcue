@@ -9,6 +9,7 @@ from PySide6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QPushButton, QVBox
 from glyphcue.adapters.pysubs2_subtitle_io import Pysubs2SubtitleFormatAdapter
 from glyphcue.adapters.transcript_export import write_ai_ready_transcript, write_readable_transcript
 from glyphcue.domain.cue import Cue
+from glyphcue.ui.design_tokens import Color, Spacing
 
 _FORMATS = ("SRT", "VTT", "Readable Transcript", "AI-ready Transcript")
 
@@ -56,17 +57,34 @@ class ExportControls:
         self._subtitle_adapter = Pysubs2SubtitleFormatAdapter()
 
         self.format_combo = QComboBox()
+        self.format_combo.setObjectName("formatCombo")
         self.format_combo.addItems(_FORMATS)
         self.export_button = QPushButton("Export")
+        self.export_button.setObjectName("exportBtn")
         self.status_label = QLabel("Source protected — writes to a new file")
+        self.status_label.setObjectName("exportStatusLabel")
+        self.status_label.setStyleSheet(f"color: {Color.TEXT_MUTED}; font-size: 11px;")
         self.export_button.clicked.connect(self._on_export_clicked)
         self._update_enabled()
 
         self.widget = QWidget()
+        self.widget.setObjectName("exportCard")
         layout = QVBoxLayout(self.widget)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setContentsMargins(
+            Spacing.CARD_STANDARD, Spacing.CARD_COMPACT, Spacing.CARD_STANDARD, Spacing.CARD_COMPACT
+        )
+        layout.setSpacing(Spacing.COMPACT)
+
+        header_title = QLabel("EXPORT RECONSTRUCTED SUBTITLES")
+        header_title.setObjectName("sectionHeaderLabel")
+        header_title.setStyleSheet(
+            f"font-size: 11px; font-weight: 700; color: {Color.TEXT_SECONDARY}; letter-spacing: 0.5px;"
+        )
+        layout.addWidget(header_title)
+
         row = QHBoxLayout()
-        row.addWidget(self.format_combo)
+        row.setSpacing(Spacing.COMPACT)
+        row.addWidget(self.format_combo, stretch=1)
         row.addWidget(self.export_button)
         layout.addLayout(row)
         layout.addWidget(self.status_label)

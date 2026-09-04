@@ -242,6 +242,10 @@ class ReconstructionQaWorkspace:
         self.diagnostics_view = QTextEdit()
         self.diagnostics_view.setObjectName("diagnosticsCard")
         self.diagnostics_view.setReadOnly(True)
+        self.diagnostics_view.setMaximumHeight(80)
+        self.diagnostics_view.setStyleSheet(
+            f"background-color: {Color.SURFACE_0}; font-size: 11px; border: 1px solid {Color.BORDER_SUBTLE}; border-radius: 4px; padding: 4px;"
+        )
         self.language_layers_panel = LanguageLayersPanel(editable=True)
 
         self.nudge_start_earlier_button = QPushButton("Start −0.05s")
@@ -287,7 +291,9 @@ class ReconstructionQaWorkspace:
 
         self.evidence_header_label = QLabel("Raw OCR Evidence / Original Machine Observations")
         self.evidence_header_label.setObjectName("evidenceHeaderLabel")
-        self.evidence_header_label.setStyleSheet(f"font-weight: 600; color: {Color.TEXT_SECONDARY};")
+        self.evidence_header_label.setStyleSheet(
+            f"font-size: 11px; font-weight: 700; color: {Color.TEXT_SECONDARY}; letter-spacing: 0.5px;"
+        )
         self.evidence_note_label = QLabel(
             "Original machine OCR observations are preserved for reference and audit, and remain unchanged when cue text is edited."
         )
@@ -296,7 +302,12 @@ class ReconstructionQaWorkspace:
         self.evidence_note_label.setWordWrap(True)
         self.show_full_evidence_checkbox = QCheckBox("Show full evidence")
         self.evidence_view = QTextEdit()
+        self.evidence_view.setObjectName("evidenceView")
         self.evidence_view.setReadOnly(True)
+        self.evidence_view.setMaximumHeight(130)
+        self.evidence_view.setStyleSheet(
+            f"background-color: {Color.SURFACE_0}; font-family: 'JetBrains Mono', 'Cascadia Code', Consolas, monospace; font-size: 11px; border: 1px solid {Color.BORDER_SUBTLE}; border-radius: 4px; padding: 4px;"
+        )
 
         left_pane = QWidget()
         left_layout = QVBoxLayout(left_pane)
@@ -359,39 +370,46 @@ class ReconstructionQaWorkspace:
         )
         right_layout.setSpacing(Spacing.STANDARD)
 
-        # 1. Header Card (Cue ID, State badge, Priority badge)
+        # 1. Header Card (Cue ID, State badge, Priority badge, Review flags & signals)
         header_card = QWidget()
         header_card.setObjectName("qaHeaderCard")
         header_card_layout = QVBoxLayout(header_card)
         header_card_layout.setContentsMargins(
-            Spacing.STANDARD, Spacing.STANDARD, Spacing.STANDARD, Spacing.STANDARD
+            Spacing.CARD_STANDARD, Spacing.CARD_COMPACT, Spacing.CARD_STANDARD, Spacing.CARD_COMPACT
         )
+        header_card_layout.setSpacing(Spacing.COMPACT)
         header_card_layout.addWidget(self.cue_identity_label)
         badges_row = QHBoxLayout()
         badges_row.addWidget(self.review_state_label)
         badges_row.addWidget(self.priority_label)
         badges_row.addStretch(1)
         header_card_layout.addLayout(badges_row)
+
+        diag_title = QLabel("REVIEW FLAGS & SIGNALS")
+        diag_title.setObjectName("sectionHeaderLabel")
+        diag_title.setStyleSheet(f"font-size: 10px; font-weight: 700; color: {Color.TEXT_MUTED}; letter-spacing: 0.5px;")
+        header_card_layout.addWidget(diag_title)
+        header_card_layout.addWidget(self.diagnostics_view)
         right_layout.addWidget(header_card)
 
-        # 2. Diagnostics
-        right_layout.addWidget(self.diagnostics_view)
-
-        # 3. Language Layers Editor
+        # 2. Language Layers Editor
         right_layout.addWidget(self.language_layers_panel)
 
-        # 4. 50ms Precision Timing Card (Reflowed 2x2 grid for responsive width)
+        # 3. 50ms Precision Timing & Split/Merge Card
         timing_card = QWidget()
         timing_card.setObjectName("timingCard")
         timing_card_layout = QVBoxLayout(timing_card)
         timing_card_layout.setContentsMargins(
-            Spacing.STANDARD, Spacing.STANDARD, Spacing.STANDARD, Spacing.STANDARD
+            Spacing.CARD_STANDARD, Spacing.CARD_COMPACT, Spacing.CARD_STANDARD, Spacing.CARD_COMPACT
         )
+        timing_card_layout.setSpacing(Spacing.COMPACT)
         timing_title = QLabel("TIMING PRECISION (50ms)")
         timing_title.setObjectName("sectionHeaderLabel")
+        timing_title.setStyleSheet(f"font-size: 11px; font-weight: 700; color: {Color.TEXT_SECONDARY}; letter-spacing: 0.5px;")
         timing_card_layout.addWidget(timing_title)
 
         timing_grid = QGridLayout()
+        timing_grid.setSpacing(6)
         self.nudge_start_earlier_button.setObjectName("secondaryBtn")
         self.nudge_start_later_button.setObjectName("secondaryBtn")
         self.nudge_end_earlier_button.setObjectName("secondaryBtn")
@@ -401,17 +419,18 @@ class ReconstructionQaWorkspace:
         timing_grid.addWidget(self.nudge_end_earlier_button, 1, 0)
         timing_grid.addWidget(self.nudge_end_later_button, 1, 1)
         timing_card_layout.addLayout(timing_grid)
-        right_layout.addWidget(timing_card)
 
-        # 5. Split & Merge Tools
+        # Split & Merge Tools integrated inside Timing Card
         split_merge_row = QHBoxLayout()
+        split_merge_row.setSpacing(Spacing.COMPACT)
         split_merge_row.addWidget(self.split_label)
         split_merge_row.addWidget(self.split_time_spin)
         split_merge_row.addWidget(self.split_button)
         split_merge_row.addWidget(self.merge_next_button)
-        right_layout.addLayout(split_merge_row)
+        timing_card_layout.addLayout(split_merge_row)
+        right_layout.addWidget(timing_card)
 
-        # 6. Primary QA Action Bar (Dominant full row Approve + sub-actions)
+        # 4. Primary QA Action Bar (Dominant full row Approve + sub-actions)
         action_box = QVBoxLayout()
         action_box.addWidget(self.approve_button)
         sub_actions_row = QHBoxLayout()
@@ -422,13 +441,14 @@ class ReconstructionQaWorkspace:
         action_box.addLayout(sub_actions_row)
         right_layout.addLayout(action_box)
 
-        # 7. Raw Observations Evidence Card
+        # 5. Raw Observations Evidence Card
         evidence_card = QWidget()
         evidence_card.setObjectName("evidenceCard")
         evidence_layout = QVBoxLayout(evidence_card)
         evidence_layout.setContentsMargins(
-            Spacing.STANDARD, Spacing.STANDARD, Spacing.STANDARD, Spacing.STANDARD
+            Spacing.CARD_STANDARD, Spacing.CARD_COMPACT, Spacing.CARD_STANDARD, Spacing.CARD_COMPACT
         )
+        evidence_layout.setSpacing(Spacing.COMPACT)
         evidence_layout.addWidget(self.evidence_header_label)
         evidence_layout.addWidget(self.evidence_note_label)
         evidence_layout.addWidget(self.show_full_evidence_checkbox)

@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from PySide6.QtWidgets import QHBoxLayout, QListWidget, QTextEdit, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QListWidget, QTextEdit, QVBoxLayout, QWidget
 
 from glyphcue.domain.observation import Observation
 from glyphcue.application.caption_identity_review import caption_evidence_summary
-from glyphcue.ui.design_tokens import Spacing
+from glyphcue.ui.design_tokens import Color, Spacing
 
 
 def _summary(observation: Observation) -> str:
@@ -46,20 +46,49 @@ class OcrEvidencePane(QWidget):
 
     def __init__(self, observations: list[Observation]) -> None:
         super().__init__()
+        self.setObjectName("observationEvidenceCard")
         self._observations: list[Observation] = []
 
         self.list_widget = QListWidget()
+        self.list_widget.setObjectName("observationList")
         self.detail_view = QTextEdit()
+        self.detail_view.setObjectName("observationDetail")
         self.detail_view.setReadOnly(True)
-
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(
-            Spacing.PANEL_MAJOR, Spacing.PANEL_MAJOR, Spacing.PANEL_MAJOR, Spacing.PANEL_MAJOR
+        self.detail_view.setStyleSheet(
+            f"background-color: {Color.SURFACE_0}; font-family: 'JetBrains Mono', 'Cascadia Code', Consolas, monospace; font-size: 11px; border: 1px solid {Color.BORDER_SUBTLE}; border-radius: 4px; padding: 4px;"
         )
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(
+            Spacing.CARD_STANDARD, Spacing.CARD_COMPACT, Spacing.CARD_STANDARD, Spacing.CARD_COMPACT
+        )
+        layout.setSpacing(Spacing.COMPACT)
+
+        header_title = QLabel("ALL OBSERVATIONS & PROVENANCE AUDIT")
+        header_title.setObjectName("sectionHeaderLabel")
+        header_title.setStyleSheet(
+            f"font-size: 11px; font-weight: 700; color: {Color.TEXT_SECONDARY}; letter-spacing: 0.5px;"
+        )
+        layout.addWidget(header_title)
+
+        panes_layout = QHBoxLayout()
+        panes_layout.setSpacing(Spacing.STANDARD)
+
         list_column = QVBoxLayout()
+        list_title = QLabel("OBSERVATIONS")
+        list_title.setStyleSheet(f"font-size: 10px; font-weight: 600; color: {Color.TEXT_MUTED};")
+        list_column.addWidget(list_title)
         list_column.addWidget(self.list_widget)
-        layout.addLayout(list_column)
-        layout.addWidget(self.detail_view)
+        panes_layout.addLayout(list_column, stretch=1)
+
+        detail_column = QVBoxLayout()
+        detail_title = QLabel("PROVENANCE & METADATA")
+        detail_title.setStyleSheet(f"font-size: 10px; font-weight: 600; color: {Color.TEXT_MUTED};")
+        detail_column.addWidget(detail_title)
+        detail_column.addWidget(self.detail_view)
+        panes_layout.addLayout(detail_column, stretch=1)
+
+        layout.addLayout(panes_layout)
 
         self.list_widget.currentRowChanged.connect(self._on_row_changed)
         self.set_observations(observations)

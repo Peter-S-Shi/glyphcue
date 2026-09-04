@@ -385,33 +385,68 @@ class PathAMediaPane:
         center_layout.setContentsMargins(
             Spacing.PANEL_MAJOR, Spacing.PANEL_MAJOR, Spacing.PANEL_MAJOR, Spacing.PANEL_MAJOR
         )
-        center_layout.addWidget(self.open_button)
-        center_layout.addWidget(self.metadata_label)
-        self.video_widget.setObjectName("videoViewport")
-        center_layout.addWidget(self.video_widget, stretch=1)
+        center_layout.setSpacing(Spacing.CARD_STANDARD)
 
+        # 1. Hero Media & Playback Card (A.1)
+        hero_media_card = QWidget()
+        hero_media_card.setObjectName("heroMediaCard")
+        hero_media_layout = QVBoxLayout(hero_media_card)
+        hero_media_layout.setContentsMargins(
+            Spacing.CARD_STANDARD, Spacing.CARD_COMPACT, Spacing.CARD_STANDARD, Spacing.CARD_COMPACT
+        )
+        hero_media_layout.setSpacing(Spacing.COMPACT)
+
+        # Top Metadata / In-Pane Open Row
+        media_header_row = QHBoxLayout()
+        self.metadata_label.setObjectName("metadataLabel")
+        self.metadata_label.setStyleSheet(
+            f"color: {Color.TEXT_SECONDARY}; font-family: 'JetBrains Mono', 'Cascadia Code', monospace; font-size: 11px; font-weight: 600;"
+        )
+        media_header_row.addWidget(self.metadata_label)
+        media_header_row.addStretch(1)
+        media_header_row.addWidget(self.open_button)
+        hero_media_layout.addLayout(media_header_row)
+
+        # Framed Video Viewport
+        self.video_widget.setObjectName("videoViewport")
+        hero_media_layout.addWidget(self.video_widget, stretch=1)
+
+        # Playback Controls Row
         playback_controls = QHBoxLayout()
         playback_controls.addWidget(self.play_button)
         playback_controls.addWidget(self.pause_button)
-        center_layout.addLayout(playback_controls)
+        hero_media_layout.addLayout(playback_controls)
 
-        center_layout.addWidget(self.position_slider)
-        center_layout.addWidget(self.current_time_label)
-        center_layout.addWidget(self.current_cue_relationship_label)
-        center_layout.addWidget(self.timeline)
+        # Temporal Navigation & Read-only Strip
+        hero_media_layout.addWidget(self.position_slider)
+        time_info_row = QHBoxLayout()
+        self.current_time_label.setStyleSheet(
+            f"color: {Color.TEXT_PRIMARY}; font-family: 'JetBrains Mono', 'Cascadia Code', monospace; font-weight: 700; font-size: 12px;"
+        )
+        self.current_cue_relationship_label.setStyleSheet(
+            f"color: {Color.TEXT_MUTED}; font-family: 'JetBrains Mono', 'Cascadia Code', monospace; font-size: 11px;"
+        )
+        time_info_row.addWidget(self.current_time_label)
+        time_info_row.addWidget(self.current_cue_relationship_label)
+        time_info_row.addStretch(1)
+        hero_media_layout.addLayout(time_info_row)
+        hero_media_layout.addWidget(self.timeline)
 
-        # Preview / Calibration A-B Loop Bar (DOG-002: human calibration only, strictly isolated from OCR Range)
+        center_layout.addWidget(hero_media_card)
+
+        # 2. Preview / Calibration A-B Loop Card (A.2 - DOG-002: human calibration only, strictly isolated from OCR Range)
         preview_loop_container = QWidget()
         preview_loop_container.setObjectName("previewLoopBox")
         preview_loop_layout = QVBoxLayout(preview_loop_container)
         preview_loop_layout.setContentsMargins(
-            Spacing.COMPACT, Spacing.MICRO, Spacing.COMPACT, Spacing.MICRO
+            Spacing.CARD_STANDARD, Spacing.CARD_COMPACT, Spacing.CARD_STANDARD, Spacing.CARD_COMPACT
         )
-        preview_loop_layout.setSpacing(Spacing.MICRO)
+        preview_loop_layout.setSpacing(Spacing.COMPACT)
 
         # Row 1: Preview Toggle + Actions + Status Summary
         loop_header_row = QHBoxLayout()
         loop_header_row.setSpacing(Spacing.COMPACT)
+        self.preview_loop_checkbox.setStyleSheet("font-weight: 600;")
         loop_header_row.addWidget(self.preview_loop_checkbox)
         loop_header_row.addWidget(self.play_loop_button)
         loop_header_row.addWidget(self.clear_loop_button)
@@ -434,13 +469,14 @@ class PathAMediaPane:
 
         center_layout.addWidget(preview_loop_container)
 
-        # OCR Action Pipeline Section in Center Pane (DOG-002 action hierarchy)
+        # 3. OCR Action Pipeline Card (A.3 - DOG-002 action hierarchy)
         ocr_container = QWidget()
         ocr_container.setObjectName("ocrActionBox")
         ocr_box_layout = QVBoxLayout(ocr_container)
         ocr_box_layout.setContentsMargins(
             Spacing.STANDARD, Spacing.STANDARD, Spacing.STANDARD, Spacing.STANDARD
         )
+        ocr_box_layout.setSpacing(Spacing.COMPACT)
 
         ocr_header_row = QHBoxLayout()
         ocr_header = QLabel("OCR EVIDENCE PIPELINE")
@@ -456,13 +492,7 @@ class PathAMediaPane:
         ocr_header_row.addWidget(self.ocr_range_summary_label)
         ocr_box_layout.addLayout(ocr_header_row)
 
-        # Two rows of two, not one row of four. The four buttons' own
-        # minimum widths add up to more than the center pane is ever
-        # guaranteed, and this pane's scroll area has horizontal
-        # scrolling switched off on purpose -- so a single row does not
-        # squeeze, it silently puts the last button (Discard Latest OCR
-        # Run) outside the viewport entirely at the window size the app
-        # actually opens at.
+        # Two rows of two action buttons
         ocr_controls = QGridLayout()
         self.run_ocr_button.setObjectName("runOcrBtn")
         self.dry_run_policy_button.setObjectName("secondaryBtn")
@@ -473,8 +503,22 @@ class PathAMediaPane:
         ocr_controls.addWidget(self.cancel_ocr_button, 1, 0)
         ocr_controls.addWidget(self.discard_latest_run_button, 1, 1)
         ocr_box_layout.addLayout(ocr_controls)
-        ocr_box_layout.addWidget(self.ocr_progress_bar)
-        ocr_box_layout.addWidget(self.ocr_status_label)
+
+        # Output / Results Status Box (Inner Card)
+        ocr_status_box = QWidget()
+        ocr_status_box.setObjectName("ocrStatusBox")
+        status_box_layout = QVBoxLayout(ocr_status_box)
+        status_box_layout.setContentsMargins(
+            Spacing.COMPACT, Spacing.MICRO, Spacing.COMPACT, Spacing.MICRO
+        )
+        status_box_layout.setSpacing(Spacing.MICRO)
+
+        status_box_layout.addWidget(self.ocr_progress_bar)
+        self.ocr_status_label.setStyleSheet(
+            f"color: {Color.TEXT_SECONDARY}; font-family: 'JetBrains Mono', 'Cascadia Code', monospace; font-size: 11px;"
+        )
+        status_box_layout.addWidget(self.ocr_status_label)
+        ocr_box_layout.addWidget(ocr_status_box)
 
         # Performance Diagnostics result area (Phase B Temporal OCR Baseline Diagnostics)
         self.diagnostics_container = QWidget()
