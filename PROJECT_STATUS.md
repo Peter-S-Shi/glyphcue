@@ -121,10 +121,16 @@ changes.
   `create_text_detector` invoked directly against the exact dependency
   versions bundled into the package (same `.glyphcue-pyinstaller-venv`)
   — `prefer_directml=False` resolves to `PaddleOcrEngine`/
-  `PaddleOcrTextDetector` (CPU-safe, no error); `prefer_directml=True`
-  resolves to `DirectMlOcrEngine`/`DirectMlTextDetector` with RapidOCR's
-  own log confirming `"try to use DirectML as primary provider"` — both
-  directions real, both directions correct.
+  `PaddleOcrTextDetector`; `prefer_directml=True` resolves to
+  `DirectMlOcrEngine`/`DirectMlTextDetector` with RapidOCR's own log
+  confirming `"try to use DirectML as primary provider"`. **Correction
+  (see below): this smoke only exercised *construction*, not
+  `.initialize()`. The Paddle CPU path's `initialize()` had a real,
+  frozen-only failure that this construction-only check did not catch —
+  found the same day via real manual Stage ⑦-C testing and fixed; see
+  "Stage ⑦-C manual testing" below.** The DirectML `initialize()` path
+  was separately real-hardware-verified earlier in M11 (P3/P4B gates)
+  and is unaffected by this fix.
 - Not automated (no native UI-automation tool available in this
   session): a full click-driven Path B / caption-import / OCR-run pass
   through the actual packaged GUI. Application logic itself is unchanged
@@ -134,6 +140,86 @@ changes.
 No GlyphCue product code was changed for any of this — the whole
 packaging-contract audit resolved through PyInstaller's standard hook
 discovery plus explicit `--collect-data`/`--collect-submodules` flags.
+
+### Stage ⑦-C manual testing — Run OCR Evidence failure, found and fixed (2026-09-04)
+
+Real human click-through on the packaged `.exe` (Path A: open video → set
+range → **Run OCR Evidence**) failed immediately: `Failed: OCR evidence
+job failed after 0.02s (0 frames analyzed, 0 OCR calls, 0 observations
+kept)`. Diagnosed under the `diagnosing-bugs` discipline:
+
+- `Job._run` (`src/glyphcue/jobs/job.py:79`) does `except Exception:
+  self._set_state(JobState.FAILED)` with **no logging of the exception**
+  — a pre-existing product-code gap (not packaging-specific, not touched:
+  out of this gate's scope) that made the real error invisible in the UI.
+- Built a throwaway PyInstaller repro (`create_ocr_engine("en",
+  prefer_directml=False).initialize()` only, `--console` build) to
+  recover the real traceback outside the swallowing `Job` wrapper. The
+  same call succeeds unfrozen (same venv, same dependency versions) —
+  proving the defect is packaging-specific, not a dependency/version
+  problem.
+- **Root cause, three stacked layers, all pure PyInstaller collection
+  gaps, zero product code involved:**
+  1. `paddlex/configs/pipelines/OCR.yaml` (and the rest of
+     `paddlex/configs/`, ~1.3 MB) was never collected — no
+     `pyinstaller-hooks-contrib` hook exists for `paddlex` — so
+     `paddlex.inference.pipelines.load_pipeline_config` raised
+     `Exception: The pipeline (OCR) does not exist!`. Fix:
+     `--collect-data paddlex`.
+  2. `paddlex.utils.deps.require_extra` gates OCR pipeline creation on
+     `importlib.metadata` seeing installed-distribution metadata for its
+     "ocr-core" extra's six dependencies (`imagesize`,
+     `opencv-contrib-python`, `pyclipper`, `pypdfium2`, `python-bidi`,
+     `shapely`) — PyInstaller does not copy `.dist-info` by default, so
+     every one of these looked "not installed" even though the actual
+     package files were present and functional. Fix: `--copy-metadata
+     paddlex` plus `--copy-metadata` for each of the six.
+  3. Paddle's inference runtime loads several of its own bundled DLLs
+     (`paddle/libs/mklml.dll` and others) dynamically at runtime rather
+     than via static PE imports, so PyInstaller's automatic binary-
+     dependency scan missed them (only `mkldnn.dll` was auto-detected) —
+     `RuntimeError: (PreconditionNotMet) ... mklml.dll ... error code is
+     126`. Fix: `--collect-binaries paddle`.
+- Verified the fix at each layer individually (three intermediate
+  throwaway repro builds, one per layer) before combining, then verified
+  the full combination reaches `initialize() OK`, then rebuilt the real
+  `GlyphCue.exe` with the complete flag set and confirmed
+  `paddle/libs/mklml.dll` and `paddlex/configs/pipelines/OCR.yaml` are
+  now both present in the bundle (880 MB, up from 779 MB).
+- All throwaway repro builds/scripts deleted after verification
+  (`diagnosing-bugs` Phase 6 cleanup); nothing left in the repo or on
+  disk beyond the fixed real build.
+
+**Canonical PyInstaller onedir build command (supersedes the ⑦-A command
+above — this is the one to use going forward):**
+
+```
+pyinstaller --noconfirm --clean \
+  --name GlyphCue \
+  --collect-data glyphcue.persistence.migrations_sql \
+  --collect-submodules glyphcue \
+  --collect-data paddlex \
+  --copy-metadata paddlex \
+  --copy-metadata imagesize \
+  --copy-metadata opencv-contrib-python \
+  --copy-metadata pyclipper \
+  --copy-metadata pypdfium2 \
+  --copy-metadata python-bidi \
+  --copy-metadata shapely \
+  --collect-binaries paddle \
+  --windowed \
+  src/glyphcue/__main__.py
+```
+
+**Not yet re-verified after this fix:** the actual click-driven "Run OCR
+Evidence" pass on the rebuilt `GlyphCue.exe` (this session verified the
+fix at the `create_ocr_engine(...).initialize()` reproduction level,
+identical to the exact failure point observed in the UI, but has no
+native UI-automation tool to click the button itself). **This is now the
+first item of Stage ⑦-C**: re-run the same manual click-through
+(open video → Run OCR Evidence → confirm real observations are produced,
+not just "no crash") on the rebuilt `.exe` at
+`.glyphcue-pyinstaller-build\dist\GlyphCue\GlyphCue.exe`.
 
 **Stage ⑥ evidence baseline refreshed to `4afb8d4`** (human-adjudicated;
 not a reopening of Stage ⑥ itself). Between `906f9e7` and `4afb8d4`, the
@@ -488,21 +574,24 @@ This evidence has **not yet been human-adjudicated**; Stage ⑦ itself and
 Milestone 11 remain **IN PROGRESS**; PR #13 stays **Draft**.
 
 **Stage ⑦-C — minimal remaining Human QA checklist:**
-1. Open the packaged `GlyphCue.exe` (from
-   `.glyphcue-pyinstaller-build\dist\GlyphCue\`, or a fresh rebuild from
-   the same command) on a real machine and manually click through: open
-   a real video (Path A), run OCR evidence end-to-end, switch to Path B,
-   open/import a real `.srt`/`.vtt` caption file, edit and Approve a cue,
-   export, reopen. This is the one path this session could not automate
-   (no native Windows UI-automation tool available) — everything else
-   (launch/exit, persistence, resource bundling, DirectML/Paddle
-   provider selection) already has real automated evidence above.
+1. **Re-run** the manual click-through on the freshly rebuilt
+   `.glyphcue-pyinstaller-build\dist\GlyphCue\GlyphCue.exe` (rebuilt
+   2026-09-04 with the Paddle/paddlex packaging fix — see "Stage ⑦-C
+   manual testing" above): open a real video (Path A), **Run OCR
+   Evidence** and confirm it actually produces observations/cues (not
+   just "doesn't crash"), switch to Path B, open/import a real
+   `.srt`/`.vtt` caption file, edit and Approve a cue, export, reopen.
+   The first attempt at this (same day) failed at "Run OCR Evidence" —
+   root-caused and fixed at the packaging level (three missing
+   PyInstaller collection flags for `paddlex`/`paddle`); this session
+   verified the fix at the reproduction level but has no native
+   UI-automation tool to click through the rebuilt `.exe` itself.
 2. Confirm the packaged app behaves correctly on a genuinely clean
    machine/profile that has never had the `.venv` dev environment
    installed (this session's smoke used an isolated `USERPROFILE` on the
    *same* machine, not a separate machine — still real evidence, but not
    a literal "clean machine" test).
-3. Decide whether the onedir output (779 MB) is acceptable to ship as-is
+3. Decide whether the onedir output (880 MB) is acceptable to ship as-is
    or should be reduced (e.g. excluding unused Paddle/RapidOCR model
    variants, unused Qt translations/plugins) before Inno Setup work
    begins — a product/packaging-size judgment call, not a technical
