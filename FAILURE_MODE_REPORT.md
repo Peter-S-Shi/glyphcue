@@ -141,11 +141,11 @@ summary.
 
 ---
 
-## 5. Multilingual missing/wrong-layer assignment: coverage gap narrowed, not closed — one real miss now observed
+## 5. Multilingual missing/wrong-layer assignment: point-sample evidence gap closed under Architecture B + DirectML (31/31 point recall, 0/0 errors; stress-run miss preserved as historical evidence)
 
 **Category: D — Evidence/corpus limitation (not a capability finding).**
 
-**Updated 2026-09-02 (M11 stage 5).** M6's `MultilingualDiagnostics.missing_languages` /
+**Historical background (M11 stage ⑤ stress run, 2026-09-02).** M6's `MultilingualDiagnostics.missing_languages` /
 `ambiguous_languages` mechanism exists specifically to flag layer
 mis-assignment, and is unit- and synthetic-integration-tested. The two
 real-PaddleOCR synthetic verification scenarios
@@ -156,21 +156,21 @@ synthetic-rendered text that never exercised a case that could actually
 trip the mechanism.
 
 M10's evaluation designed to observe this against real, messy material
-crashed before producing a single data point (see #6). **M11 stage 5's
-five-window split-profile stress run (`docs/m11_representative_evaluation.md`
-§15) finally populated `multilingual_missing_layer_count` /
+crashed before producing a single data point (see #6). **M11 stage ⑤'s
+initial five-window split-profile stress run (`docs/m11_representative_evaluation.md`
+§15) first populated `multilingual_missing_layer_count` /
 `multilingual_wrong_assignment_count` with real data — but the 600 s
 per-entry timeout limited each of the three bilingual windows
 (`sample_h`, `sample_f`, `sample_c`) to matching only ONE verified
 ground-truth instant apiece.** Of those three: `sample_f`'s one matched
-instant shows `multilingual_missing_layer_count: 1` (the reconstructed
+instant showed `multilingual_missing_layer_count: 1` (the reconstructed
 Cue produced an English layer with no Chinese layer at all, at an
 instant where the verified ground truth has both) — the mechanism's
 first real observed miss. `sample_h` and `sample_c`'s single matched
-instants each show 0 missing/wrong. **Sample size is still extremely
-thin (n=3 matched real bilingual instants total)** — not enough to
-characterize a rate, only enough to say the failure mode is real and
-observable, which was previously unknown in either direction.
+instants each showed 0 missing/wrong. This initial sample size was extremely
+thin (1 real miss and 2 real non-misses across 3 matched instants),
+serving as historical stress evidence that the failure mode was observable
+on real video under the old CPU path.
 
 The M6 doc itself already states two adjacent, honest gaps in the same
 direction: script detection covers only Han/Kana/Latin ("No claim about
@@ -181,18 +181,21 @@ against a real target sample exhibiting this."
 
 **Evidence**: `benchmarks/multilingual_reconstruction/evaluation_results.json`,
 `docs/multilingual/track_group_reconstruction.md` ("Failure modes / known
-limitations"), `docs/m11_representative_evaluation.md` §15 (the stress
-run's per-entry `multilingual_missing_layer_count` /
-`multilingual_wrong_assignment_count`), `docs/m10_private_corpus_incident.md`.
+limitations"), `docs/m11_representative_evaluation.md` §15 (historical stress run)
+and §17 (bilingual DirectML supplement), `private_samples/m10_video_corpus/evaluation_results_bilingual_directml_supplement.json`,
+`docs/m10_private_corpus_incident.md`.
 
-**Disposition**: not a defect verdict either way — a coverage gap
-narrowed by one real observed instance, not closed. Multilingual
-layer-assignment correctness against real, non-synthetic material has
-now shown one real miss and two real non-misses, on a sample far too
-small to characterize a failure rate. Getting `sample_h`/`sample_f`/`sample_c`
-to fuller coverage (open item in `docs/m11_representative_evaluation.md`
-§15/§16's Human Adjudication list) is what would actually close this gap;
-not attempted this round.
+**Disposition**: **Closed at point-sample level by Human Adjudication (2026-09-03).**
+The coverage gap identified during the initial timeout-limited stress run has
+been closed at the point-sample level by the completed 180 s bilingual supplement
+under Architecture B + DirectML (`sample_h`, `sample_f`, `sample_c`): 31/31 point
+recall, 0 missing layers, and 0 wrong assignments across all verified instants.
+The root-cause layer swap observed on `sample_f` was diagnosed and fixed in `075ac4b`
+and re-verified to produce zero conversational layer swaps under full-window conditions.
+This closure is empirical at the verified point-sample level rather than a universal
+guarantee for arbitrary unverified video: residual edge cases (`sample_c` non-text
+boundary reading `"3\n8"`, `sample_f` rapid b-roll editor icons) remain fail-closed
+and flagged via `ambiguous_languages`.
 
 **Update (Milestone 11 Architecture B integration)**: the layer-assignment
 algorithm itself gained a fourth corrective pass fixing four more real
@@ -203,29 +206,30 @@ vote mixing from a subtitle's layers swapping screen position between
 frames) — see `docs/multilingual/track_group_reconstruction.md`'s
 Architecture B section. This is a correctness improvement, formally
 gated (12/12 acceptance cases), independent of the runtime change below.
-The *runtime* was also replaced (one shared detector + one universal
-recognizer instead of one engine per language, item #7 below), and a
-real post-integration `sample_h`/`sample_f`/`sample_c` smoke surfaced a
-new, still-open finding: CPU Paddle stayed correct on real content but
-measured 7.4×–14.0× realtime (over the ≤5× Performance Corrective Gate
-target); the opt-in DirectML path met ≤5× but showed real layer-content
-errors on this same content (swapped/garbled text, more Cues than CPU
-for the identical window). See `PROJECT_STATUS.md` for exact numbers.
 
 **Update: root-caused and fixed (`075ac4b`).** Real raw `sample_f`
-observation dumps (not guesswork) showed DirectML's own detector
-produced correctly separated polygons — no detector under-segmentation.
-The actual bug: `_cluster_by_visual_line` treated a legitimately mixed
-Han+Latin OCR reading the same as genuinely no-signal text (both make
-`_dominant_script` return `None`), letting it merge by geometry alone
-into an adjacent decisive-English cluster and get silently classified
-`en`. Fixed with a `_has_mixed_script_evidence` veto that keeps such a
-reading in its own fail-closed/ambiguous cluster instead. Re-verified
-on the real DirectML product path against all three frozen 10s windows:
-no layer swap anywhere, all three ≤5× realtime. The Multilingual
-Performance Corrective Gate is now CLOSED — see `PROJECT_STATUS.md`.
-`sample_c`'s unrelated `"zh": "3\n8"` garbled reading remains a
-separate, un-diagnosed open item.
+observation dumps showed DirectML's own detector produced correctly
+separated polygons — no detector under-segmentation. The actual bug:
+`_cluster_by_visual_line` treated a legitimately mixed Han+Latin OCR
+reading the same as genuinely no-signal text (both make `_dominant_script`
+return `None`), letting it merge by geometry alone into an adjacent
+decisive-English cluster and get silently classified `en`. Fixed with a
+`_has_mixed_script_evidence` veto that keeps such a reading in its own
+fail-closed/ambiguous cluster instead. Re-verified on the real DirectML
+product path against all three frozen 10s windows: no layer swap anywhere,
+all three ≤5× realtime. The Multilingual Performance Corrective Gate was
+closed with this evidence.
+
+**Update: Stage ⑤ Representative Evaluation bilingual supplement completion.**
+Under the formal Architecture B + DirectML product path, all three bilingual
+windows ran over their full 180.0 s spans (`sample_h`: 488.1 s / 2.71×;
+`sample_f`: 659.2 s / 3.66×; `sample_c`: 748.2 s / 4.16×) to `succeeded` state.
+Point recall was **31/31 (100.0%)**; `multilingual_missing_layer_count` and
+`multilingual_wrong_assignment_count` were both **0** across all 31 verified
+instants. Zero layer swaps occurred in conversational dialogue. Stage ⑤
+Representative Evaluation was formally **CLOSED by Human Adjudication (2026-09-03)**.
+`sample_c`'s isolated `"3\n8"` boundary non-text reading fail-closed with
+`ambiguous_languages: ["zh"]` remains preserved as an empirical limitation.
 
 ---
 
@@ -490,7 +494,8 @@ Chinese-language output at full coverage.
 by the **Caption Identity Corrective Gate**, commit `875fb04`. Root cause was diagnosed
 in hybrid state transition timing and multi-frame consensus disambiguation in
 `hybrid_evidence_job.py` and `caption_identity_verification.py`. Formal product fixes
-were integrated and verified across 843 passing tests. Subsequently, M11 completed
+were integrated and verified across 843 passing tests at gate closure (current repository
+baseline is 902 passed, 1 skipped, 1 xfailed). Subsequently, M11 completed
 P2 recognition-only, P3 Windows DirectML recognizer, and P4B Windows DirectML text detector
 acceleration, while parallel chunking was evaluated via evidence gate and formally rejected).*
 
@@ -503,20 +508,23 @@ No entry exists for a purely theoretical failure mode with no real
 evidence behind it. In particular:
 
 - No entry for "multilingual layer assignment silently produces wrong
-  text on real material *at scale*" — see #5's 2026-09-02 update: one
-  real miss and two real non-misses have now been observed (n=3 matched
-  real bilingual instants), enough to say the failure mode is real, not
-  enough to characterize a rate. Still an evidence gap, now a narrower
-  one, not a closed question either way.
+  text on real material *at scale*" — while the initial stress run observed
+  one miss and two non-misses on a thin sample (#5), the completed 180 s
+  bilingual evaluation under Architecture B + DirectML achieved 31/31 point
+  recall with 0 missing layers and 0 wrong assignments across all verified
+  instants, with residual non-text or ambiguous readings flagged fail-closed.
+  The failure mode is closed at the verified point-sample level rather than
+  presenting a broad unhandled defect at scale.
 - No entry for Path A OCR accuracy failures on real (non-benchmark)
-  video *under the shipped `PRODUCTION_TRIGGER` profile* — the three
-  real bilingual windows that ran it (`docs/m11_representative_evaluation.md`
-  §15) were each too timeout-limited (2.2%–3.5% window coverage) to match
-  more than one verified instant apiece, too little to call a finding
-  either way. `EXPERIMENTAL_HYBRID` DID complete at full coverage on
-  three windows and DID surface a real accuracy finding — see #12. The
-  representative-video acceptance item remains open, not closed, per the
-  section below.
+  video *under the legacy `PRODUCTION_TRIGGER` profile* — the three
+  real bilingual windows initially ran it under the 600 s stress run
+  (`docs/m11_representative_evaluation.md` §15) and were timeout-limited
+  (2.2%–3.5% window coverage). Full 180 s evaluation of the bilingual
+  corpus was subsequently completed under the formal Architecture B + DirectML
+  product path (§17) at 2.71×–4.16× realtime with 31/31 point recall and 0/0
+  layer errors; Chinese CER finding #12 from Hybrid was resolved via the
+  Caption Identity Corrective Gate. The representative-video acceptance item
+  is now CLOSED by Human Adjudication (see below).
 
 ## Representative-video acceptance item: transferred to Milestone 11, not waived
 
@@ -531,17 +539,17 @@ mandatory acceptance gate** (ROADMAP.md §18's acceptance gate 9) — it is
 not waived, silently downgraded to optional debt, or treated as
 satisfied by any finding above.
 
-**Updated 2026-09-02:** M11 stage 5 has since run real evidence against
-this gate — a five-window split-profile stress run (all five windows
-`partial_timeout`, findings #5, #7 above) and a completion supplement
-that finished three of those windows to full coverage (finding #12
-above). This is real progress on the gate, not closure of it: two of the
-five frozen windows are fully evaluated, three remain timeout-limited to
-under 4% coverage, and the two that finished surfaced a correctness
-question (subsequently resolved via Caption Identity Corrective Gate).
-Full detail: `docs/m11_representative_evaluation.md` §15–§16. Per the same gate audit
-disposition, Milestone 12 must not begin until Milestone 11 completes
-the transferred evaluation and its results — whatever they finally are —
-are folded back into `EVALUATION_REPORT.md` and this report, which this
-update does for the results produced so far.
+**Updated 2026-09-03 (CLOSED by Human Adjudication):** Milestone 11 Stage ⑤
+completed representative evaluation across all five frozen windows (`sample_g`
+90–270s, `sample_e` 150–330s, `sample_h` 900–1080s, `sample_f` 560–740s, `sample_c`
+480–660s) plus clean baseline reserve `sample_a` (15–195s) to full 180 s
+coverage. The initial 5-window stress run (all `partial_timeout`, findings #5, #7)
+and single-language supplement (finding #12, resolved via Caption Identity Gate)
+are preserved as historical evidence; the bilingual supplement under Architecture B +
+DirectML completed `sample_h`, `sample_f`, and `sample_c` at 2.71×, 3.66×, and
+4.16× realtime with 31/31 point recall and 0/0 multilingual layer errors.
+The transferred acceptance gate (ROADMAP §17/§18 gate 9) is **SATISFIED and CLOSED
+by Human Adjudication (2026-09-03)**. Full detail: `docs/m11_representative_evaluation.md`
+§15–§17 and `EVALUATION_REPORT.md`. Milestone 11 remains in progress; the next
+execution step is Stage ⑥ Full Regression.
 

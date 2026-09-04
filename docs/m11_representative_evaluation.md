@@ -22,12 +22,15 @@ remains incomplete pending Stage ⑥ Full Regression and Stage ⑦ Formal Human 
 **Frozen corpus (⑤-A):** `sample_g` 90–270 s, `sample_e` 150–330 s,
 `sample_h` 900–1080 s, `sample_f` 560–740 s, `sample_c` 480–660 s.
 
-**Not done here, deliberately:** no OCR or temporal pipeline change, no
+**Not done here, deliberately:** no ad-hoc OCR or temporal pipeline change, no
 reopening of Beta-S / Auto-ROI research, no retuning of the 0.300
-threshold, no promotion of the Experimental Hybrid profile, and no re-run
-with a longer timeout to chase a better-looking number. Nothing under
-`src/` has been touched by stage ⑤ — every change is in `benchmarks/`,
-docs, or untracked private corpus files.
+threshold, and no promotion of the Experimental Hybrid profile. Stage ⑤
+evaluation and closure itself did not modify product code in `src/` —
+all evaluation runs and artifacts live in `benchmarks/`, docs, or untracked
+private corpus files. Product code modifications were strictly performed by
+formal corrective gates triggered by Stage ⑤ findings (the Caption Identity
+Corrective Gate in `875fb04`, P2/P3/P4B DirectML performance adapters in
+`178038f`, and the mixed-script clustering veto in `075ac4b`).
 
 **Privacy:** the corpus is untracked (`private_samples/` is in
 `.gitignore`) and stays that way. This document describes the samples by
@@ -54,9 +57,12 @@ burned in.
 | `sample_g` | 8.5 min | **English only** | 1 ↔ 2 lines | **handheld walking outdoors**, bright sky and snow | thin serif captions with **no dark rim or plate**, so contrast collapses against the sky; large stylized overlay cards sit above the caption band |
 | `sample_h` | 25.5 min | Chinese (bright) + English (dim grey) | 2 lines, wraps to 3 | static studio, dark | a **permanently fixed footer strip** — speaker label, channel wordmark, logo lockup, rule — that never changes for 25 minutes |
 
-`sample_a`–`sample_d` additionally carry M10 point-sample ground truth in
-the corpus manifest (10–20 verified instants each).
-`sample_e`–`sample_h` have none yet.
+`sample_a`–`sample_d` initially carried M10 point-sample ground truth in
+the corpus manifest (10–20 verified instants each). Stage ⑤-B established
+and confirmed point-sample ground truth for `sample_e`–`sample_h` (all 44
+candidates confirmed at the human gate with no corrections, yielding 72
+point-sample cues across 52 verified instants: `g` 11, `e` 10, `h` 20,
+`f` 21, plus `c` 20 inherited from M10, and 2 verified negative points).
 
 ## 2. Caption-band dynamics (measured, read-only)
 
@@ -786,7 +792,8 @@ Item 5 above historically triggered the **Caption Identity Corrective Gate**,
 which subsequently investigated the root cause in product code (hybrid state
 transition timing and multi-frame consensus disambiguation), implemented formal
 fixes in `src/glyphcue/application/`, and verified correctness across 843
-passing tests (commit `875fb04`).
+passing tests at gate closure (commit `875fb04`; current repository baseline is
+902 passed, 1 skipped, 1 xfailed).
 
 ---
 

@@ -107,13 +107,9 @@ Organized by ROADMAP §17's own named metric families.
     "Negative/mixed findings").
   - Multilingual reconstruction: CER 0.0 on every language layer in both
     the bilingual and trilingual synthetic scenarios.
-  - **Measured on realistic-private corpus under M11 Stage ⑤ supplement (pre-corrective baseline):**
-    `sample_g` (EN) measured CER 0.163. `sample_e` (ZH) measured 1.166 and
-    reserve `sample_a` (ZH) measured 1.679. Note: these Chinese CER measurements
-    reflect the pre-corrective state that historically triggered the **Caption
-    Identity Corrective Gate**, which subsequently root-caused and resolved
-    the consensus/probe issue; they do not represent current post-fix quality.
-    `sample_h`/`sample_f`/`sample_c` remain partial/unmeasured.
+  - **Measured on realistic-private corpus under M11 Stage ⑤ evaluations:**
+    - *Single-language supplement (Hybrid, pre-corrective baseline)*: `sample_g` (EN) measured CER 0.163. `sample_e` (ZH) measured 1.166 and reserve `sample_a` (ZH) measured 1.679. Note: these Chinese CER measurements reflect the pre-corrective state that historically triggered the **Caption Identity Corrective Gate** (commit `875fb04`), which subsequently root-caused and resolved the consensus/probe issue in product code; they do not represent current post-fix quality.
+    - *Bilingual completion supplement (Architecture B + DirectML product path)*: `sample_h` (bilingual fixed footer) measured mean CER zh 0.2523 / en **0.0183** (10/10 point recall, 100%); `sample_f` (bilingual fast b-roll) measured mean CER zh **0.0611** / en 0.4641 (11/11 point recall, 100%); `sample_c` (bilingual mixed format) measured mean CER zh 0.1316 / en 0.4316 (10/10 point recall, 100%). Across all three bilingual windows, point recall was **31/31 (100.0%)**, and multilingual missing and wrong assignment were **0/0**.
 - **WER** (`glyphcue.evaluation.metrics.word_error_rate`): implemented
   and unit-tested (`tests/evaluation/test_metrics.py`) against known-good
 
@@ -148,10 +144,12 @@ each verified instant at all) but explicitly **cannot** support Cue-level
 precision (a sparse point sample cannot vouch for every real Cue GlyphCue
 produces — an unmatched real Cue is not evidence of a false positive) —
 this scope limitation is stated in the evaluation script's own docstring
-(`benchmarks/private_video_corpus/run_evaluation.py`). In M11 Stage ⑤'s
-completion supplement, point-recall was measured at 90–100% across 31
-verified instants on the completed windows (`sample_g`, `sample_e`, reserve
-`sample_a`). However, Cue-level precision remains unmeasured by design of
+(`benchmarks/private_video_corpus/run_evaluation.py`). In M11 Stage ⑤,
+point-recall was measured across all completed windows: 90–100% (29/31)
+across verified instants on single-language windows (`sample_g`, `sample_e`, reserve
+`sample_a`), and 100.0% (**31/31**) across verified instants on bilingual windows
+(`sample_h`, `sample_f`, `sample_c`) under Architecture B + DirectML (0 missing
+layers, 0 wrong assignments). However, Cue-level precision remains unmeasured by design of
 the sparse point-sample methodology.
 
 **Stated per this report's own discipline: Path A Cue-level precision/
@@ -386,9 +384,17 @@ this report.
 - **WER has no empirically-closed result on any corpus** — implemented,
   unit-tested, never applied to a real evaluation corpus.
 - **Multilingual layer-assignment correctness against real, non-synthetic
-  material**: M11 has observed 1 real miss + 2 real non-misses (n=3), so
-  the failure mode has real evidence, but the sample is too thin and
-  robustness/failure rate is not yet empirically closed.
+  material**: The initial timeout-limited stress run observed only 3 instants (1 miss +
+  2 non-misses). Under the completed Stage ⑤ bilingual evaluation (Architecture B +
+  DirectML across full 180 s spans of `sample_h`, `sample_f`, and `sample_c`), point-sample
+  evaluation achieved **31/31 (100.0%) point recall with 0 missing layers and 0 wrong layer
+  assignments**, confirming resolution of the earlier stress-run miss and layer-swap
+  defect (fixed in `075ac4b`) at the verified point-sample level. As a residual
+  boundary limitation, this is point-sample coverage across 31 verified instants, not a
+  universal guarantee across all unverified frames or arbitrary non-standard layouts;
+  isolated non-text boundary readings (`sample_c` `"3\n8"`) and dense background glyphs
+  (`sample_f` b-roll editor icons) remain fail-closed and flagged with
+  `ambiguous_languages`.
 
 - **CPU use and full-pipeline memory are not measured anywhere in M10** —
   only OCR-engine-in-isolation memory/startup (M3) and wall-clock
@@ -448,8 +454,8 @@ not a timeout cancellation), with point recall 90–100% across 31 verified
 instants. Mean CER on the two Chinese-language entries measured above 1.0
 in this pre-corrective run (`sample_e`: 1.166, `sample_a`: 1.679), serving
 as the historical trigger for the Caption Identity Corrective Gate (subsequently
-investigated, resolved in product code, and regression-verified across 843 tests;
-commit `875fb04`).
+investigated, resolved in product code, and regression-verified across 843 tests
+at gate closure; commit `875fb04`; current repository baseline is 902 passed, 1 skipped, 1 xfailed).
 
 **Completion supplement 2 (bilingual Architecture B + DirectML product path)** (`sample_h`,
 `sample_f`, `sample_c` at their unchanged 180 s windows and ROIs, 1800 s timeout,

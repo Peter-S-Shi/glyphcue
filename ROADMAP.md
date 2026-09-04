@@ -3,7 +3,7 @@
 **Document type:** Authoritative V1 milestone roadmap  
 **Project:** GlyphCue  
 **Repository:** `Peter-S-Shi/glyphcue`  
-**Lifecycle phase:** Production Development in progress → Milestone 10 complete (evidence/evaluation closure accepted; representative-video gate transferred to Milestone 11, not waived — see §17's gate audit disposition), Feature Freeze ACTIVE, **Milestone 11 (Product Hardening & Full Regression) IN PROGRESS — stage ④ Targeted Regression CLOSED (automated evidence accepted at the human gate, see `docs/m11_targeted_regression.md`), stage ⑤ Representative Evaluation step ⑤-C stress run + completion supplement RUN COMPLETE (of the frozen five windows, `sample_g`/`sample_e` completed to full coverage while `sample_h`/`sample_f`/`sample_c` remain partial; reserve `sample_a` was run as an additional completion supplement). The Chinese-CER finding has been investigated and CLOSED by the Caption Identity Corrective Gate; performance hardening passes P2 (recognition-only), P3 (Windows DirectML OCR recognizer), and P4B (Windows DirectML same-detector text detector) are INTEGRATED; Parallel Chunking was evaluated via evidence gate and REJECTED; stage ⑤ remains OPEN awaiting final representative gate closure, and M11 acceptance gates are still open** (see `docs/m11_representative_evaluation.md`)
+**Lifecycle phase:** Production Development in progress → Milestone 10 complete (evidence/evaluation closure accepted; representative-video gate transferred to Milestone 11, not waived — see §17's gate audit disposition), Feature Freeze ACTIVE, **Milestone 11 (Product Hardening & Full Regression) IN PROGRESS — stage ④ Targeted Regression CLOSED (automated evidence accepted at the human gate, see `docs/m11_targeted_regression.md`), stage ⑤ Representative Evaluation CLOSED by Human Adjudication (2026-09-03) (all five frozen windows `sample_g`, `sample_e`, `sample_h`, `sample_f`, `sample_c` plus reserve `sample_a` completed to full 180s coverage; acceptance gate 9 satisfied; see `docs/m11_representative_evaluation.md` §17). The Chinese-CER finding has been investigated and CLOSED by the Caption Identity Corrective Gate; performance hardening passes P2 (recognition-only), P3 (Windows DirectML OCR recognizer), and P4B (Windows DirectML same-detector text detector) are INTEGRATED; Parallel Chunking was evaluated via evidence gate and REJECTED; Stage ⑥ Full Regression is READY TO BEGIN** (see `docs/m11_representative_evaluation.md`)
 **Status:** Current V1 execution roadmap  
 
 **Last updated:** 2026-09-03
@@ -2027,12 +2027,13 @@ diagnosed the root cause (hybrid state transition and multi-frame consensus
 disambiguation) and integrated formal fixes. M11 subsequently completed three
 performance hardening passes: P2 recognition-only, P3 Windows DirectML recognizer,
 and P4B Windows DirectML same-detector text detector (while parallel chunking was
-evaluated via evidence gate and formally rejected). `sample_h`/`sample_f`/`sample_c`
-were not re-attempted and remain partial. **Stage ⑤ still does not close on this run** —
-both runs' results are folded into `EVALUATION_REPORT.md` and `FAILURE_MODE_REPORT.md`,
-and the human-adjudication list (timeout extension for the three remaining windows,
-`sample_h`'s inconclusive duplicate-cue check, and whether current results are
-sufficient for the gate) is recorded in `docs/m11_representative_evaluation.md` §15–§16.
+evaluated via evidence gate and formally rejected). Subsequently, the bilingual
+completion supplement under Architecture B + DirectML ran `sample_h`, `sample_f`,
+and `sample_c` to full 180/180 s coverage at 2.71×, 3.66×, and 4.16× realtime with
+31/31 point recall and 0/0 multilingual layer errors. **Stage ⑤ Representative
+Evaluation was formally CLOSED by Human Adjudication (2026-09-03)** (acceptance gate 9
+satisfied). Full evidence is folded into `EVALUATION_REPORT.md`, `FAILURE_MODE_REPORT.md`,
+and `docs/m11_representative_evaluation.md` §17.
 
 The remaining M11 stages — packaging hardening, formal Manual QA, and the
 Full Regression itself — have not been started.

@@ -155,7 +155,7 @@ plus 2 verified negative points that deliberately emit no cue. One
 `sample_f` instant carries only its English layer — its Chinese layer is
 illegible in the frame and was left untranscribed rather than guessed.
 
-**⑤-C Split-profile evaluation — RUN COMPLETE, awaiting adjudication:**
+**⑤-C Representative evaluation — CLOSED by Human Adjudication (2026-09-03):**
 
 - Manifest path inconsistency resolved: the canonical
   `private_samples/m10_video_corpus/manifest.json` now exists with
@@ -240,7 +240,7 @@ deliberately left unfixed.
 
 1. **Caption Identity Corrective Gate (CLOSED):**
    - Investigated and resolved the root cause of the Chinese-language CER finding (hybrid state transition and multi-frame consensus disambiguation in `hybrid_evidence_job` / `caption_identity_verification`).
-   - Integrated formal fixes into `src/glyphcue/application/`; full regression verified with 843 tests passing.
+   - Integrated formal fixes into `src/glyphcue/application/`; full regression verified with 843 tests passing at gate closure (current repository baseline is 902 passed, 1 skipped, 1 xfailed).
 
 2. **P2 Recognition-Only Performance Patch (INTEGRATED):**
    - Eliminated duplicate detection when external polygons are already available for representative frames.
@@ -266,9 +266,9 @@ deliberately left unfixed.
 | Suite | Result |
 |---|---|
 | `pytest` (targeted P4B selection, contract & UI seams) | **40 passed** in 1.19s |
-| `pytest` (whole repository, full suite) | **843 passed, 1 xfailed** in 115s |
+| `pytest` (whole repository, full suite) | **902 passed, 1 skipped, 1 xfailed** in 118s |
 | `tests/ui` (one process) | 295 passed, 1 xfailed |
-| GitHub Actions CI (`milestone/11-product-hardening-full-regression`) | **All green** (Run 33774773070) |
+| GitHub Actions CI (`milestone/11-product-hardening-full-regression`) | **All green** |
 
 Privacy check: no secrets, credentials, real user data, personal
 identifiers, or absolute local paths in the committed changes; local
