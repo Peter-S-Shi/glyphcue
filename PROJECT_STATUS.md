@@ -4,22 +4,24 @@
 
 ## Current milestone
 
-**Milestone 12 — Product Rework & Cue Quality Recovery: Stage ① UI / Review Workflow Recovery COMPLETE (2026-09-04). Next: Stage ② Cue Production Quality Recovery.**
+**Milestone 12 — Product Rework & Cue Quality Recovery: Stage ① UI / Review Workflow Recovery — Round 1 Human QA Corrections COMPLETE; Round 2 Human QA IN PROGRESS (2026-09-04). Next: Stage ② Cue Production Quality Recovery.**
 
 Authoritative post-M11 baseline: `ab2a8588941a3a3c599cea314061969f8c3ee5cc`. Milestone 11 Product Hardening & Full Regression is CLOSED; Release Acceptance was REJECTED BY HUMAN ADJUDICATION due to Cue quality, review UX, and packaging maturity. Milestone 12 lifts feature freeze strictly for targeted recovery across two problems:
-- **Problem 2 (QA Review UX & Workflow) — Stage ① COMPLETED (2026-09-04):**
+- **Problem 2 (QA Review UX & Workflow) — Stage ① IMPLEMENTED & UNDER HUMAN QA (2026-09-04):**
   1. *Left Cue Workbench Multi-select & Batch Purge*: Multi-select already Discarded Cues (`ExtendedSelection`) and batch purge them via `Purge Discarded` button (`#subtleDangerBtn`); cues disappear from visible queue; data safety ensures non-rejected cues are never purged.
-  2. *Strict Chronological Ordering*: Queue sorting strictly follows `(cue.start_time, cue.end_time, cue.id)`; status colors (`Color.SUCCESS` for Approved, `Color.TEXT_MUTED` for Discarded, `Color.WARNING` for Needs Review, `Color.TEXT_PRIMARY` for Pending) and badges (`[0.00s] [Level] [Badge]`) display state without breaking linear time.
+  2. *Strict Chronological Ordering*: Queue sorting strictly follows `(cue.start_time, cue.end_time, cue.id)`; status badges (`[0.00s] [Level] [Badge]`) display state without breaking linear time.
   3. *Continuous Timeline OCR Seam & Resume*: `CompactTimeline` renders a distinct endpoint marker (cyan vertical line + top indicator cap) at `last_processed_end`; supports click-to-seek playback navigation via `seek_requested` signal; "Resume from Last End" button pre-fills range start and seeks video; successful OCR runs auto-prefill next range start for seamless editing.
   4. *Clear Current Video Cue History*: "Clear Video Cues…" (`#subtleDangerBtn`) with confirmation dialog (`QMessageBox` with impact warning) deletes cues specifically for `self._source_id` via `_cue_repository.delete_for_source`, safely preserving observations and other videos.
   5. *OCR Completion Audio Chime*: Short, low-disturbance synthesized hotel desk bell "ding" (~250ms, G6 1568Hz harmonic decay in pure Python wave format) played via `winsound` / `QApplication.beep()` on `JobState.SUCCEEDED` with zero external dependencies and fail-soft exception handling.
   6. *Visual Consistency*: Follows `DESIGN.md` tokens (`Color`, `Spacing`, `Radius`, `#subtleDangerBtn`, `#secondaryBtn`), avoiding arbitrary redesign.
+  7. *Card Border Semantics (Round 1 QA Correction)*: Replaced whole-line text coloring with distinct card border semantics: `Color.SUCCESS` green for Approved, `Color.BORDER_NEUTRAL_LIGHT` (`#cbd5e1`) white/neutral for Pending, `Color.WARNING` yellow for Needs Review, and `Color.DANGER` red for Discarded. User selection has highest visual priority with a blue border (`Color.ACCENT`) + selection background override. Text stays clear and readable in primary text color.
+  8. *Global Horizontal Overflow Support (Round 1 QA Correction)*: Outermost workbench shell wraps the 3-pane workspace stack in an outer `QScrollArea` (`_WORKBENCH_MIN_WIDTH = 1160px`). Under normal width (>=1160px), the horizontal scrollbar is hidden (`ScrollBarAsNeeded`); under constrained window width (<1160px), a global horizontal scrollbar appears at the bottom without adding per-pane horizontal scrollbars, preserving internal vertical scrolling, splitter resizing, and window maximization.
 - **Problem 1 (Cue Production Quality Recovery) — Stage ② QUEUED:**
   Will investigate root cause of low-value/duplicate/fragmented Cues downstream of raw Observations, establish programmatic consolidation or model calibration, maintaining ≤5× realtime. Packaging work remains SUSPENDED until Milestone 12 is accepted.
 
 ### Validation
-- Stage ① UI Suite: **305 passed, 1 xfailed in 41.67s** (100% UI pass rate).
-- Whole-Repository Regression: **913 passed, 1 skipped, 1 xfailed in 198.28s** (baseline was 902 passed).
+- Stage ① UI Suite: **310 passed, 1 xfailed in 50.79s** (100% UI pass rate).
+- Whole-Repository Regression: **918 passed, 1 skipped, 1 xfailed in 151.64s** (baseline was 902 passed).
 
 ### Milestone 11 Retrospective Summary (CLOSED)
 
@@ -816,6 +818,6 @@ appears anywhere in the repository.
 
 ## Next action
 
-1. Submit PR for Milestone 12 Stage ① (UI / Review Workflow Recovery) for human review and adjudication.
-2. Await human QA / adjudication of Stage ① UI and review workflow behaviors.
-3. Upon acceptance of Stage ①, proceed to Milestone 12 Stage ② — Cue Production Quality Recovery (root cause investigation into low-value/fragmented Cues and downstream consolidation). Packaging remains SUSPENDED.
+1. Updated PR #14 with Round 1 Human QA UI corrections (item card border semantics and global horizontal overflow support).
+2. Continue Round 2 Human QA with the repository owner using `Launch-GlyphCue-DirectML-DevQA.bat`. Strictly no force push; do NOT auto-merge PR #14.
+3. Upon formal human acceptance of Stage ①, proceed to Milestone 12 Stage ② — Cue Production Quality Recovery. Packaging remains SUSPENDED.

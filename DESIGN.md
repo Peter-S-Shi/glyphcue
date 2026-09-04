@@ -243,7 +243,7 @@ It is not:
 - a complete project navigator;
 - a place for all metadata.
 
-The queue strictly enforces chronological timeline order `(start_time, end_time, cue.id)` so review reading order remains linear across all states. Review states and priority levels are communicated via discrete badges and subtle semantic token colors (`Color.SUCCESS` for Approved, `Color.TEXT_MUTED` for Discarded, `Color.WARNING` for Needs Review, `Color.TEXT_PRIMARY` for Pending) without breaking linear time. To prevent clutter, the queue supports multi-selection (`ExtendedSelection`) and a dedicated `Purge Discarded` button to permanently clear rejected cues from the visible workspace, with strict data safety preserving non-rejected cues.
+The queue strictly enforces chronological timeline order `(start_time, end_time, cue.id)` so review reading order remains linear across all states. Review state semantics are communicated through discrete item/card borders (`Color.SUCCESS` green for Approved, `Color.BORDER_NEUTRAL_LIGHT` #cbd5e1 white/neutral for Pending, `Color.WARNING` yellow for Needs Review, and `Color.DANGER` red for Discarded). User selection has highest visual priority, overriding review-state borders with a prominent blue border (`Color.ACCENT`) and selection background. Text within each card stays rendered in high-contrast primary text (`Color.TEXT_PRIMARY`) without coloring the entire line. The active playback cue retains its `▶ ` marker prefix. To prevent clutter, the queue supports multi-selection (`ExtendedSelection`) and a dedicated `Purge Discarded` button to permanently clear rejected cues from the visible workspace, with strict data safety preserving non-rejected cues.
 
 ---
 
@@ -1132,28 +1132,9 @@ Exact splitter behavior is implementation-dependent.
 
 # 36. Minimum Window / Reflow
 
-## `OPEN`
+## `FROZEN`
 
-The prototype was validated primarily as a desktop workbench at a wide viewport.
-
-Production implementation must define:
-
-- minimum supported window width;
-- minimum supported height;
-- behavior below preferred width;
-- OS display scaling behavior.
-
-The design should not automatically reflow into a mobile-style stacked layout.
-
-This is a desktop product.
-
-If space becomes insufficient, prefer:
-
-1. panel resizing;
-2. controlled panel collapse;
-3. internal scrolling;
-
-before stacking the entire application vertically.
+The desktop Evidence Workbench targets a default 1280×720 viewport and supports smooth resizing and maximization. When window width is constrained below the minimum comfortable 3-pane layout (~1160px), the outermost workbench shell provides a global horizontal scrollbar at the bottom of the workspace area (`ScrollBarAsNeeded`), allowing the user to pan across the three panes horizontally without clipping or crushing controls. Horizontal scrollbars are NOT added to individual panes. Internal vertical scrolling in the queue and QA inspector, pane splitter resizing, and window maximization remain fully independent and uncompromised.
 
 ---
 

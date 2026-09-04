@@ -21,6 +21,7 @@ class Color:
     BORDER_SUBTLE = "#1e2634"
     BORDER_MEDIUM = "#2a3547"
     BORDER_STRONG = "#3b4960"
+    BORDER_NEUTRAL_LIGHT = "#cbd5e1"
     FOCUS_BORDER = "#0099ff"
 
     # Text
@@ -298,15 +299,33 @@ def base_stylesheet() -> str:
         selection-color: {Color.TEXT_PRIMARY};
     }}
 
-    /* Review Queue List */
-    QListWidget#cueList, QListWidget {{
+    /* Review Queue List - item card borders rendered by CueQueueItemDelegate */
+    QListWidget#cueList {{
         background-color: {Color.SURFACE_0};
         border: 1px solid {Color.BORDER_SUBTLE};
         border-radius: 6px;
         outline: none;
         padding: 4px;
     }}
-    QListWidget#cueList::item, QListWidget::item {{
+    QListWidget#cueList::item {{
+        border: none;
+        background-color: transparent;
+        padding: 0px;
+        margin-bottom: 2px;
+        color: {Color.TEXT_PRIMARY};
+    }}
+    QListWidget#cueList::item:selected {{
+        background-color: transparent;
+        border: none;
+    }}
+    QListWidget {{
+        background-color: {Color.SURFACE_0};
+        border: 1px solid {Color.BORDER_SUBTLE};
+        border-radius: 6px;
+        outline: none;
+        padding: 4px;
+    }}
+    QListWidget::item {{
         background-color: {Color.SURFACE_1};
         border: 1px solid {Color.BORDER_SUBTLE};
         border-radius: 6px;
@@ -314,14 +333,23 @@ def base_stylesheet() -> str:
         margin-bottom: 3px;
         color: {Color.TEXT_PRIMARY};
     }}
-    QListWidget#cueList::item:hover, QListWidget::item:hover {{
+    QListWidget::item:hover {{
         background-color: {Color.SURFACE_2};
         border-color: {Color.BORDER_MEDIUM};
     }}
-    QListWidget#cueList::item:selected, QListWidget::item:selected {{
+    QListWidget::item:selected {{
         background-color: {Color.SURFACE_2};
         border: 1px solid {Color.ACCENT};
         color: {Color.TEXT_PRIMARY};
+    }}
+
+    /* Workbench Workspace Global Scroll Area */
+    QScrollArea#workbenchScrollArea {{
+        border: none;
+        background-color: transparent;
+    }}
+    QScrollArea#workbenchScrollArea > QWidget > QWidget {{
+        background-color: transparent;
     }}
 
     /* Progress Bar */
