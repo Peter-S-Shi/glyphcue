@@ -97,18 +97,34 @@ the actual `create_app`/`main()` launch entrypoint confirmed
 production runs. Full Regression itself was not repeated for this
 change — targeted tests plus CI's own whole-suite run were treated as
 sufficient, consistent with Stage ⑥'s own evidence discipline above.
-**Residual, non-blocking finding surfaced during this smoke (pre-existing,
-unrelated to this retirement, not fixed here):** in this worktree's
-`.venv` (which has plain `onnxruntime` + `cv2` + `pyclipper` installed
+**Residual finding surfaced during this smoke — since diagnosed and
+fixed (`face04b`, separate small Corrective Gate, 2026-09-04):** in this
+worktree's `.venv` (plain `onnxruntime` + `cv2` + `pyclipper` installed
 but not the pinned `[directml]` extra), `create_text_detector(prefer_directml=True)`
-returns a `DirectMlTextDetector` instance even though `DmlExecutionProvider`
-is not actually available — `onnxruntime.InferenceSession` silently
-substitutes `CPUExecutionProvider` instead of raising, so the detector's
-own initialization probe reports success. `create_ocr_engine`'s
-equivalent preflight is unaffected (correctly falls back to
-`PaddleOcrEngine`, since `rapidocr` is genuinely absent). Not touched by
-this Corrective Gate — flagged for a future, separately-scoped look at
-`_directml_detector_probe_succeeds`.
+was returning a `DirectMlTextDetector` instance even though
+`DmlExecutionProvider` was not actually available —
+`onnxruntime.InferenceSession` silently substitutes `CPUExecutionProvider`
+instead of raising, so the detector's own initialization probe reported
+success on a session that was really running on CPU the whole time.
+Fixed in `_ExactPaddleDirectMlDetectorBackend.initialize()`
+(`directml_text_detector.py`): the session's own `get_providers()` is
+now checked after construction, and initialization raises explicitly if
+`DmlExecutionProvider` isn't actually active, routing through the
+existing probe-catches-exception fallback to `PaddleOcrTextDetector`
+exactly like any other real DirectML init failure. Regression tests at
+the defect's own seam (`test_initialize_raises_when_dml_provider_is_not_actually_active`,
+confirmed red before the fix; `test_initialize_succeeds_when_dml_provider_is_genuinely_active`)
+in `tests/adapters/test_directml_text_detector_contract.py`. Verified on
+real Windows hardware both directions: this worktree's `.venv` (no real
+DirectML) now correctly selects `PaddleOcrTextDetector`; the dedicated
+`[directml]` venv provisioned earlier this milestone (real
+`DmlExecutionProvider` present) still correctly selects
+`DirectMlTextDetector`. `create_ocr_engine`'s equivalent preflight was
+never affected (`rapidocr` package presence is a genuine, non-silent
+signal there). Detector model, thresholds, Architecture B semantics, and
+performance tuning untouched. Targeted tests green (`tests/adapters` 84
+passed, 1 skipped), GitHub Actions whole-suite CI green (run
+`33829120305`).
 
 All Stage ⑤ residual non-blocking findings (below) are preserved
 unchanged. M11 is **not** complete. Next execution step: **Stage ⑦
@@ -349,6 +365,8 @@ deliberately left unfixed.
 | `pytest` (`tests/application/test_source_identity.py`, Stage ⑥ Windows-branch gap closure) | **3 passed** |
 | `pytest` (Legacy Pipeline Retirement targeted: `tests/application`, `tests/adapters`, `tests/ui`) | **790 passed, 1 skipped, 1 xfailed** |
 | GitHub Actions CI (Stage ⑥ evidence baseline refreshed to `4afb8d4`) | GREEN — run `33828500457` |
+| `pytest` (`tests/adapters`, DirectML provider-preflight fix `face04b`) | **84 passed, 1 skipped** |
+| GitHub Actions CI (`face04b`) | GREEN — run `33829120305` |
 
 Privacy check: no secrets, credentials, real user data, personal
 identifiers, or absolute local paths in the committed changes; local
