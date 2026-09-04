@@ -11,11 +11,17 @@ Research Gate verified in its own experiment tooling
   * `limit_side_len=640` -- the conservative middle of the
     latency/accuracy curve the research gate measured; not retuned here.
 
-This exists ONLY so the developer/manual-QA-only EXPERIMENTAL_HYBRID
-profile (`path_a_media_pane.py`'s `enable_dev_ocr_profile_selector`) can
-run against real product wiring instead of a benchmark script. It is not
-imported anywhere reachable from the shipped default UI path -- the
-production entrypoint only constructs one when that dev flag is set.
+This is shared, load-bearing production infrastructure: `create_text_detector`
+(`text_detector_selection.py`) constructs one, with real fallback safety,
+as the default CPU text detector for the shipped multilingual
+PRODUCTION_TRIGGER path (`build_multilingual_ocr_evidence_job`) -- reachable
+from a normal product launch with zero dev flags, whenever a user
+configures more than one language on a Track Group. It is also usable by
+the retained, research-only EXPERIMENTAL_HYBRID benchmark infrastructure
+(`benchmarks/private_video_corpus/run_evaluation.py` and the M11
+Research Gate benchmark scripts), which is not reachable from any
+product or DevQA launch (M11 Legacy Pipeline Retirement Corrective Gate,
+2026-09-04, removed that launch path entirely).
 """
 
 from __future__ import annotations

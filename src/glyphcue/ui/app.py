@@ -34,17 +34,6 @@ from glyphcue.ui.path_b_workspace import PathBWorkspace
 
 DEFAULT_DB_PATH = Path.home() / ".glyphcue" / "glyphcue.sqlite3"
 
-DEV_OCR_PROFILE_SELECTOR_ENV_VAR = "GLYPHCUE_DEV_OCR_PROFILE_SELECTOR"
-"""Set to "1" before launching to reveal the developer/manual-QA-only
-OCR Profile dropdown in Path A (M11). Unset/anything else keeps the
-shipped default: production trigger, no selector shown. Not a V1
-product feature -- there is no in-app way to turn this on."""
-
-
-def _dev_ocr_profile_selector_enabled() -> bool:
-    return os.environ.get(DEV_OCR_PROFILE_SELECTOR_ENV_VAR) == "1"
-
-
 PREFER_DIRECTML_OCR_ENV_VAR = "GLYPHCUE_PREFER_DIRECTML_OCR"
 """Set to "1" to opt into the experimental Windows DirectML OCR
 accelerator (M11 P3, see docs/adr/0001-ocr-runtime-selection.md's
@@ -69,11 +58,15 @@ def _ocr_engine_factory(language: str) -> OcrEngine:
 
 PREFER_DIRECTML_DETECTOR_ENV_VAR = "GLYPHCUE_PREFER_DIRECTML_DETECTOR"
 """Set to "1" to opt into the experimental Windows DirectML text detector
-accelerator (M11 P4B) for Hybrid OCR jobs this process constructs.
-Unset/anything else keeps the shipped default: PaddleOcrTextDetector (PaddlePaddle
-CPU), unconditionally. Even when set, create_text_detector only attempts DirectML
-after a real platform/package preflight and initialization probe, and falls back
-to Paddle on any unsupported platform, missing install, or provider-init failure.
+accelerator (M11 P4B) for the shared text detector this process constructs
+(multilingual PRODUCTION_TRIGGER runs; also usable by the retained
+research-only EXPERIMENTAL_HYBRID benchmark infrastructure, never by any
+product/DevQA launch -- see M11 Legacy Pipeline Retirement Corrective
+Gate, 2026-09-04). Unset/anything else keeps the shipped default:
+PaddleOcrTextDetector (PaddlePaddle CPU), unconditionally. Even when set,
+create_text_detector only attempts DirectML after a real platform/package
+preflight and initialization probe, and falls back to Paddle on any
+unsupported platform, missing install, or provider-init failure.
 """
 
 
@@ -335,7 +328,6 @@ def create_path_a_app(
         ocr_engine_factory=_ocr_engine_factory,
         db_path=db_path,
         on_open_caption_file=on_open_caption_file,
-        enable_dev_ocr_profile_selector=_dev_ocr_profile_selector_enabled(),
         hybrid_detector_factory=_hybrid_detector_factory,
     )
     return app, pane

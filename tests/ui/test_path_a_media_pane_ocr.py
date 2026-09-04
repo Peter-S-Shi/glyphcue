@@ -1094,6 +1094,51 @@ def test_discard_latest_ocr_run_clears_evidence_pane_while_retaining_qa_raw_evid
     assert "First run obs" in pane.qa.evidence_view.toPlainText()
 
 
+# --- M11 Legacy Pipeline Retirement Corrective Gate (2026-09-04) ----------
+#
+# EXPERIMENTAL_HYBRID is retired as a product/runtime-selectable capability:
+# no UI control, launch-time switch, or env var anywhere in `src/` can
+# select it anymore. Its implementation is kept only as historical
+# evaluation/reproducibility infrastructure for
+# `benchmarks/private_video_corpus/run_evaluation.py` and the other M11
+# Research Gate benchmark scripts, which construct/invoke it directly.
+
+
+def test_the_pane_has_no_developer_ocr_profile_selector_seam_at_all(
+    qapp_guard, track_group_repository, db_path
+):
+    # The seam itself -- the constructor param, the combo-box attribute,
+    # the layout slot -- no longer exists; this is not "off by default",
+    # it is gone.
+    pane = PathAMediaPane(track_group_repository, ocr_engine=FakeOcrEngine(), db_path=db_path)
+
+    assert not hasattr(pane, "dev_ocr_profile_combo")
+    with pytest.raises(TypeError):
+        PathAMediaPane(
+            track_group_repository,
+            ocr_engine=FakeOcrEngine(),
+            db_path=db_path,
+            enable_dev_ocr_profile_selector=True,
+        )
+
+
+def test_a_single_language_run_always_uses_the_production_profile(
+    qapp_guard, track_group_repository, db_path, test_video
+):
+    # With the selector gone, a single-language run has exactly one path
+    # to a job: PRODUCTION_TRIGGER, unconditionally -- proven here by the
+    # real production job actually succeeding with no detector wired at
+    # all (EXPERIMENTAL_HYBRID would refuse to build without one).
+    engine = FakeOcrEngine(regions=[OcrTextRegion(text="captured", confidence=0.9)])
+    pane = PathAMediaPane(track_group_repository, ocr_engine=engine, db_path=db_path)
+    pane.open_video(test_video)
+
+    pane.run_ocr_button.click()
+    assert pane.current_ocr_job is not None
+    _wait_for(pane.current_ocr_job)
+
+    assert pane.current_ocr_job.state is JobState.SUCCEEDED
+
 
 
 

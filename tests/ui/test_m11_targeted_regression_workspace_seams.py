@@ -1,5 +1,5 @@
 """M11 Targeted Regression -- the high-risk seams this round's corrective
-hardening and the Experimental Hybrid integration actually touched.
+hardening touched.
 
 Deliberately narrow: this is not a full regression, and it does not
 re-open any OCR research question. Each test names one seam and asserts
@@ -15,13 +15,12 @@ Seams under test (all already-public surfaces, nothing reached into):
 
 from fractions import Fraction
 from pathlib import Path
-from unittest.mock import patch
 
 import av
 import numpy as np
 import pytest
 from PySide6.QtCore import QEventLoop, QTimer
-from PySide6.QtWidgets import QMessageBox, QWidget
+from PySide6.QtWidgets import QWidget
 
 from glyphcue.adapters.ocr_types import OcrTextRegion
 from glyphcue.application.evidence_job_profile import (
@@ -129,12 +128,18 @@ def _pane(track_group_repository, db_path, **kwargs) -> PathAMediaPane:
     return PathAMediaPane(track_group_repository, ocr_engine=engine, db_path=db_path, **kwargs)
 
 
-# --- Seam 1: Production / Experimental Hybrid profile isolation -----------
+# --- Seam 1: the production profile builder never reaches an unrelated
+# supplied detector (M11 Legacy Pipeline Retirement Corrective Gate,
+# 2026-09-04: EXPERIMENTAL_HYBRID is no longer product/DevQA-reachable,
+# so isolation between it and PRODUCTION_TRIGGER via the pane is now
+# proven only by test_launchers.py's
+# test_neither_launcher_can_select_the_retired_hybrid_pipeline; this
+# builder-level seam remains real and still worth its own regression) --
 
 
 def test_the_production_profile_never_reaches_a_supplied_detector(qapp_guard, db_path, test_video):
     """A detector handed to the profile seam stays unused by the
-    production profile -- the two pipelines share a builder, not a run."""
+    production profile -- the builder ignores it even if one is passed."""
     detector = _FakeDetector()
     job = build_evidence_job_for_profile(
         EvidenceJobProfile.PRODUCTION_TRIGGER,
@@ -152,38 +157,6 @@ def test_the_production_profile_never_reaches_a_supplied_detector(qapp_guard, db
 
     assert job.state is JobState.SUCCEEDED
     assert detector.detect_calls == 0
-
-
-def test_a_hybrid_run_does_not_contaminate_the_next_production_run(
-    qapp_guard, track_group_repository, db_path, test_video
-):
-    detector = _FakeDetector()
-    pane = _pane(
-        track_group_repository,
-        db_path,
-        enable_dev_ocr_profile_selector=True,
-        hybrid_detector_factory=lambda: detector,
-    )
-    pane.open_video(test_video)
-
-    pane.dev_ocr_profile_combo.setCurrentIndex(1)  # Experimental Hybrid
-    _run_ocr(pane)
-    hybrid_run_id = pane.current_evidence_run_id
-    assert pane.current_ocr_job.state is JobState.SUCCEEDED
-    assert detector.initialize_calls == 1
-    assert detector.shutdown_calls == 1
-
-    pane.dev_ocr_profile_combo.setCurrentIndex(0)  # back to Production
-    _run_ocr(pane)
-
-    assert pane.current_ocr_job.state is JobState.SUCCEEDED
-    assert pane.current_evidence_run_id != hybrid_run_id
-    # the hybrid detector is neither reused nor re-initialized
-    assert detector.initialize_calls == 1
-    assert pane._active_shared_detector is None
-    # and the evidence pane shows this run's own evidence, not the hybrid's
-    shown = pane._observation_repository.list_for_run(pane.current_evidence_run_id)
-    assert pane.evidence_pane.list_widget.count() == len(shown)
 
 
 # --- Seam 2: ROI persistence, and no silent modification ------------------
@@ -312,36 +285,15 @@ def test_enabling_the_preview_loop_does_not_touch_the_processing_range(
     assert pane.current_processing_range() == before
 
 
-# --- Seam 6: Discard Latest OCR Run, after an Experimental Hybrid run -----
-
-
-def test_discard_latest_run_restores_the_pre_run_workspace_after_a_hybrid_run(
-    qapp_guard, track_group_repository, db_path, test_video
-):
-    detector = _FakeDetector()
-    pane = _pane(
-        track_group_repository,
-        db_path,
-        enable_dev_ocr_profile_selector=True,
-        hybrid_detector_factory=lambda: detector,
-    )
-    pane.open_video(test_video)
-    pane.dev_ocr_profile_combo.setCurrentIndex(1)
-
-    _run_ocr(pane)
-    assert pane.current_ocr_job.state is JobState.SUCCEEDED
-    assert pane.qa.cues
-    assert pane.discard_latest_run_button.isEnabled() is True
-
-    with patch.object(QMessageBox, "exec", return_value=None), patch.object(
-        QMessageBox,
-        "clickedButton",
-        lambda self: next((b for b in self.buttons() if "Discard" in b.text()), None),
-    ):
-        pane.discard_latest_run_button.click()
-
-    assert pane.qa.cues == []
-    assert pane.evidence_pane.list_widget.count() == 0
+# --- Seam 6: Discard Latest OCR Run -----------------------------------
+#
+# This seam's Hybrid-flavored regression was removed in the M11 Legacy
+# Pipeline Retirement Corrective Gate (2026-09-04): EXPERIMENTAL_HYBRID
+# is no longer product/DevQA-reachable (test_launchers.py's
+# test_neither_launcher_can_select_the_retired_hybrid_pipeline covers
+# that). Discard Latest OCR Run on the production path already has
+# dedicated coverage elsewhere (test_path_a_media_pane_ocr.py,
+# test_discard_latest_run_safety_dialog.py), so no seam is left uncovered.
     assert pane.discard_latest_run_button.isEnabled() is False
 
 

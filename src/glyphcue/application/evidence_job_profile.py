@@ -1,19 +1,23 @@
 """Which Path A evidence strategy a run uses.
 
-Two strategies now exist and both are real:
-
   * `PRODUCTION_TRIGGER` -- `build_ocr_evidence_job` with
-    `ChangeTriggeredOcrPolicy`, the shipped behavior. It stays the
-    default everywhere, it is not deprecated, and it remains the
-    fallback if the experimental profile is ever withdrawn.
-  * `EXPERIMENTAL_HYBRID` -- `build_hybrid_ocr_evidence_job`, the M11
-    Research Gate candidate. Opt-in only, and it needs a text detector
-    the production profile does not use.
+    `ChangeTriggeredOcrPolicy`, the shipped behavior. It is the ONLY
+    profile any product or DevQA launch can reach -- there is no UI
+    control, launch-time switch, or env var left anywhere that can
+    select the other one (M11 Legacy Pipeline Retirement Corrective
+    Gate, 2026-09-04, retired the developer OCR Profile selector that
+    used to expose it).
+  * `EXPERIMENTAL_HYBRID` -- `build_hybrid_ocr_evidence_job`. Retained
+    ONLY as historical evaluation/reproducibility infrastructure for
+    `benchmarks/private_video_corpus/run_evaluation.py` and the other
+    M11 Research Gate benchmark scripts, which construct and invoke it
+    directly; it is not a product pipeline and not reachable from
+    `src/glyphcue/ui/`.
 
 The switch is explicit on purpose. An implicit default that quietly
 changed which pipeline produced a user's evidence would make two runs
-incomparable without anything in the UI saying so; a caller naming its
-profile can be read off the call site.
+incomparable without anything saying so; a caller naming its profile can
+be read off the call site.
 """
 
 from __future__ import annotations
