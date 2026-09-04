@@ -356,19 +356,44 @@ now-complete flag set as the real `GlyphCue.exe`, invoking the real
   message taken on faith.
 - Real OCR-evidence run on `sample_g` (10.05–20.05s), same conditions as
   the isolation benchmark above (no competing CPU load): 25 OCR calls,
-  65 observations, **Realtime cost = 5.48×**. Slightly above the earlier
-  4.02×/4.19× measurements from the same session (most likely ordinary
-  run-to-run variance immediately following a large compile job on this
-  machine, not a new regression) but squarely in the same ≤5×-class
-  range this milestone has consistently measured for the DirectML path,
-  a large, real improvement over the CPU default's 19.7×–108.4×.
+  65 observations, **Realtime cost = 5.48×** on that single run — a real
+  first-look number, but numerically above the ≤5.0× target on its own,
+  so not accepted as evidence of meeting the target without repeating it.
 - `GLYPHCUE_DISABLE_DIRECTML_OCR=1`: `PaddleOcrEngine` selected as
   required, and a real `.initialize()` call succeeded — the DevQA
   override and the Paddle resilience fallback both proven working in the
   actual packaged product, not just in source.
 
+**Evidence-inconsistency follow-up (2026-09-04, same day):** a single
+5.48× run is not enough to adjudicate against a ≤5.0× target — re-ran the
+identical packaged `sample_g` (10.05–20.05s) DirectML smoke **three
+times in one process**, confirmed idle machine each time (no competing
+build/test/OCR load), same real `app_module._ocr_engine_factory` default
+path, freshly re-selecting/re-initializing the engine each run:
+
+| Run | Engine | Providers (det/rec) | Realtime cost |
+|---|---|---|---|
+| 1 | `DirectMlOcrEngine` | `DmlExecutionProvider` (both) | 4.806× |
+| 2 | `DirectMlOcrEngine` | `DmlExecutionProvider` (both) | 5.192× |
+| 3 | `DirectMlOcrEngine` | `DmlExecutionProvider` (both) | 4.489× |
+
+**Median = 4.806× ≤ 5.0×.** All three runs independently confirmed
+`DirectMlOcrEngine` selected and `DmlExecutionProvider` genuinely active.
+Per the pre-committed adjudication rule (median decides, ≤5.0× closes the
+seam, >5.0× would have required stopping and reporting rather than
+redefining the target), **this closes the evidence gap**: the packaged
+DirectML path meets the M11 ≤5.0× performance target, with normal
+run-to-run variance (4.49×–5.19×, a ~15% spread) rather than a
+regression — the original 5.48× stands as an upper-bound single
+observation, not the representative figure.
+
 **Cleanup:** all throwaway repro builds/scripts for this gate deleted
 after verification, matching every prior packaging repro this session.
+
+**CI confirmation:** GitHub Actions run `33894871162` for commit
+`3380478` (this gate's code/test commit) completed **success** — full
+automated regression is green on the actual pushed changes, not just the
+793-test local subset run before pushing.
 
 **Stage ⑥ evidence baseline refreshed to `4afb8d4`** (human-adjudicated;
 not a reopening of Stage ⑥ itself). Between `906f9e7` and `4afb8d4`, the
