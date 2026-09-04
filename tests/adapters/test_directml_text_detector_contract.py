@@ -107,6 +107,53 @@ def test_call_with_detected_boxes_returns_list_of_4x2_ndarrays(monkeypatch):
     detector.shutdown()
 
 
+def test_initialize_raises_when_dml_provider_is_not_actually_active(monkeypatch):
+    # ONNX Runtime does not raise when the requested DmlExecutionProvider
+    # is unavailable -- InferenceSession silently substitutes
+    # CPUExecutionProvider instead. Package/platform presence alone (what
+    # directml_detector_platform_supported checks) is therefore not proof
+    # DirectML actually got selected; only the initialized session's own
+    # get_providers() is. A session that silently fell back to CPU must
+    # be treated as a failed DirectML initialization, not a quiet success.
+    ort = pytest.importorskip("onnxruntime")
+
+    class _FakeCpuOnlySession:
+        def get_providers(self):
+            return ["CPUExecutionProvider"]
+
+        def get_inputs(self):
+            return [type("Input", (), {"name": "x"})()]
+
+    monkeypatch.setattr(ort, "InferenceSession", lambda *a, **k: _FakeCpuOnlySession())
+    monkeypatch.setattr(
+        detector_module, "_resolve_medium_detector_model_path", lambda *a, **k: "fake.onnx"
+    )
+
+    with pytest.raises(RuntimeError, match="DmlExecutionProvider"):
+        detector_module._ExactPaddleDirectMlDetectorBackend(model_path="fake.onnx").initialize()
+
+
+def test_initialize_succeeds_when_dml_provider_is_genuinely_active(monkeypatch):
+    ort = pytest.importorskip("onnxruntime")
+
+    class _FakeDmlSession:
+        def get_providers(self):
+            return ["DmlExecutionProvider", "CPUExecutionProvider"]
+
+        def get_inputs(self):
+            return [type("Input", (), {"name": "x"})()]
+
+    monkeypatch.setattr(ort, "InferenceSession", lambda *a, **k: _FakeDmlSession())
+    monkeypatch.setattr(
+        detector_module, "_resolve_medium_detector_model_path", lambda *a, **k: "fake.onnx"
+    )
+
+    backend = detector_module._ExactPaddleDirectMlDetectorBackend(model_path="fake.onnx")
+    backend.initialize()  # must not raise
+
+    assert backend.sess.get_providers() == ["DmlExecutionProvider", "CPUExecutionProvider"]
+
+
 def test_shutdown_cleans_up_detector(monkeypatch):
     class FakeDetector:
         def shutdown(self):

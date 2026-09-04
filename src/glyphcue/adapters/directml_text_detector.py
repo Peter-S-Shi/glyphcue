@@ -99,6 +99,25 @@ class _ExactPaddleDirectMlDetectorBackend:
             sess_options=opts,
             providers=["DmlExecutionProvider", "CPUExecutionProvider"],
         )
+        # ONNX Runtime does not raise when the requested provider is
+        # unavailable -- it silently substitutes the next one in the list
+        # (here, CPUExecutionProvider). Requesting DirectML is therefore
+        # not evidence DirectML is what actually initialized; the session's
+        # own get_providers() after construction is the only real signal.
+        # A caller that asked for the DirectML detector and silently got
+        # CPU instead would see a slow, unexplained non-failure -- this
+        # must surface as an explicit initialization failure instead, so
+        # `create_text_detector`'s existing probe-catches-exception
+        # fallback routes it to PaddleOcrTextDetector like any other real
+        # DirectML init failure.
+        active_providers = self.sess.get_providers()
+        if "DmlExecutionProvider" not in active_providers:
+            self.sess = None
+            raise RuntimeError(
+                "DmlExecutionProvider was requested but is not active in the "
+                f"initialized ONNX Runtime session (active providers: "
+                f"{active_providers}); refusing to silently run on CPU"
+            )
         self.input_name = self.sess.get_inputs()[0].name
 
     def preprocess(self, img: np.ndarray) -> tuple[np.ndarray, _PreprocessingInfo]:
