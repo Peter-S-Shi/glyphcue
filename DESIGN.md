@@ -3,7 +3,7 @@
 **Document type:** Production-facing UI / UX design authority  
 **Project:** GlyphCue  
 **Repository:** `Peter-S-Shi/glyphcue`  
-**Lifecycle phase:** Production Development in progress → Milestone 10 complete (evidence/evaluation closure accepted; representative-video gate transferred to Milestone 11, not waived — see `ROADMAP.md` §17's gate audit disposition), Feature Freeze ACTIVE, Milestone 11 (Product Hardening & Full Regression) next  
+**Lifecycle phase:** Production Development → Milestone 10 complete; Milestone 11 (Product Hardening & Full Regression) CLOSED (2026-09-04), Release Acceptance REJECTED BY HUMAN ADJUDICATION — Release Ready = NO, Release/Packaging SUSPENDED, Feature Freeze lifted only for **Milestone 12 (Product Rework & Cue Quality Recovery)**'s named corrective scope, which includes two of this document's own workflows (Discard visibility, review ordering). See `ROADMAP.md` §18/§19 and `PROJECT_STATUS.md` for the full disposition.  
 **Status:** Authoritative V1 design specification  
 **Last updated:** 2026-08-31
 

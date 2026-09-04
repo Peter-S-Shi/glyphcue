@@ -853,5 +853,5 @@ On 2026-09-03, human adjudication formally reviewed the evidence from §15, §16
 * All five frozen representative windows (`sample_g`, `sample_e`, `sample_h`, `sample_f`, `sample_c`) plus clean baseline `sample_a` have completed 180 s full-window evaluations.
 * Acceptance Gate 9 (transferred from M10 §17) is satisfied.
 * **Milestone 11 Stage ⑤ Representative Evaluation is formally CLOSED.**
-* Milestone 11 remains **IN PROGRESS**. The next stage is **Stage ⑥ Full Regression (READY TO BEGIN)**.
+* At this point in the record, Milestone 11 remained **IN PROGRESS**, with Stage ⑥ Full Regression next. **Update:** Stage ⑥ subsequently closed by Human Adjudication (2026-09-03), Stage ⑦ produced real packaging/DirectML-default evidence (2026-09-04), and Milestone 11 itself then **CLOSED (2026-09-04) with Release Acceptance REJECTED BY HUMAN ADJUDICATION** — see `PROJECT_STATUS.md` and `ROADMAP.md` §18 for the full closure disposition; the product is now in Milestone 12 (Product Rework & Cue Quality Recovery, `ROADMAP.md` §19).
 

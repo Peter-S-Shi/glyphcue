@@ -484,11 +484,13 @@ formal `DirectMlOcrEngine` + `DirectMlTextDetector` in isolated `[directml]` env
 **Human Adjudication Closure (2026-09-03):** All five frozen representative windows plus clean baseline
 reserve `sample_a` have completed full-window evaluation. Acceptance gate 9 (ROADMAP §17/§18) is
 satisfied. **Milestone 11 Stage ⑤ Representative Evaluation is formally CLOSED.**
-Milestone 11 remains **IN PROGRESS**; the next execution stage is **Stage ⑥ Full Regression (READY TO BEGIN)**.
+At this point in the record, Milestone 11 remained **IN PROGRESS**, with Stage ⑥ Full Regression next. **Update:** Stage ⑥ subsequently closed by Human Adjudication (2026-09-03), Stage ⑦ produced real packaging/DirectML-default evidence (2026-09-04), and Milestone 11 itself then **CLOSED (2026-09-04) with Release Acceptance REJECTED BY HUMAN ADJUDICATION** — see `PROJECT_STATUS.md` and `ROADMAP.md` §18 for the full closure disposition; the product is now in Milestone 12 (Product Rework & Cue Quality Recovery, `ROADMAP.md` §19).
 
 - Also open, restated from "Limitations" above: Path A Cue-level precision/recall, Path A timing start/end error,
   WER (any corpus), and CPU use / full-pipeline memory are all not empirically closed by design of the point-sample
   methodology. None of these gaps were filled by generating synthetic proxies, per this report's discipline.
 - Product code in `src/` incorporates caption identity fixes (`875fb04`), opt-in DirectML GPU accelerators (`178038f`),
-  and mixed-script clustering vetoes (`075ac4b`). PR #13 remains in Draft.
+  and mixed-script clustering vetoes (`075ac4b`). PR #13 is Milestone 11's
+  Lifecycle Closure PR (hardening complete, Release Acceptance rejected
+  by Human Adjudication — see `PROJECT_STATUS.md`), not a release PR.
 

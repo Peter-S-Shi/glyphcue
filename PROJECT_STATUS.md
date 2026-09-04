@@ -4,7 +4,63 @@
 
 ## Current milestone
 
-**Milestone 11 — Product Hardening & Full Regression: IN PROGRESS.**
+**Milestone 11 — Product Hardening & Full Regression: HARDENING COMPLETE / CLOSED (2026-09-04). Release Acceptance REJECTED BY HUMAN ADJUDICATION.**
+
+Every acceptance-gate item in ROADMAP.md §18 executed with real,
+CI-verified evidence (see the full stage-by-stage record below,
+unchanged from how it happened). After hands-on re-testing of the
+packaged product, the repository owner rejected Release Acceptance for
+three release-blocking reasons not caught by the automated gates below:
+
+1. The ≤5× realtime DirectML production path (Stage ⑦ Runtime Default
+   Corrective Gate, below) still trades Cue production quality for
+   speed — confirmed directly via a new fail-closed DevQA DirectML
+   verification entrypoint (see "DevQA DirectML verification asset",
+   below), which showed the approved pipeline re-confirming a single
+   static 10s caption roughly every 0.4s (25 OCR calls → 65 stored
+   observations), a duplicate/re-confirmation-heavy behavior that is the
+   pipeline's real characteristic, not a packaging artifact.
+2. QA review UX is not acceptable: `Discard` does not remove a discarded
+   Cue from the visible workspace, Pending/Needs-Review/Approved state
+   interleaving breaks linear/chronological review, and junk-Cue volume
+   reaching the review surface is too high.
+3. Windows packaging remains exploratory — Nuitka was already retired
+   mid-milestone, and PyInstaller's own collection-gap fixes (Stage
+   ⑦-C, below) are themselves evidence of an immature packaging path.
+
+**Disposition:** `Release Ready = NO`. Release/Packaging work is
+**SUSPENDED**. Feature Freeze is lifted only for the corrective rework
+scoped in **Milestone 12 — Product Rework & Cue Quality Recovery**
+(ROADMAP.md §19) — it is not a general reopening of V1 feature scope.
+The originally-next Release Candidate milestone is renumbered to
+Milestone 13 (ROADMAP.md §20) and does not begin until Milestone 12 is
+complete and accepted, followed by a second Product Hardening & Full
+Regression pass. See "PR Lifecycle Closure" and "Next action" below for
+the current git/PR mechanics and the rest of this document's stage
+history, preserved unchanged as the real record of how Milestone 11's
+hardening evidence was produced.
+
+### DevQA DirectML verification asset (added 2026-09-04, retained after closure)
+
+A DevQA-only, fail-closed verification entrypoint was added to make the
+DirectML production path's real behavior observable going forward,
+independent of the UI's downstream grouping/reconstruction layer:
+
+- [`tools/devqa_directml_verify.py`](tools/devqa_directml_verify.py) —
+  constructs `DirectMlOcrEngine`/`DirectMlTextDetector` for real, drills
+  to the raw ONNX Runtime sessions, asserts `DmlExecutionProvider` is
+  active on both, exits non-zero with a clear reason on any failure.
+  Never silently falls back.
+- [`Launch-GlyphCue-DirectML-DevQA.bat`](Launch-GlyphCue-DirectML-DevQA.bat) —
+  runs that preflight and refuses to launch on failure; otherwise starts
+  the same `python -m glyphcue` product UI (same `PRODUCTION_TRIGGER`
+  pipeline, same Architecture B — no new pipeline, no new UI toggle, no
+  user-facing backend selection).
+- Uses a dedicated, disposable venv (`.venv-directml-devqa/`, gitignored)
+  with the `[directml]` extra installed, kept separate from the trusted
+  `.venv`. Not part of the shipped product; diagnostic-only.
+- This is the tool that produced the ~0.4s re-confirmation-cadence
+  evidence behind reason 1 above.
 Stage ④ **Targeted Regression is CLOSED** — its automated evidence passed
 the human gate on 2026-09-02. Stage ⑤ **Representative Evaluation is
 CLOSED by Human Adjudication (2026-09-03)** — the M10 transferred
@@ -455,9 +511,12 @@ passed, 1 skipped), GitHub Actions whole-suite CI green (run
 `33829120305`).
 
 All Stage ⑤ residual non-blocking findings (below) are preserved
-unchanged. M11 is **not** complete.
+unchanged. M11 was **not** complete at this point in the record (later
+sections below cover Stage ⑥/⑦ and this document's closure). **Update:**
+M11 subsequently closed on 2026-09-04 with Release Acceptance rejected by
+Human Adjudication — see "Current milestone" at the top of this document.
 
-**Workbench UI rendering & cardification pass completed (2026-09-04):** scoped cardification applied to Center Pane (`#heroMediaCard`, `#previewLoopBox`, `#ocrActionBox` with `#ocrStatusBox`) and Right Pane (`#qaHeaderCard`, `#timingCard` integrating split/merge, `#languageLayerCard` with `#layerTag` pills, `#evidenceCard`, `#observationEvidenceCard`, `#exportCard`), aligning the production workbench visual hierarchy with `UI Design/glyphcue_workbench_prototype.html` without altering any domain/pipeline logic or window layout seam budgets (full suite green: 900 passed, 1 skipped, 1 xfailed). Next execution step: **Stage ⑦ Formal Human QA & Packaging Hardening (NEXT / READY TO BEGIN)**.
+**Workbench UI rendering & cardification pass completed (2026-09-04):** scoped cardification applied to Center Pane (`#heroMediaCard`, `#previewLoopBox`, `#ocrActionBox` with `#ocrStatusBox`) and Right Pane (`#qaHeaderCard`, `#timingCard` integrating split/merge, `#languageLayerCard` with `#layerTag` pills, `#evidenceCard`, `#observationEvidenceCard`, `#exportCard`), aligning the production workbench visual hierarchy with `UI Design/glyphcue_workbench_prototype.html` without altering any domain/pipeline logic or window layout seam budgets (full suite green: 900 passed, 1 skipped, 1 xfailed). Next execution step at this point in the record was **Stage ⑦ Formal Human QA & Packaging Hardening** — see later sections below and "Current milestone" at the top of this document for how Stage ⑦ and M11 ultimately closed.
 
 **Multilingual Architecture B integrated** (shared detection + universal
 recognition, corrective 12-case gate — see
@@ -554,8 +613,11 @@ Multilingual Performance Corrective Gate is CLOSED.** This closes the
 Corrective Gate specifically — it does not by itself close Stage ⑤
 Representative Evaluation (below) or advance PR #13 out of Draft.
 
-Feature Freeze is ACTIVE. Milestones 0–10 are complete and merged
-(PRs #1–#12).
+Feature Freeze was ACTIVE at this point in the record (Milestones 0–10
+complete and merged, PRs #1–#12). **Update:** as of M11's 2026-09-04
+closure, Feature Freeze is lifted only for Milestone 12's named
+corrective-rework scope — see "Current milestone" at the top of this
+document.
 
 
 ## Work completed in this stage
@@ -711,79 +773,78 @@ appears anywhere in the repository.
 ## Git / PR status
 
 - Branch: `milestone/11-product-hardening-full-regression`
-- PR: [#13](https://github.com/Peter-S-Shi/glyphcue/pull/13) — **Draft**,
-  intentionally not ready for review or merge.
+- PR: [#13](https://github.com/Peter-S-Shi/glyphcue/pull/13) — **Lifecycle
+  Closure PR**, ready for review/merge as the formal close-out of
+  Milestone 11 (hardening complete, Release Acceptance rejected). Not
+  self-merged by the agent that prepared it — the repository owner
+  performs the final Pre-Merge Governance Review and merge decision.
 
 ## Unresolved
 
-- Residual non-blocking evaluation findings preserved:
+- Residual non-blocking evaluation findings preserved (informational,
+  not release blockers on their own — superseded as release-blocking
+  concerns by the closure disposition above):
   - `sample_c`: Isolated window-boundary non-text reading (`"zh": "3\n8"`) on Cue 1 (1.1s), safely fail-closed with `ambiguous_languages: ["zh"]`; non-contaminating.
   - `sample_f`: One illegible Chinese layer at 661.1s left untranscribed in GT rather than guessed; rapid b-roll editor button glyphs flagged ambiguous.
-- Formal human Manual QA — unstarted, Stage ⑦-C.
-- Packaging hardening: Stage ⑦-A (build) and ⑦-B (technical smoke)
-  automated evidence is complete as of 2026-09-04 via the PyInstaller
-  onedir path (see "Current milestone" below for the full evidence);
-  this evidence awaits human adjudication before Stage ⑦ itself is
-  considered closed. Remaining: Inno Setup installer work (deliberately
-  not started), and the Stage ⑦-C human-QA checklist below.
+- Packaging: Stage ⑦-A (build) and ⑦-B (technical smoke) automated
+  evidence completed 2026-09-04 via the PyInstaller onedir path; the
+  Stage ⑦-C human-QA checklist (clean-machine verification, package-size
+  decision) was never finished, because Release Acceptance was rejected
+  before reaching it. Packaging work of any kind (Inno Setup included)
+  is **SUSPENDED**, not merely paused mid-checklist — it does not resume
+  until Milestone 12 (Product Rework & Cue Quality Recovery) is accepted
+  and a second Product Hardening pass is scoped.
+- Milestone 12's own scope (Cue-quality direction, QA review UX fixes) is
+  entirely open — see ROADMAP.md §19. No implementation work for it has
+  started; this PR does not touch it.
 
 ## Next action
 
-Stage ⑤ Representative Evaluation is **CLOSED by Human Adjudication (2026-09-03)**
-(all five representative windows plus clean baseline reserve `sample_a` have full-window
-180 s evaluation evidence; acceptance gate 9 is satisfied).
+**This PR (#13) is Milestone 11's Lifecycle Closure PR, not a release
+PR.** Every M11 stage below completed with real evidence — Stage ④
+Targeted Regression, Stage ⑤ Representative Evaluation (Human
+Adjudication, 2026-09-03), Stage ⑥ Full Regression (Human Adjudication,
+2026-09-03), and Stage ⑦-A/⑦-B (PyInstaller build + technical smoke,
+2026-09-04) plus the Stage ⑦ Runtime Default Corrective Gate — but Stage
+⑦-C's human-QA checklist below was never finished, because **Human
+Adjudication (2026-09-04) rejected Release Acceptance for the product**
+on the three grounds in "Current milestone" above before reaching it.
+**Milestone 11 is CLOSED on that basis** — hardening execution complete,
+release rejected, not "hardening incomplete."
 
-Stage ⑥ Full Regression is **CLOSED by Human Adjudication (2026-09-03)**,
-evidence baseline refreshed from `906f9e7` to `4afb8d4` after the
-M11 Legacy Pipeline Retirement Corrective Gate (see "Current milestone"
-above for the full evidence split and what changed between the two
-baselines — this refresh did not reopen Stage ⑥).
+The Stage ⑦-C checklist that was in flight when the halt decision was
+made (preserved here as a historical record of what remained
+technically open in the release-track sense, now moot under
+Release/Packaging SUSPENDED, not carried forward as live TODOs):
+1. Re-run the manual click-through on the rebuilt
+   `GlyphCue.exe` (Path A OCR evidence, Path B import/export) — was
+   never completed.
+2. Clean-machine (not just isolated-`USERPROFILE`) verification — was
+   never completed.
+3. Onedir output size (911 MB) ship-as-is-or-reduce decision — was never
+   made.
+4. `--collect-all rapidocr` gap — **DONE (2026-09-04)**, see "Stage ⑦
+   Runtime Default Corrective Gate" above; this item is not reopened.
+5. DirectML-default release-policy question — **RESOLVED (2026-09-04)**,
+   see "Stage ⑦ Runtime Default Corrective Gate" above and
+   `docs/adr/0001-ocr-runtime-selection.md`; this is exactly the policy
+   whose real-world quality trade-off then became closure reason 1
+   above — resolved as a packaging/policy question, then judged
+   release-blocking as a product-quality question.
 
-The subsequent execution sequence is strictly:
-**Stage ⑥ Full Regression (CLOSED) → Stage ⑦ Formal Human QA & Packaging Hardening**.
+The previously-noted DirectML correctness trade-off on some content
+remains documented in `docs/adr/0001-ocr-runtime-selection.md` and is
+unchanged by the Stage ⑦ runtime-default policy switch itself — Paddle
+stays the real, working fallback whenever DirectML's real preflight/probe
+fails. That policy switch is not being reverted by this closure; it is
+the underlying Cue-quality-vs-speed trade-off it exposed that Milestone
+12 exists to address.
 
-Stage ⑦-A (PyInstaller onedir build) and ⑦-B (technical smoke) have real,
-automated evidence as of 2026-09-04 (see "Current milestone" above).
-This evidence has **not yet been human-adjudicated**; Stage ⑦ itself and
-Milestone 11 remain **IN PROGRESS**; PR #13 stays **Draft**.
-
-**Stage ⑦-C — minimal remaining Human QA checklist:**
-1. **Re-run** the manual click-through on the freshly rebuilt
-   `.glyphcue-pyinstaller-build\dist\GlyphCue\GlyphCue.exe` (rebuilt
-   2026-09-04 with the Paddle/paddlex packaging fix — see "Stage ⑦-C
-   manual testing" above): open a real video (Path A), **Run OCR
-   Evidence** and confirm it actually produces observations/cues (not
-   just "doesn't crash"), switch to Path B, open/import a real
-   `.srt`/`.vtt` caption file, edit and Approve a cue, export, reopen.
-   The first attempt at this (same day) failed at "Run OCR Evidence" —
-   root-caused and fixed at the packaging level (three missing
-   PyInstaller collection flags for `paddlex`/`paddle`); this session
-   verified the fix at the reproduction level but has no native
-   UI-automation tool to click through the rebuilt `.exe` itself.
-2. Confirm the packaged app behaves correctly on a genuinely clean
-   machine/profile that has never had the `.venv` dev environment
-   installed (this session's smoke used an isolated `USERPROFILE` on the
-   *same* machine, not a separate machine — still real evidence, but not
-   a literal "clean machine" test).
-3. Decide whether the onedir output (911 MB) is acceptable to ship as-is
-   or should be reduced (e.g. excluding unused Paddle/RapidOCR model
-   variants, unused Qt translations/plugins) before Inno Setup work
-   begins — a product/packaging-size judgment call, not a technical
-   blocker.
-4. ~~Add `--collect-all rapidocr`...~~ **DONE (2026-09-04) — see "Stage ⑦
-   Runtime Default Corrective Gate" above.** Real `GlyphCue.exe` rebuilt
-   and verified to contain `rapidocr` and its bundled `.onnx` models.
-5. ~~Separate release-policy question: should Windows production
-   automatically prefer DirectML...~~ **RESOLVED (2026-09-04) — Human
-   Adjudication approved it as part of the same corrective gate.**
-   Windows production now prefers DirectML by default (real preflight +
-   automatic fallback to Paddle CPU, unchanged single `PRODUCTION_TRIGGER`
-   pipeline); see "Stage ⑦ Runtime Default Corrective Gate" above and the
-   updated `docs/adr/0001-ocr-runtime-selection.md`. The previously-noted
-   DirectML correctness trade-off on some content remains documented
-   there and is unchanged by this policy switch — Paddle stays the real,
-   working fallback whenever DirectML's real preflight/probe fails.
-6. Once 1–5 are reviewed (4 and 5 already closed above): explicit "Human
-   adjudication APPROVED" closes
-   Stage ⑦-A/⑦-B/⑦-C together, and Inno Setup installer work (ROADMAP.md
-   §3, "Final installer") can begin as its own next step.
+**The next real engineering action is Milestone 12 — Product Rework &
+Cue Quality Recovery (ROADMAP.md §19).** Stage ⑦-C's remaining
+click-through/clean-machine/package-size items above are not carried
+forward as live checklist items — Inno Setup installer work
+(ROADMAP.md §3, "Final installer") does not begin until Milestone 12 is
+accepted and a second Product Hardening & Full Regression pass (scoped
+at that time, evaluated against a gate equivalent to §18's) has itself
+closed.
