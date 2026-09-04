@@ -6,38 +6,42 @@
 
 **Milestone 11 — Product Hardening & Full Regression: IN PROGRESS.**
 Stage ④ **Targeted Regression is CLOSED** — its automated evidence passed
-the human gate on 2026-09-02. Currently at stage ⑤ **Representative
-Evaluation**, which is the M10 gate transferred by §17's gate audit
-(ROADMAP §18 acceptance gate 9). Steps **⑤-A and ⑤-B are CLOSED**.
-**⑤-C has been executed, twice.** The split-profile stress run approved
-at its human gate (Option A — `EXPERIMENTAL_HYBRID` for the two
-single-language windows, `PRODUCTION_TRIGGER` for the three bilingual
-ones) ran against all five frozen windows with no exceptions; **every
-window finished partial** at the 600 s per-entry timeout. A subsequent,
-narrowly-scoped **completion supplement** (human-gate approved) then gave
-`sample_g`, `sample_e` and the pre-existing M10 `sample_a` reserve a
-1800 s timeout under Hybrid only — **all three completed** — but
-surfaced a correctness finding (Chinese-language CER above 1.0).
-This finding served as the historical trigger for the **Caption Identity
-Corrective Gate**, which successfully diagnosed the root cause (hybrid state
-transition and consensus disambiguation) and integrated formal fixes (843 tests passed).
-Subsequently, three major performance hardening gates were integrated:
-**P2 Recognition-only Patch**, **P3 Windows-only Opt-in DirectML Recognizer**,
-and **P4B Windows-only Opt-in Same-Detector DirectML Text Detector** (`PP-OCRv6_det_medium.onnx`).
-Parallel chunking was also evaluated via an evidence gate and formally **REJECTED**
-due to thread DirectX/D3D12 device safety and multiprocess lock serialization.
-`sample_h`/`sample_f`/`sample_c` coverage remains partial. **Stage ⑤ is still OPEN**
-(correctness corrective closed, but representative evaluation gate remains open);
-results are recorded in [`docs/m11_representative_evaluation.md`](docs/m11_representative_evaluation.md)
-§15–§16, and folded into [`EVALUATION_REPORT.md`](EVALUATION_REPORT.md) and
-[`FAILURE_MODE_REPORT.md`](FAILURE_MODE_REPORT.md). M11 is **not** complete and that gate is still open.
+the human gate on 2026-09-02. Stage ⑤ **Representative Evaluation is
+CLOSED by Human Adjudication (2026-09-03)** — the M10 transferred
+acceptance gate 9 (ROADMAP §18) is fully satisfied across all five frozen
+windows (`sample_g`, `sample_e`, `sample_h`, `sample_f`, `sample_c`, 180 s
+each) plus clean baseline reserve `sample_a` (177 s), all achieving 100%
+window coverage with zero crashes.
+
+Following the earlier split-profile stress run (§15) and single-language
+completion supplement (§16, which triggered the closed Caption Identity
+Corrective Gate), the **bilingual completion supplement (§17)** ran
+`sample_h` (900–1080s), `sample_f` (560–740s), and `sample_c` (480–660s)
+to 100% completion under the formal Architecture B + DirectML product path:
+- **Coverage & Realtime:** All three windows completed 180/180 s (100.0%).
+  Realtime ratios measured **2.71×** (`sample_h`), **3.66×** (`sample_f`),
+  and **4.16×** (`sample_c`) — all strictly ≤5.0× realtime, closing the
+  M11 performance target and resolving the CPU baseline bottleneck.
+- **Correctness & Multilingual Separation:** Point recall was **100.0%
+  (31/31 verified instants)** across all three bilingual samples (`h`: 10/10,
+  `f`: 11/11, `c`: 10/10). `multilingual_missing_layer_count` was **0** and
+  `multilingual_wrong_assignment_count` was **0** across all 31 instants.
+  Zero layer swaps in conversational speech.
+- **Residual Documented Limitations:**
+  - `sample_c`: An isolated non-text reading (`"zh": "3\n8"`) on Cue 1
+    (480.0–481.1s, 1.1s) safely fail-closed with `ambiguous_languages: ["zh"]`;
+    it did not contaminate Cue 2 (481.1s, CER 0.0) or downstream cues (7/10
+    verified instants achieved CER 0.0000).
+  - `sample_f`: Screen-recording b-roll editor toolbar glyphs (`B I U S ミ H1 H2`)
+    recognized into `zh` with fail-closed ambiguity flags.
+Stage ⑤ is CLOSED. M11 is **not** complete. Next execution step:
+**Stage ⑥ Full Regression (READY TO BEGIN)**.
 
 **Multilingual Architecture B integrated** (shared detection + universal
 recognition, corrective 12-case gate — see
 [`docs/multilingual/track_group_reconstruction.md`](docs/multilingual/track_group_reconstruction.md)'s
-Milestone 11 Architecture B section). **Stage ⑤ representative evaluation
-still open pending post-integration `sample_h`/`sample_f`/`sample_c`
-confirmation** — Architecture B landing does not by itself close Stage ⑤.
+Milestone 11 Architecture B section). Full 180 s verification on all three
+bilingual windows confirmed ≤5× realtime and zero conversational layer swaps.
 A real 10s-window post-integration smoke on all three surfaced a genuine,
 unresolved **speed/correctness trade-off, not a closed result**: on CPU
 Paddle (the shipped default), correctness/layer/timing/review semantics
@@ -214,14 +218,18 @@ COMPLETE:**
   trigger for the subsequent **Caption Identity Corrective Gate**, which
   formally diagnosed and resolved the root cause in product code.
 
-- `sample_h`/`sample_f`/`sample_c` were **not** re-attempted; their
-  stress-run partial results are unchanged.
-- Full breakdown, the explicit stress-run-vs-supplement distinction, and
-  an extended Human Adjudication list are in
-  `docs/m11_representative_evaluation.md` §16.
-- Findings folded into `EVALUATION_REPORT.md` ("M11 stage 5 —
-  Representative-Video Evaluation") and `FAILURE_MODE_REPORT.md`
-  (updated #5, #7; #12 for the CER finding; addendum to #6).
+**Bilingual completion supplement (Architecture B + DirectML, human-gate approved) — RUN COMPLETE:**
+
+- Ran `sample_h` (900–1080s), `sample_f` (560–740s), and `sample_c` (480–660s)
+  through the formal Architecture B + DirectML product path (`DirectMlOcrEngine` +
+  `DirectMlTextDetector`) in an isolated `[directml]` environment.
+- **All three completed 180/180 s (100.0% coverage)** to `succeeded` state:
+  - `sample_h`: 488.1 s wall clock, **2.71×** realtime, 10/10 point recall (100%), CER zh 0.2523 / en 0.0183, 0 missing, 0 wrong assignment.
+  - `sample_f`: 659.2 s wall clock, **3.66×** realtime, 11/11 point recall (100%), CER zh 0.0611 / en 0.4641, 0 missing, 0 wrong assignment.
+  - `sample_c`: 748.2 s wall clock, **4.16×** realtime, 10/10 point recall (100%), CER zh 0.1316 / en 0.4316, 0 missing, 0 wrong assignment.
+- Point recall across the three bilingual windows is **31/31 (100.0%)**; multilingual missing and wrong assignment are **0/0**. Zero layer swaps in conversational dialogue.
+- Residual limitations preserved: `sample_c` isolated `"3\n8"` boundary non-text reading fail-closed with `ambiguous_languages: ["zh"]`, non-contaminating; `sample_f` screen-recording editor button glyphs flagged ambiguous.
+- Stage ⑤ Representative Evaluation is formally **CLOSED by Human Adjudication (2026-09-03)**. Detailed results recorded in `docs/m11_representative_evaluation.md` §17 and `EVALUATION_REPORT.md`.
 
 Stage ④ Targeted Regression (CLOSED) remains recorded in
 [`docs/m11_targeted_regression.md`](docs/m11_targeted_regression.md):
@@ -281,41 +289,22 @@ appears anywhere in the repository.
 
 ## Unresolved
 
-- ROADMAP §18 acceptance gate is open, including gate 9 (the transferred
-  representative-video evaluation). `sample_g`/`sample_e`/`sample_a` are
-  now fully evaluated (completion supplement); `sample_h`/`sample_f`/
-  `sample_c` remain partial at 2.2%–3.5% window coverage. Human
-  adjudication needed (`docs/m11_representative_evaluation.md` §15–§16):
-  (1) whether to extend the timeout for `sample_h`/`sample_f`/`sample_c`
-  too (a harness parameter, not an algorithm change), and if so how far,
-  given Production's measured ~99–159× realtime cost; (2) `sample_h`'s
-  duplicate-cue risk is still inconclusive; (3) whether the
-  Hybrid/Production performance gap warrants a controlled follow-up;
-  (4) whether the current partial + supplement results are sufficient
-  for `EVALUATION_REPORT.md` as reported, or fuller coverage is required first.
-- `sample_f`'s one illegible Chinese layer would change if the gate
-  chooses to re-read that frame by hand.
-- Packaging hardening (Qt plugins, FFmpeg path, OCR model assets, runtime
-  DLLs) — unstarted.
+- Residual non-blocking evaluation findings preserved:
+  - `sample_c`: Isolated window-boundary non-text reading (`"zh": "3\n8"`) on Cue 1 (1.1s), safely fail-closed with `ambiguous_languages: ["zh"]`; non-contaminating.
+  - `sample_f`: One illegible Chinese layer at 661.1s left untranscribed in GT rather than guessed; rapid b-roll editor button glyphs flagged ambiguous.
+- Packaging hardening (Qt plugins, FFmpeg path, OCR model assets, runtime DLLs) — unstarted.
 - Formal human Manual QA — unstarted.
-- The M11 Full Regression itself — unstarted.
+- Stage ⑥ Full Regression — unstarted (READY TO BEGIN).
 
 ## Next action
 
-The Multilingual Performance Corrective Gate is now CLOSED (see above —
-mixed-script adjacency clustering ambiguity was the real root cause, not
-detector under-segmentation; fixed in `075ac4b`, re-verified on the real
-DirectML product path against all three frozen windows). What remains
-open: the `sample_c` `"zh": "3\n8"` garbled reading (separately
-un-diagnosed, does not block this gate), and whether `sample_h`'s cue
-count is genuine fragmentation vs a legitimate difference from the CPU
-baseline (not independently re-confirmed this round). Also pending: the
-remaining representative evaluation items
-(`docs/m11_representative_evaluation.md` §15–§16), specifically whether
-`sample_h`/`sample_f`/`sample_c` receive a timeout extension or whether
-existing partial coverage suffices to close the representative gate.
-Following Stage ⑤ closure, the
-subsequent execution sequence is strictly **Stage ⑥ Full Regression →
-Stage ⑦ Formal Human QA** (alongside packaging hardening). Stage ⑤
-remains OPEN. Do not treat M11 as complete, and do not advance to
-merge-readiness before its earlier stages are signed off. PR #13 stays Draft.
+Stage ⑤ Representative Evaluation is **CLOSED by Human Adjudication (2026-09-03)**
+(all five representative windows plus clean baseline reserve `sample_a` have full-window
+180 s evaluation evidence; acceptance gate 9 is satisfied).
+
+The subsequent execution sequence is strictly:
+**Stage ⑥ Full Regression (READY TO BEGIN) → Stage ⑦ Formal Human QA & Packaging Hardening**.
+
+Immediate next step: **Begin Stage ⑥ Full Regression** across the full repository test suite
+and packaging verification seams once authorized. Milestone 11 remains **IN PROGRESS**
+and incomplete; PR #13 stays **Draft**.

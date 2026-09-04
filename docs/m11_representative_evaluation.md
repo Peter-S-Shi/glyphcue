@@ -1,21 +1,23 @@
 # Milestone 11 — Representative Evaluation (stage ⑤)
 
-**Status:** IN PROGRESS. The step ⑤-C split-profile evaluation has been
-**executed** against all five frozen windows (§15), and a scoped
-**completion supplement** (§16) then gave three of those windows —
-`sample_g`, `sample_e`, plus the pre-existing M10 `sample_a` reserve — a
-longer timeout under Hybrid only, at which all three completed. **Stage
-⑤ is still NOT closed**: `sample_h`/`sample_f`/`sample_c` remain
-partial, and the completion supplement surfaced a new, unresolved
-correctness finding (Chinese-language CER > 1.0 under Hybrid) rather
-than closing the question. Several items in §15 and §16's Human
-Adjudication lists are still open.
+**Status:** CLOSED by Human Adjudication (2026-09-03). All five frozen
+representative windows now carry full 180 s evaluation evidence. The
+initial split-profile stress run (§15, 600 s cap) established the
+partial-timeout baseline; the scoped single-language completion supplement
+(§16, 1800 s timeout, Hybrid) completed `sample_g`, `sample_e`, and
+reserve `sample_a` (historically surfacing the CER finding resolved by the
+Caption Identity Gate); and the bilingual completion supplement (§17, 1800 s
+timeout, Architecture B + DirectML product path) completed `sample_h`,
+`sample_f`, and `sample_c` at 180/180 s coverage, 2.71× / 3.66× / 4.16×
+realtime, 31/31 point recall, and 0/0 multilingual missing/wrong assignment
+errors. Per formal human adjudication, Stage ⑤ is CLOSED. Milestone 11
+remains incomplete pending Stage ⑥ Full Regression and Stage ⑦ Formal Human QA.
 
 | Step | State |
 |---|---|
 | ⑤-A Corpus selection | **CLOSED** — accepted at the human gate; the corpus below is frozen |
 | ⑤-B Evaluation preparation | **CLOSED** — five ROI proposals approved unchanged (§6); all 44 ground-truth candidates confirmed with no corrections (§7, §9) |
-| ⑤-C Split-profile evaluation | **RUN COMPLETE + completion supplement RUN COMPLETE, awaiting human adjudication** — the five-window stress run (§15, 600 s/entry) is final and unchanged: all five partial. The completion supplement (§16, 1800 s/entry, Hybrid-only, `g`/`e`/`a`) is also final: all three completed, with a new CER anomaly on the two Chinese entries. `sample_h`/`sample_f`/`sample_c` were not re-attempted. |
+| ⑤-C Representative evaluation | **CLOSED by Human Adjudication (2026-09-03)** — all five frozen windows completed 180/180 s. The stress run (§15, 600 s) and single-language supplement (§16, 1800 s Hybrid) are preserved as historical evidence; the bilingual supplement (§17, Architecture B + DirectML) completed `sample_h`/`sample_f`/`sample_c` at 100% coverage, ≤5× realtime, and 100% point recall. |
 
 **Frozen corpus (⑤-A):** `sample_g` 90–270 s, `sample_e` 150–330 s,
 `sample_h` 900–1080 s, `sample_f` 560–740 s, `sample_c` 480–660 s.
@@ -778,7 +780,71 @@ performance-gap confound, and how to fold partial results into
    M11's other stages, is for the gate to decide. Nothing about it was
    investigated, diagnosed, or fixed in this round.
 
-**Stage ⑤ is still NOT closed.** This supplement answers "can these three
-finish with more time" (yes) but opens a new correctness question in
-doing so; it does not resolve items 1–4 from §15, and it does not stand
-in for `sample_h`/`sample_f`/`sample_c` ever finishing.
+### Historical transition to the Caption Identity Gate
+
+Item 5 above historically triggered the **Caption Identity Corrective Gate**,
+which subsequently investigated the root cause in product code (hybrid state
+transition timing and multi-frame consensus disambiguation), implemented formal
+fixes in `src/glyphcue/application/`, and verified correctness across 843
+passing tests (commit `875fb04`).
+
+---
+
+## 17. Bilingual completion supplement (Architecture B + DirectML product path) — results and Stage ⑤ closure
+
+**This section completes the representative evaluation evidence for the three
+bilingual frozen windows (`sample_h`, `sample_f`, `sample_c`).**
+
+Following the integration of Multilingual Architecture B (shared detection +
+universal recognition), the P2/P3/P4B DirectML acceleration adapters, and the
+clustering ambiguity fix (`075ac4b`), the three bilingual windows were evaluated
+over their full 180.0 s spans under the formal Architecture B + DirectML product
+path (`DirectMlOcrEngine` + `DirectMlTextDetector`, `build_multilingual_ocr_evidence_job` →
+`reconstruct_multilingual_cues_for_track_group`). Run from an isolated `[directml]`
+venv with pinned `rapidocr==3.9.2` and `onnxruntime-directml==1.24.4` (`DmlExecutionProvider`
+confirmed active, 1800 s timeout per window).
+
+### Result: all three completed 180/180 s
+
+Results written to `private_samples/m10_video_corpus/evaluation_results_bilingual_directml_supplement.json`:
+
+| Entry | Window | Completion | Coverage | Point recall | Mean CER (zh / en) | Cues / Obs | Realtime ratio | Wall clock | Ambiguous cues |
+|---|---|---|---|---|---|---|---|---|---|
+| `sample_h` (bilingual, fixed footer) | 900–1080 s | **succeeded** | 180/180 s (100%) | **10/10 (100%)** | zh 0.2523 / en **0.0183** | 160 / 1306 | **2.71×** | 488.1 s (8.1 min) | 17 / 160 (10.6%) |
+| `sample_f` (bilingual, fast b-roll) | 560–740 s | **succeeded** | 180/180 s (100%) | **11/11 (100%)** | zh **0.0611** / en 0.4641 | 399 / 2444 | **3.66×** | 659.2 s (11.0 min) | 78 / 399 (19.5%) |
+| `sample_c` (bilingual, mixed format) | 480–660 s | **succeeded** | 180/180 s (100%) | **10/10 (100%)** | zh 0.1316 / en 0.4316 | 143 / — | **4.16×** | 748.2 s (12.5 min) | 31 / 143 (21.7%) |
+
+Total wall clock for the three bilingual windows: 1895.4 s (31.6 min).
+
+### Analysis of empirical results
+
+1. **Coverage and Realtime Target (≤5×):**
+   Every bilingual window processed 180/180 s (100.0% media coverage).
+   All three windows measured well within the M11 performance target of ≤5.0× realtime
+   (2.71×, 3.66×, 4.16×). This resolves the CPU baseline's ~99–159× (pre-Architecture-B)
+   and 7.4×–14.0× (CPU Architecture B) bottlenecks.
+
+2. **Multilingual Layer Separation & Ground Truth Point Recall:**
+   - **Point recall:** 100.0% across all 31 verified ground-truth instants (10/10 on `h`, 11/11 on `f`, 10/10 on `c`).
+   - **Multilingual layer-assignment errors:** `multilingual_missing_layer_count = 0`, `multilingual_wrong_assignment_count = 0` across all 31 instants.
+   - **Layer swap:** 0 occurrences in normal conversational dialogue across all three windows. The layer-swap defect diagnosed in `075ac4b` is confirmed resolved under full-window conditions.
+
+3. **Residual Finding — `sample_c` isolated `"3\n8"` reading:**
+   - At 480.00–481.10 s (Cue 1, duration 1.10 s), the Chinese layer emitted `"3\n8"` (ground truth: `"你只需成为言出必行之人。"`), flagged with `ambiguous_languages: ["zh"]`.
+   - In the immediately following Cue (481.10–481.67 s), the Chinese layer cleanly recovered `"你只需成为言出必行之人。"` with CER 0.0 and no ambiguity flags.
+   - Across the remaining 142 Cues (482–660 s), `"3\n8"` never recurred. 7 of the 10 verified instants in `sample_c` achieved perfect 0.0000 Chinese CER.
+   - **Adjudication:** This is an isolated window-boundary non-text OCR noise artifact that fail-closed safely under the ambiguity diagnostic; it does not systematically contaminate user output or downstream cues. Preserved as a documented limitation, not masked.
+
+4. **Cue Density and Cadence:**
+   - `sample_h`: 160 Cues across 180 s (mean duration 1.10 s). The fixed footer strip (`PURPOSE`) is admitted by the ROI and retained in the English layer; no cross-video leakage.
+   - `sample_f`: 399 Cues across 180 s (mean duration 0.45 s). Reflects the fastest cadence in the corpus (49 changes/min) combined with rapid b-roll screen recording cuts. In 618–622 s, rich-text editor buttons (`B I U S ミ H1 H2`) appeared on screen and were recognized into `zh` with `ambiguous_languages: ["zh"]`.
+   - `sample_c`: 143 Cues across 180 s (mean duration 1.26 s). Dense statistic overlay box at 552 s successfully extracted.
+
+### Human Adjudication Closure
+
+On 2026-09-03, human adjudication formally reviewed the evidence from §15, §16, and §17:
+* All five frozen representative windows (`sample_g`, `sample_e`, `sample_h`, `sample_f`, `sample_c`) plus clean baseline `sample_a` have completed 180 s full-window evaluations.
+* Acceptance Gate 9 (transferred from M10 §17) is satisfied.
+* **Milestone 11 Stage ⑤ Representative Evaluation is formally CLOSED.**
+* Milestone 11 remains **IN PROGRESS**. The next stage is **Stage ⑥ Full Regression (READY TO BEGIN)**.
+

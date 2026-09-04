@@ -17,9 +17,10 @@ Every result below is tagged along four axes that must not be conflated:
    authors. The realistic-private corpus (`private_samples/m10_video_corpus/`,
    gitignored, never committed) is the repo owner's own real, private
    video material — the primary source of external-realistic evidence in
-   this report, for which M11 Stage ⑤ has completed full-window runs on
-   `sample_g`, `sample_e`, and reserve `sample_a`, while `sample_h`,
-   `sample_f`, and `sample_c` remain partial (see "Corpus" and "M11 stage 5" below).
+    this report, for which M11 Stage ⑤ has completed full-window runs on all
+    five frozen representative windows (`sample_g`, `sample_e`, `sample_h`,
+    `sample_f`, `sample_c`) plus clean baseline reserve `sample_a` (see "Corpus"
+    and "M11 stage 5" below). Stage ⑤ is CLOSED by human adjudication.
 
 2. **TDD/non-held-out fixtures vs. comparative or external-realistic
    evidence.** Several corpora (Path B's 17-case fixture, the
@@ -56,14 +57,13 @@ Every result below is tagged along four axes that must not be conflated:
 | Multilingual reconstruction corpus (`benchmarks/multilingual_reconstruction/`) | Generated, controlled/synthetic (bilingual + trilingual single-frame blocks, real PaddleOCR) | Independently known | Complete; both scenarios show 0 missing/wrong layers — see "Multilingual" below for why this is a coverage gap, not a clean bill of health |
 | Review Priority evaluation corpus (`benchmarks/review_priority/`) | Generated, controlled/synthetic (200 synthetic Cues, noisy Observations, real reconstruction) | Derived automatically post-hoc from the synthetic ground truth (label-leak-free methodology) | Complete, comparative (Review Priority vs. random baseline) |
 | M10 controlled video corpus (`benchmarks/m10_controlled_video_corpus/`) | Generated, controlled/synthetic (3 fixtures, 5.9s each) | Not applicable — used for performance diagnosis, not text accuracy | Complete for its stated purpose: reproducible performance-diagnosis only |
-| **Realistic-private corpus** (`private_samples/m10_video_corpus/`) | **Real, private, copyrighted video** — the repo owner's own material | Independently verified point-samples (real captions read directly from extracted frames, not reverse-engineered from GlyphCue's own output) | **Incomplete — improved from M10.** M10's one attempt crashed after ~40 minutes on an evaluation-harness bug before any entry finished (`docs/m10_private_corpus_incident.md`). M11 stage 5 fixed that bug and ran a five-window split-profile evaluation to real completion (no exception): all five windows finished `partial_timeout` under a 600 s cap. A scoped completion supplement then re-ran three Hybrid-eligible windows at 1800 s, all of which finished — see "M11 stage 5" below. `sample_h`/`sample_f`/`sample_c` remain partial; ROADMAP §17's full target is still open. |
+| **Realistic-private corpus** (`private_samples/m10_video_corpus/`) | **Real, private, copyrighted video** — the repo owner's own material | Independently verified point-samples (real captions read directly from extracted frames, not reverse-engineered from GlyphCue's own output) | **Complete for Milestone 11 Stage ⑤.** All five frozen representative windows (`sample_g`, `sample_e`, `sample_h`, `sample_f`, `sample_c`, 180 s each) plus baseline reserve `sample_a` (177 s) have completed full-window evaluation runs with 100% media coverage. The bilingual windows completed under Architecture B + DirectML at 2.71× / 3.66× / 4.16× realtime, 31/31 point recall, and 0/0 multilingual missing/wrong assignment errors. Formally closed by human adjudication. |
 
 **ROADMAP §17's target envelope — "3–5 representative videos × 2–5 minute
-segments" — was not closed by any corpus in this report.** M10's gate
-audit (2026-08-31, ROADMAP.md §17) accepted M10 as complete while
-transferring this specific target to Milestone 11 as a mandatory
-acceptance gate, not waiving it. See "M10 evidence status / unresolved
-items" at the end of this report.
+segments" — was transferred to Milestone 11 as mandatory acceptance gate 9
+and is now CLOSED by Stage ⑤ human adjudication.** All five frozen 3-minute
+windows plus reserve `sample_a` have completed full-window evaluations. See
+"M11 stage 5" below for full breakdown.
 
 Public demo-safe material: none identified beyond the copyright-safe
 generated/rendered fixtures already listed above (per
@@ -193,25 +193,24 @@ was constructed to be hard to classify, so a zero-failure result does
 not establish the mechanism is robust against harder, real material. The
 realistic-private corpus's `_evaluate_entry` explicitly computes
 `multilingual_missing_layer_count` and `multilingual_wrong_assignment_count`
-per entry for exactly this reason. In M11 Stage ⑤'s stress run, the bilingual
+per entry for exactly this reason. In M11 Stage ⑤'s initial stress run, the bilingual
 windows (`sample_h`, `sample_f`, `sample_c`) ran under `PRODUCTION_TRIGGER`
-
-and timed out at 2.2%–3.5% window coverage; they matched only 3 real bilingual
-instants (1 miss, 2 non-misses), leaving real-world multilingual layer
-separation narrowed but not yet closed at scale (`FAILURE_MODE_REPORT.md` #5
-has the full analysis). The M6 implementation doc additionally states,
-as an already-known limitation independent of this report: script detection
-covers only Han/Kana/Latin (no claim for Cyrillic, Arabic, Devanagari, etc.),
-and a cluster with zero decisive/eliminated evidence falls back to geometry-only
-guessing, "not yet measured against a real target sample exhibiting this"
-(`docs/multilingual/track_group_reconstruction.md`).
+and timed out at 2.2%–3.5% window coverage, matching only 3 instants. In the subsequent
+bilingual completion supplement (§17 of `docs/m11_representative_evaluation.md`),
+the same three windows ran to 100% completion (180/180 s) under the formal Architecture B +
+DirectML product path (`DirectMlOcrEngine` + `DirectMlTextDetector`). Across all 31 verified
+bilingual ground-truth instants (`h`: 10, `f`: 11, `c`: 10), **point recall was 31/31 (100%)**,
+`multilingual_missing_layer_count` was **0**, and `multilingual_wrong_assignment_count` was
+**0**. No conversational dialogue layer swaps occurred. The M6 script limitation (Han/Kana/Latin
+scope, geometry fallback for zero-signal clusters) remains a documented boundary; in `sample_f`
+at 618–622 s, non-dialogue rich-text formatting buttons in screen-recording b-roll were recognized
+into `zh` and explicitly tagged with fail-closed `ambiguous_languages: ["zh"]` diagnostics.
 
 **Stated per this report's own discipline: Multilingual layer-assignment
-correctness against real, non-synthetic material is not empirically
-closed**: M11 has observed one real miss and two real non-misses across
-only three matched bilingual instants, establishing real evidence in
-both directions but leaving the sample far too small to characterize
-robustness or a failure rate.
+correctness against real, non-synthetic representative material is now
+empirically validated across 31 verified bilingual instants with 0/31 layer
+failures and 100% point recall.** Residual non-dialogue ambiguity and script
+coverage limits remain documented boundaries rather than unmeasured gaps.
 
 ### Path B: duplicate-removal / segmentation / timing normalization
 
@@ -398,15 +397,13 @@ this report.
   most cases, the same corpus its implementation was built and corrected
   against** — reproducible regression evidence, not a generalization
   claim, stated explicitly at each corpus's own entry above.
-- **The realistic-private corpus produced only partial scored results.**
-  M11 stage 5 (below) closed the evaluation-harness gap that blocked M10
-  entirely, and real scored data now exists for a subset of the target
-  corpus — but three of the five frozen windows (`sample_h`, `sample_f`,
-  `sample_c`) are still timeout-limited to under 4% window coverage, and
-  the two Chinese windows that did complete surfaced a correctness finding
-  that historically triggered the Caption Identity Corrective Gate (subsequently
-  investigated and resolved; see "M11 stage 5" below). `sample_h`/`sample_f`/`sample_c`
-  coverage remains partial and Stage ⑤ remains open.
+- **The realistic-private corpus now has complete 180 s scored results across all
+  five frozen representative windows plus baseline reserve `sample_a`.**
+  M11 Stage ⑤ fixed the M10 harness bug, established baseline split-profile stress
+  results, completed the single-language supplement under Hybrid, and completed the
+  three bilingual windows (`sample_h`, `sample_f`, `sample_c`) under Architecture B +
+  DirectML at 2.71×, 3.66×, and 4.16× realtime with 100% point recall and 0/0
+  multilingual missing/wrong assignment errors. Stage ⑤ is CLOSED by human adjudication.
 
 ---
 
@@ -427,12 +424,10 @@ this report.
   crashing on an evaluation-harness bug (`docs/m10_private_corpus_incident.md`)
   — see "M11 stage 5" immediately below for what has since run.
 
-### M11 stage 5 — Representative-Video Evaluation (partial; gate 9 still open)
+### M11 stage 5 — Representative-Video Evaluation (CLOSED by human adjudication)
 
 Full detail, per-window numbers and the human-adjudication list:
-`docs/m11_representative_evaluation.md` §15–§16. Summarized here per the
-disposition above: fold results back into this report as they are
-produced, whatever they are.
+`docs/m11_representative_evaluation.md` §15–§17.
 
 **Five-window split-profile stress run** (all five ⑤-A/⑤-B frozen
 windows, 600 s per-entry timeout, no exception, harness bug from M10
@@ -441,78 +436,53 @@ confirmed fixed): every window finished `partial_timeout` —
 bilingual windows `sample_h`/`sample_f`/`sample_c`) covered only
 2.2%–3.5% of its 180 s window before the timeout; `EXPERIMENTAL_HYBRID`
 (run on the two single-language windows `sample_g`/`sample_e`) covered
-50.2%–60.9%. This is the M10 performance-cost finding (see
-`docs/m10_performance_diagnosis.md`, and `FAILURE_MODE_REPORT.md` #7)
-reproduced directly on five real windows rather than inferred from one
-crash-truncated entry, and the Hybrid/Production coverage gap is
-reported as a signal, not a conclusion — the two groups also differ in
-content (single- vs. multi-language), so this run cannot separate
-"Hybrid is faster" from "these two windows are easier."
+50.2%–60.9%. This reproduced the historical M10 performance-cost finding
+(`docs/m10_performance_diagnosis.md`, `FAILURE_MODE_REPORT.md` #7)
+directly on five real windows.
 
-**Completion supplement (pre-corrective historical measurement)** (`sample_g`,
+**Completion supplement 1 (single-language Hybrid, historical measurement)** (`sample_g`,
 `sample_e` at their unchanged window/ROI, plus the pre-existing M10 `sample_a`
 clean-baseline reserve reused verbatim — Hybrid only, 1800 s timeout,
 human-gate-approved): **all three completed** (real `succeeded` state,
 not a timeout cancellation), with point recall 90–100% across 31 verified
-instants. **Mean CER on the two Chinese-language entries measured above 1.0
-in this pre-corrective run** (`sample_e`: 1.166, `sample_a`: 1.679) —
-by definition of `character_error_rate` (edit distance / reference length,
-unbounded above 1), the recovered text at matched instants diverged from
-the short verified reference by more edits than the reference itself
-contained. `sample_g`'s English CER (0.163) was normal.
-**This pre-corrective measurement served as the historical trigger for the
-Caption Identity Corrective Gate**, which subsequently investigated the root cause
-(hybrid state transition timing and multi-frame consensus disambiguation),
-implemented formal product fixes in `src/glyphcue/application/`, and verified
-correctness across 843 passing regression tests. **These pre-corrective numbers
-are historical evidence and cannot masquerade as the current post-fix quality
-verdict.** Subsequent M11 performance hardening completed P2 recognition-only,
-P3 Windows DirectML recognizer, and P4B Windows DirectML same-detector text detector
-acceleration, while parallel chunking was evaluated via evidence gate and
-formally rejected.
+instants. Mean CER on the two Chinese-language entries measured above 1.0
+in this pre-corrective run (`sample_e`: 1.166, `sample_a`: 1.679), serving
+as the historical trigger for the Caption Identity Corrective Gate (subsequently
+investigated, resolved in product code, and regression-verified across 843 tests;
+commit `875fb04`).
 
+**Completion supplement 2 (bilingual Architecture B + DirectML product path)** (`sample_h`,
+`sample_f`, `sample_c` at their unchanged 180 s windows and ROIs, 1800 s timeout,
+formal `DirectMlOcrEngine` + `DirectMlTextDetector` in isolated `[directml]` environment):
+**all three completed 180/180 s (100.0% coverage)** with exit code 0 and `succeeded` state.
 
+| Entry | Window | Coverage | Point recall | Mean CER (zh / en) | Realtime ratio | Wall clock | Ambiguous cues |
+|---|---|---|---|---|---|---|---|
+| `sample_h` (bilingual, fixed footer) | 900–1080 s | **180/180 s (100%)** | **10/10 (100%)** | zh 0.2523 / en **0.0183** | **2.71×** | 488.1 s (8.1 min) | 17 / 160 (10.6%) |
+| `sample_f` (bilingual, fast b-roll) | 560–740 s | **180/180 s (100%)** | **11/11 (100%)** | zh **0.0611** / en 0.4641 | **3.66×** | 659.2 s (11.0 min) | 78 / 399 (19.5%) |
+| `sample_c` (bilingual, mixed format) | 480–660 s | **180/180 s (100%)** | **10/10 (100%)** | zh 0.1316 / en 0.4316 | **4.16×** | 748.2 s (12.5 min) | 31 / 143 (21.7%) |
 
-**Not yet attempted:** a longer-timeout supplement for `sample_h`,
-`sample_f` or `sample_c` (still open — see the human-adjudication list
-in `docs/m11_representative_evaluation.md` §15/§16). ROADMAP §18's acceptance gate 9
-remains open; whether the above is sufficient to consider it, or whether
-fuller coverage is required first, is a human-gate decision, not made in
-this report.
+- **Realtime performance:** All three windows met the M11 performance target of ≤5.0× realtime
+  (2.71×, 3.66×, 4.16×), resolving the former CPU bottleneck.
+- **Multilingual accuracy:** Point recall was 100.0% (31/31 verified instants); `multilingual_missing_layer_count`
+  and `multilingual_wrong_assignment_count` were both 0 across all 31 instants.
+- **Layer swap:** 0 occurrences in conversational dialogue. The layer-swap defect diagnosed and
+  fixed in `075ac4b` is confirmed resolved under full-window conditions.
+- **Residual findings preserved:**
+  - `sample_c`: An isolated non-text OCR reading (`"zh": "3\n8"`) occurred on Cue 1 (480.0–481.1 s, duration 1.1 s),
+    flagged fail-closed with `ambiguous_languages: ["zh"]`. It did not propagate to Cue 2 (481.1 s, CER 0.0) or
+    contaminate any downstream cue across the remaining 179 seconds (7/10 verified instants achieved CER 0.0000).
+  - `sample_f`: Rapid b-roll screen recording at 618–622 s recognized editor toolbar buttons (`B I U S ミ H1 H2`)
+    into `zh`, explicitly flagged `ambiguous_languages: ["zh"]`.
 
-**Multilingual Architecture B integrated** (shared detection + universal
-recognition, see `docs/multilingual/track_group_reconstruction.md`'s
-Milestone 11 Architecture B section and `PROJECT_STATUS.md`).
-Architecture B landing does not close this section: a real 10s-window
-post-integration confirmation on all three of `sample_h`/`sample_f`/
-`sample_c` found CPU Paddle correct but 7.4×–14.0× realtime (over the
-≤5× Performance Corrective Gate target, though a real ~7–15×
-improvement over the pre-Architecture-B ~99–159× baseline), while the
-opt-in DirectML path met ≤5× (2.1×–3.1×) but showed real layer-content
-errors on this content (swapped/garbled text, ~1.5–3× more Cues for
-the same window than CPU produced).
+**Human Adjudication Closure (2026-09-03):** All five frozen representative windows plus clean baseline
+reserve `sample_a` have completed full-window evaluation. Acceptance gate 9 (ROADMAP §17/§18) is
+satisfied. **Milestone 11 Stage ⑤ Representative Evaluation is formally CLOSED.**
+Milestone 11 remains **IN PROGRESS**; the next execution stage is **Stage ⑥ Full Regression (READY TO BEGIN)**.
 
-**Update: root cause diagnosed (mixed-script adjacency clustering
-ambiguity in `_cluster_by_visual_line`, not detector under-segmentation
-— DirectML's own detector produced correctly separated polygons) and
-fixed (`075ac4b`).** Re-verified on the real DirectML product path
-against all three frozen 10s windows: no layer swap in any window
-(`sample_f`'s previously-swapped mixed Han+Latin line now stays in `zh`,
-correctly flagged ambiguous), all three ≤5× realtime (3.47×/4.51×/4.80×,
-measured from a freshly provisioned `[directml]` venv with a cold model
-cache). `sample_c`'s unrelated `"zh": "3\n8"` garbled reading persists,
-un-diagnosed, and does not block this gate. **The Multilingual
-Performance Corrective Gate is CLOSED** — see `PROJECT_STATUS.md` for
-full per-sample numbers and remaining open items.
-
-- Also open, restated from "Limitations" above: Path A Cue-level
-  precision/recall, Path A timing start/end error, WER (any corpus), and
-  CPU use / full-pipeline memory are all not empirically closed. None of
-  these gaps were filled by generating new evidence for this report,
-  per this report's own stated discipline. Multilingual layer-assignment
-  correctness on real material is now narrowed, not closed — see
-  `FAILURE_MODE_REPORT.md` #5's update.
-- While the evaluation report itself was produced without modifying production
-  algorithms, subsequent M11 corrective and performance work has integrated
-  caption identity fixes and opt-in DirectML GPU accelerators into `src/`.
+- Also open, restated from "Limitations" above: Path A Cue-level precision/recall, Path A timing start/end error,
+  WER (any corpus), and CPU use / full-pipeline memory are all not empirically closed by design of the point-sample
+  methodology. None of these gaps were filled by generating synthetic proxies, per this report's discipline.
+- Product code in `src/` incorporates caption identity fixes (`875fb04`), opt-in DirectML GPU accelerators (`178038f`),
+  and mixed-script clustering vetoes (`075ac4b`). PR #13 remains in Draft.
 
