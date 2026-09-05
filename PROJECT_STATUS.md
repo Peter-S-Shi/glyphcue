@@ -812,9 +812,9 @@ appears anywhere in the repository.
 
 ## Git / PR status
 
-- Authoritative baseline: `main` (`a27ba23367942bd796b288e1735db7157d3eb563`, merge commit of PR #14).
-- Active working branch: `milestone/12-cue-cleaner-integration`.
-- Milestone 12 Stage ② vehicle: PR [#15](https://github.com/Peter-S-Shi/glyphcue/pull/15) — Milestone 12 Stage ②: Cue Production Quality Recovery (Cue Cleaner V0.6.1 Integration). Prepared for merge review. Strictly no force push; do not auto-merge.
+- Authoritative state: `main` contains Milestone 12 Stage ② Cue Cleaner Integration from PR [#15](https://github.com/Peter-S-Shi/glyphcue/pull/15); Milestone 12 is CLOSED / ACCEPTED.
+- Active M12 working branch: none / no active Milestone 12 implementation branch.
+- Milestone 12 Stage ② vehicle: PR [#15](https://github.com/Peter-S-Shi/glyphcue/pull/15) — Milestone 12 Stage ②: Cue Production Quality Recovery (Cue Cleaner V0.6.1 Integration); completed integration vehicle for Stage ②.
 
 ## Unresolved
 
@@ -826,5 +826,5 @@ appears anywhere in the repository.
 
 ## Next action
 
-1. Formal review and merge of PR #15 (`milestone/12-cue-cleaner-integration`) into `main` by the repository owner (strictly no force push; do not self-merge).
-2. After PR #15 is merged, scope and execute Product Hardening II & Full Regression Pass before Milestone 13 (Release Candidate & Signed Release). Packaging remains SUSPENDED until the hardening gate passes.
+1. Scope and execute Product Hardening II & Full Regression Pass before Milestone 13 (Release Candidate & Signed Release).
+2. Packaging work remains SUSPENDED until the Product Hardening II gate passes.
