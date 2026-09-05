@@ -12,7 +12,7 @@ Milestone 13 Minimum Runtime-Fidelity Packaging Experiment is executing on dedic
   - Fail-closed scaffold test suite in `tools/packaging/validate_scaffold.py` with 13 passing tests.
 - **Phase B — Primary Runtime Assembly & First Installer Build: COMPLETED & ACCEPTED (2026-09-05)**:
   - First-party launcher `GlyphCue.exe` compiled and inner-signed with test certificate `A3E4E5320779C9F63E513D870E209C26B819C61E`.
-  - Authoritative models (`PP-OCRv6_det_medium.onnx`, `ch_PP-OCRv5_rec_infer.onnx`, `ch_ppocr_mobile_v2.0_cls_infer.onnx`) and migrations assembled.
+  - Authoritative models (`PP-OCRv6_det_medium.onnx`, `PP-OCRv6_rec_small.onnx`, `ch_ppocr_mobile_v2.0_cls_mobile.onnx`) and migrations assembled.
   - CycloneDX 1.6 JSON SBOM and Payload Manifest generated; Inno Setup offline installer built.
 - **Phase C — Second Isolated Clean Reconstruction & Drift Verification: SAME-SESSION DETERMINISM PASS (2026-09-05)**:
   - Two isolated clean reconstructions (`recon1` and `recon2`) produced in separate directories with isolated staging caches.
