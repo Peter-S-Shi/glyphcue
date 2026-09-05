@@ -164,3 +164,41 @@ To close the identified `[TARGETED REGRESSION]` and `[AGENT RUNTIME VERIFICATION
 
 ### Agent Runtime Verification Action
 - Execute `tools/devqa_directml_verify.py` via python runner to confirm DirectML provider activation and hardware readiness on this platform.
+
+---
+
+## 6. Step ② Targeted Regression & Runtime Verification Results (2026-09-05)
+
+### Targeted Test Suite: `tests/ui/test_product_hardening_ii_seams.py`
+Execution: `.venv\Scripts\python.exe -m pytest tests/ui/test_product_hardening_ii_seams.py -v`  
+Result: **5 passed in 1.03s (100% pass rate)**
+
+| Risk ID | Seam / Workflow Under Test | Automated Test Function | Result | Evidence Summary |
+|:---:|:---|:---|:---:|:---|
+| **A3/A4** | Post-Clean manual Merge/Split lifecycle & Clean Cues protection | `test_a3_a4_post_clean_manual_merge_and_split_lifecycle` | **PASS** | Residual duplicate merged via `M` creates `NEEDS_REVIEW` cue, persisted immediately; subsequent Clean Cues runs preserve merged cue 100% untouched; manual Split (`S`) creates 2 `NEEDS_REVIEW` halves that sort chronologically and are likewise untouched by subsequent Clean Cues. |
+| **A6** | Unified 4-format export conformance over mixed review states | `test_a6_unified_four_format_export_conformance` | **PASS** | SRT, VTT, Readable Transcript (TXT), and AI-ready Transcript (MD) all correctly exclude `REJECTED` (discarded) cues while including `APPROVED`, `PENDING`, and `NEEDS_REVIEW` cues with valid monotonic timestamps and intact source media. |
+| **C1** | Uncommitted Path A edit surviving mode switching | `test_c1_uncommitted_edit_surviving_path_switching` | **PASS** | Typing in active card text editor without manual commit, switching to Path B, then switching back to Path A successfully commits text, transitions state to `NEEDS_REVIEW`, and persists to SQLite without loss. |
+| **E1** | Reopen / persistence / total-order reconstruction | `test_e1_reopen_and_total_ordering_invariants` | **PASS** | Fresh `PathAMediaPane` loading out-of-order SQLite data reconstructs strict `(start_time, end_time, id)` queue; review states match; Clean Cues button enables when pending cues exist and disables once all cues are approved. |
+| **E2** | Incremental OCR multi-cycle lifecycle (0–10 → 10–20 → 20–30) | `test_e2_incremental_ocr_multi_cycle_clean_lifecycle` | **PASS** | 3-cycle sequential OCR addition and cleaning preserves earlier non-overlapping cues, enforces monotonic ordering without duplicate explosion, and maintains 100% SQLite parity. |
+
+### Affected Test Suites Regression
+Execution: `tests/ui/test_product_hardening_ii_seams.py`, `tests/application/test_cue_cleaning.py`, `tests/ui/test_clean_cues_integration.py`, `tests/ui/test_workbench_persistent_shell.py`, `tests/ui/test_m12_workflow_recovery.py`  
+Result: **53 passed in 3.95s (100% pass rate)**
+
+### Agent Runtime Verification: DirectML Hardware & Provider Probe
+Execution: `$env:PYTHONPATH="src"; .venv-directml-devqa\Scripts\python.exe tools\devqa_directml_verify.py`  
+Output:
+```text
+[INFO] [RapidOCR] Using PP-OCRv6_det_small.onnx
+[INFO] [RapidOCR] Windows 10 or above detected, try to use DirectML as primary provider
+[INFO] [RapidOCR] Using PP-OCRv6_rec_small.onnx
+[INFO] [RapidOCR] Windows 10 or above detected, try to use DirectML as primary provider
+[DevQA DirectML preflight] OK: DirectMlOcrEngine active, det providers=['DmlExecutionProvider', 'CPUExecutionProvider'], rec providers=['DmlExecutionProvider', 'CPUExecutionProvider']
+[DevQA DirectML preflight] OK: DirectMlTextDetector active, providers=['DmlExecutionProvider', 'CPUExecutionProvider']
+[DevQA DirectML preflight] PASS: DirectML OCR engine + text detector both confirmed active with DmlExecutionProvider.
+```
+Result: **PASS** (`DmlExecutionProvider` is genuinely active on real Windows hardware for both text detector and recognizer ONNX Runtime sessions; zero silent fallback).
+
+### Concrete Blockers Found
+**None.** Zero product defects surfaced across all 5 targeted seam regressions and the live DirectML runtime probe.
+
