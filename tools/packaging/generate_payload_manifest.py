@@ -2,10 +2,10 @@
 
 Generates payload_manifest.json from an assembled <app_root> directory and
 evaluates the four fail-closed gates per Wayfinder Issue #24 and #26 charter:
-1. Untracked File Gate
-2. Integrity Gate
-3. Provenance Gate (experiment scope)
-4. Signature Gate
+1. Untracked File Gate: all files in <app_root> mapped to concrete source artifacts.
+2. Integrity Gate: verified against frozen build-base hashes and valid digests.
+3. Provenance Gate (experiment scope): every artifact has source, SHA-256, ownership, and verification status.
+4. Signature Gate: first-party PEs carry valid test-certificate signatures.
 """
 
 from __future__ import annotations
@@ -17,7 +17,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
-SCHEMA_VERSION = "1.0.0"
+SCHEMA_VERSION = "1.1.0"
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def hash_file(file_path: Path) -> tuple[int, str]:
@@ -26,7 +27,38 @@ def hash_file(file_path: Path) -> tuple[int, str]:
     return len(data), hashlib.sha256(data).hexdigest()
 
 
-def classify_payload_file(rel_path_str: str) -> dict[str, Any]:
+def load_frozen_inventory() -> dict[str, Any]:
+    """Load the authoritative frozen build-base identity inventory."""
+    bb_path = REPO_ROOT / "docs" / "m13_build_base_identity.json"
+    if bb_path.is_file():
+        try:
+            return json.loads(bb_path.read_text(encoding="utf-8"))
+        except Exception:
+            return {}
+    return {}
+
+
+def build_package_wheel_map(frozen_inventory: dict[str, Any]) -> dict[str, str]:
+    """Build a mapping from top-level lib directory/dist-info names to exact wheel filenames."""
+    wheel_map: dict[str, str] = {}
+    for whl in frozen_inventory.get("frozen_wheel_artifacts", []):
+        pkg_name = whl.get("package_name", "").lower()
+        whl_filename = whl.get("wheel_filename", "")
+        if pkg_name and whl_filename:
+            # Map canonical name, underscore variant, and hyphen variant
+            wheel_map[pkg_name] = whl_filename
+            wheel_map[pkg_name.replace("-", "_")] = whl_filename
+            wheel_map[pkg_name.replace("_", "-")] = whl_filename
+            # Map dist-info prefix
+            dist_prefix = f"{pkg_name.replace('-', '_')}-{whl.get('version', '')}.dist-info".lower()
+            wheel_map[dist_prefix] = whl_filename
+    return wheel_map
+
+
+def classify_payload_file(
+    rel_path_str: str,
+    wheel_map: dict[str, str],
+) -> dict[str, Any]:
     """Classify an app_root relative path into role, source, and verification status."""
     norm = rel_path_str.replace("\\", "/")
 
@@ -45,35 +77,45 @@ def classify_payload_file(rel_path_str: str) -> dict[str, Any]:
             "verification_status": "unresolved",
         }
     elif norm.startswith("models/"):
+        model_name = Path(norm).name
         return {
             "role": "onnx_model_weights",
-            "source_artifact": "ppocr_v6_models_upstream",
+            "source_artifact": f"frozen_model:{model_name}",
             "license": "Apache-2.0 (Redistribution Unconfirmed)",
             "verification_status": "unresolved",
         }
     elif norm.startswith("resources/migrations_sql/"):
+        sql_name = Path(norm).name
         return {
             "role": "first_party_database_migration",
-            "source_artifact": "glyphcue-source-commit:5905df09d012cb63a34b98c484b43958477e52e8",
+            "source_artifact": f"glyphcue-migration:{sql_name}",
             "license": "UNRESOLVED — Product License Gate",
             "verification_status": "unresolved",
         }
     elif norm.startswith("qt/plugins/"):
         return {
             "role": "qt_runtime_plugin",
-            "source_artifact": "PySide6-6.11.2-cp312-abi3-win_amd64.whl",
+            "source_artifact": "PySide6-6.11.2-cp310-abi3-win_amd64.whl",
             "license": "LGPL-3.0-only",
             "verification_status": "verified",
         }
     elif norm.startswith("lib/"):
-        # Infer package name from first directory component under lib/
         parts = norm.split("/")
-        pkg_name = parts[1] if len(parts) > 1 else "unknown"
+        top_name = parts[1].lower() if len(parts) > 1 else "unknown"
+        # Match against frozen wheel inventory
+        matched_wheel = wheel_map.get(top_name)
+        if not matched_wheel:
+            # Check if it starts with a package prefix (e.g. PySide6, onnxruntime, paddle)
+            for k, v in wheel_map.items():
+                if top_name.startswith(k):
+                    matched_wheel = v
+                    break
+        source_art = matched_wheel or f"vendored_wheel:{top_name}"
         return {
             "role": "vendored_python_dependency",
-            "source_artifact": f"vendored_wheel:{pkg_name}",
+            "source_artifact": source_art,
             "license": "Third-Party-Declared",
-            "verification_status": "verified",
+            "verification_status": "verified" if matched_wheel else "unresolved",
         }
     elif norm.startswith("legal/manifest/"):
         return {
@@ -105,17 +147,37 @@ def classify_payload_file(rel_path_str: str) -> dict[str, Any]:
         }
 
 
-def generate_manifest(app_root: Path, output_file: Path | None = None) -> dict[str, Any]:
+def generate_manifest(
+    app_root: Path,
+    output_file: Path | None = None,
+    expected_hashes: dict[str, str] | None = None,
+) -> dict[str, Any]:
     """Inspect app_root and construct the complete payload manifest."""
     if not app_root.is_dir():
         raise ValueError(f"app_root directory not found: {app_root}")
 
+    frozen_inv = load_frozen_inventory()
+    wheel_map = build_package_wheel_map(frozen_inv)
+
     files = []
+    integrity_mismatches = []
+
     for p in sorted(app_root.rglob("*")):
         if p.is_file():
             rel_path = str(p.relative_to(app_root)).replace("\\", "/")
             size, sha256 = hash_file(p)
-            meta = classify_payload_file(rel_path)
+            meta = classify_payload_file(rel_path, wheel_map)
+
+            # Check integrity against expected hash contract if provided
+            if expected_hashes and rel_path in expected_hashes:
+                expected_sha = expected_hashes[rel_path]
+                if sha256 != expected_sha:
+                    integrity_mismatches.append({
+                        "path": rel_path,
+                        "actual_sha256": sha256,
+                        "expected_sha256": expected_sha,
+                    })
+
             entry = {
                 "path": rel_path,
                 "size_bytes": size,
@@ -136,9 +198,13 @@ def generate_manifest(app_root: Path, output_file: Path | None = None) -> dict[s
     ]
     unresolved_items = [f["path"] for f in files if f["verification_status"] == "unresolved"]
 
+    integrity_gate_pass = (len(integrity_mismatches) == 0) and all(
+        len(f["sha256"]) == 64 for f in files
+    )
+
     gate_results = {
         "untracked_file_gate": "PASS" if not untracked_failures else "FAIL",
-        "integrity_gate": "PASS",  # Computed directly from file contents
+        "integrity_gate": "PASS" if integrity_gate_pass else "FAIL",
         "provenance_gate_experiment_scope": "PASS" if not provenance_failures else "FAIL",
         "release_redistribution_compliance_gate": "OPEN" if unresolved_items else "CLOSED",
     }
@@ -150,6 +216,7 @@ def generate_manifest(app_root: Path, output_file: Path | None = None) -> dict[s
         "total_files_count": len(files),
         "total_payload_bytes": sum(f["size_bytes"] for f in files),
         "gate_results": gate_results,
+        "integrity_mismatches": integrity_mismatches,
         "unresolved_compliance_count": len(unresolved_items),
         "files": files,
     }

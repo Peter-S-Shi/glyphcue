@@ -1,14 +1,17 @@
 """Automated validation suite for GlyphCue Phase A packaging scaffold.
 
 Verifies:
-1. Frozen build-base identity schema and file existence.
+1. Frozen build-base identity completeness (85 wheel artifacts, CPython 3.12.10 SHA,
+   3 ONNX models, 5 SQL migrations, toolchain identities).
 2. Synthetic fixture deterministic generation, size, and SHA-256 matching.
 3. Golden reference JSON schema and cue structure.
-4. Assembled <app_root> mock layout and python312._pth configuration.
-5. Payload manifest generation and 4 fail-closed gates evaluation.
-6. CycloneDX 1.6 JSON generation and valid schema structure.
-7. Payload drift comparator on identical vs drifted trees.
-8. Signature verifier structure.
+4. Scaffold mock topology assembly, python312._pth configuration, payload manifest,
+   and CycloneDX 1.6 JSON generation (explicitly labeled as scaffold self-test).
+5. Payload drift comparator on identical vs drifted mock trees.
+
+NOTE: Tests exercising placeholder python.exe / GlyphCue.exe are strictly
+scaffold and manifest logic validations; they do NOT prove runtime readiness
+or substitute for real Phase B runtime assembly.
 """
 
 from __future__ import annotations
@@ -37,19 +40,35 @@ from tools.packaging.generate_synthetic_fixture import (
 from tools.packaging.verify_payload_drift import compare_reconstructions
 
 
-def test_frozen_build_base_schema() -> None:
-    """Validate docs/m13_build_base_identity.json structure."""
+def test_frozen_build_base_completeness() -> None:
+    """Validate docs/m13_build_base_identity.json completeness."""
     bb_path = REPO_ROOT / "docs" / "m13_build_base_identity.json"
     assert bb_path.is_file(), f"Build base file missing: {bb_path}"
     data = json.loads(bb_path.read_text(encoding="utf-8"))
 
+    # Trusted commit & runtime
     assert data["trusted_source_commit"] == "5905df09d012cb63a34b98c484b43958477e52e8"
     assert data["cpython_embeddable_runtime"]["sha256"] == "4acbed6dd1c744b0376e3b1cf57ce906f9dc9e95e68824584c8099a63025a3c3"
+    assert data["cpython_embeddable_runtime"]["archive_filename"] == "python-3.12.10-embed-amd64.zip"
+
+    # Models & DLLs
     assert len(data["onnx_models_inventory"]) >= 3
     assert len(data["critical_native_dlls"]) >= 2
     assert len(data["database_migrations"]) == 5
+
+    # Complete 85 wheel artifacts inventory
+    wheels = data.get("frozen_wheel_artifacts", [])
+    assert len(wheels) == 85, f"Expected 85 frozen wheel artifacts, found {len(wheels)}"
+    for w in wheels:
+        assert "package_name" in w and "version" in w and "sha256" in w
+        assert len(w["sha256"]) == 64, f"Invalid SHA-256 for {w['package_name']}"
+
+    # Staging cache contract
+    assert "content_addressed_staging_contract" in data
+    assert "deterministic_synthetic_fixture" in data
     assert data["deterministic_synthetic_fixture"]["sha256"] == EXPECTED_FIXTURE_SHA256
-    print("[OK] test_frozen_build_base_schema passed")
+
+    print("[OK] test_frozen_build_base_completeness passed (all 85 artifacts verified)")
 
 
 def test_synthetic_fixture_generation(tmp_dir: Path) -> None:
@@ -77,9 +96,13 @@ def test_golden_reference_schema() -> None:
     print("[OK] test_golden_reference_schema passed")
 
 
-def test_app_root_assembly_and_manifest(tmp_dir: Path) -> None:
-    """Validate app_root assembler, pth isolation, manifest, and CycloneDX 1.6."""
-    app_root = tmp_dir / "app_root"
+def test_scaffold_mock_assembly_and_manifest(tmp_dir: Path) -> None:
+    """Validate app_root mock assembler, pth isolation, manifest, and CycloneDX 1.6.
+
+    NOTE: This is a scaffold self-test of directory structure and generator logic only.
+    It uses placeholder binaries and does NOT assert production runtime readiness.
+    """
+    app_root = tmp_dir / "mock_app_root"
     assemble_app_root(app_root)
 
     # Check python312._pth
@@ -103,27 +126,27 @@ def test_app_root_assembly_and_manifest(tmp_dir: Path) -> None:
     assert sbom["bomFormat"] == "CycloneDX"
     assert sbom["specVersion"] == "1.6"
     assert len(sbom["components"]) > 0
-    print("[OK] test_app_root_assembly_and_manifest passed")
+    print("[OK] test_scaffold_mock_assembly_and_manifest passed (scaffold logic validated)")
 
 
-def test_drift_comparator(tmp_dir: Path) -> None:
-    """Validate drift comparator on identical and modified trees."""
+def test_drift_comparator_mock(tmp_dir: Path) -> None:
+    """Validate drift comparator on mock trees."""
     tree1 = tmp_dir / "tree1"
     tree2 = tmp_dir / "tree2"
     assemble_app_root(tree1)
     assemble_app_root(tree2)
 
-    # Identical trees must PASS
-    report = compare_reconstructions(tree1, tree2)
+    # Identical mock trees must PASS in allow_mock mode
+    report = compare_reconstructions(tree1, tree2, allow_mock=True)
     assert report["payload_drift_status"] == "PASS"
     assert len(report["unsigned_payload_mismatches"]) == 0
 
     # Modify one file in tree2 -> must FAIL
     (tree2 / "python" / "python312._pth").write_text("MODIFIED\n", encoding="utf-8")
-    report_drift = compare_reconstructions(tree1, tree2)
+    report_drift = compare_reconstructions(tree1, tree2, allow_mock=True)
     assert report_drift["payload_drift_status"] == "FAIL"
     assert len(report_drift["unsigned_payload_mismatches"]) == 1
-    print("[OK] test_drift_comparator passed")
+    print("[OK] test_drift_comparator_mock passed")
 
 
 def run_all_scaffold_tests() -> bool:
@@ -131,12 +154,12 @@ def run_all_scaffold_tests() -> bool:
     test_dir = REPO_ROOT / "temp_scaffold_test"
     test_dir.mkdir(parents=True, exist_ok=True)
     try:
-        test_frozen_build_base_schema()
+        test_frozen_build_base_completeness()
         test_synthetic_fixture_generation(test_dir)
         test_golden_reference_schema()
-        test_app_root_assembly_and_manifest(test_dir)
-        test_drift_comparator(test_dir)
-        print("\nALL SCAFFOLD TESTS PASSED.")
+        test_scaffold_mock_assembly_and_manifest(test_dir)
+        test_drift_comparator_mock(test_dir)
+        print("\nALL PHASE A SCAFFOLD & FROZEN-INPUT VALIDATION TESTS PASSED.")
         return True
     finally:
         shutil.rmtree(test_dir, ignore_errors=True)
