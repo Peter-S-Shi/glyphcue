@@ -29,10 +29,17 @@ def hash_file(path: Path) -> tuple[int, str]:
 def compare_reconstructions(
     dir1: Path,
     dir2: Path,
-    pre_sign_hashes: dict[str, str] | None = None,
+    pre_sign_hashes_1: dict[str, str] | None = None,
+    pre_sign_hashes_2: dict[str, str] | None = None,
+    expected_thumbprint: str | None = None,
     allow_mock: bool = False,
 ) -> dict[str, Any]:
-    """Compare two installed app_root trees and return a drift report."""
+    """Compare two installed app_root trees and return a drift report.
+
+    For signed PEs in non-mock mode:
+    - pre-sign hashes from both reconstructions must be provided and must match identically.
+    - both post-sign PEs must carry valid test-certificate signatures matching the approved test root.
+    """
     if not dir1.is_dir() or not dir2.is_dir():
         raise ValueError(f"Both reconstruction directories must exist: {dir1}, {dir2}")
 
@@ -56,43 +63,57 @@ def compare_reconstructions(
             filename = Path(k).name
 
             if filename in SIGNED_PE_FILENAMES:
-                # Signed PE file: check pre-sign hash equality and verify signatures
-                sig1 = check_pe_signature(files1[k])
-                sig2 = check_pe_signature(files2[k])
-
-                # Check pre-sign hash if provided
-                presign_match = True
-                if pre_sign_hashes and k in pre_sign_hashes:
-                    expected_pre = pre_sign_hashes[k]
-                    # Compare pre-sign record
-                    presign_match = True
-
-                # Real signature evaluation
                 if allow_mock:
-                    # In scaffold/mock test mode, verify basic equivalence
+                    # In scaffold/mock test mode, record semantic equivalence
                     pe_status = "PASS"
+                    pre1_sha = "MOCK_PRE_SIGN_SHA"
+                    pre2_sha = "MOCK_PRE_SIGN_SHA"
+                    sig1_info = {"status": "MOCK"}
+                    sig2_info = {"status": "MOCK"}
                 else:
-                    # Both must be signed and verified
-                    if (
-                        sig1.get("verified_first_party")
-                        and sig2.get("verified_first_party")
-                        and (sig1.get("thumbprint") == sig2.get("thumbprint") or sig1.get("subject") == sig2.get("subject"))
-                    ):
-                        pe_status = "PASS"
-                    else:
+                    # Real non-mock reconstruction verification:
+                    # 1. Check pre-sign hash evidence
+                    pre1_sha = pre_sign_hashes_1.get(k) if pre_sign_hashes_1 else None
+                    pre2_sha = pre_sign_hashes_2.get(k) if pre_sign_hashes_2 else None
+
+                    if not pre1_sha or not pre2_sha:
                         pe_status = "FAIL"
                         signed_pe_failures.append({
                             "path": k,
-                            "sig1_status": sig1.get("authenticode_status"),
-                            "sig2_status": sig2.get("authenticode_status"),
+                            "reason": "MISSING_PRE_SIGN_EVIDENCE",
+                            "pre_sign_1": pre1_sha,
+                            "pre_sign_2": pre2_sha,
                         })
+                    elif pre1_sha != pre2_sha:
+                        pe_status = "FAIL"
+                        signed_pe_failures.append({
+                            "path": k,
+                            "reason": "PRE_SIGN_HASH_MISMATCH",
+                            "pre_sign_1": pre1_sha,
+                            "pre_sign_2": pre2_sha,
+                        })
+                    else:
+                        # 2. Check Authenticode signatures
+                        sig1_info = check_pe_signature(files1[k], expected_thumbprint=expected_thumbprint)
+                        sig2_info = check_pe_signature(files2[k], expected_thumbprint=expected_thumbprint)
+
+                        if not sig1_info.get("verified_first_party") or not sig2_info.get("verified_first_party"):
+                            pe_status = "FAIL"
+                            signed_pe_failures.append({
+                                "path": k,
+                                "reason": "UNVERIFIED_SIGNATURE",
+                                "sig1": sig1_info,
+                                "sig2": sig2_info,
+                            })
+                        else:
+                            pe_status = "PASS"
 
                 signed_pe_entries.append({
                     "path": k,
-                    "reconstruction_1_sha256": h1,
-                    "reconstruction_2_sha256": h2,
-                    "sig1_thumbprint": sig1.get("thumbprint", ""),
-                    "sig2_thumbprint": sig2.get("thumbprint", ""),
+                    "reconstruction_1_post_sign_sha256": h1,
+                    "reconstruction_2_post_sign_sha256": h2,
+                    "pre_sign_sha256_1": pre1_sha,
+                    "pre_sign_sha256_2": pre2_sha,
                     "comparison_mode": "normalized_authenticode_semantic_equivalence",
                     "status": pe_status,
                 })
@@ -137,11 +158,24 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Verify payload drift between two reconstructions")
     parser.add_argument("dir1", type=Path, help="Reconstruction 1 directory")
     parser.add_argument("dir2", type=Path, help="Reconstruction 2 directory")
+    parser.add_argument("--presign-1", type=Path, default=None, help="JSON file with recon 1 pre-sign hashes")
+    parser.add_argument("--presign-2", type=Path, default=None, help="JSON file with recon 2 pre-sign hashes")
+    parser.add_argument("--expected-thumbprint", type=str, default=None, help="Approved test cert thumbprint")
     parser.add_argument("--allow-mock", action="store_true", help="Allow mock PE comparison for scaffold self-test")
     parser.add_argument("-o", "--output", type=Path, default=None, help="Output JSON drift report path")
     args = parser.parse_args()
 
-    res = compare_reconstructions(args.dir1, args.dir2, allow_mock=args.allow_mock)
+    p1 = json.loads(args.presign_1.read_text(encoding="utf-8")) if args.presign_1 and args.presign_1.is_file() else None
+    p2 = json.loads(args.presign_2.read_text(encoding="utf-8")) if args.presign_2 and args.presign_2.is_file() else None
+
+    res = compare_reconstructions(
+        args.dir1,
+        args.dir2,
+        pre_sign_hashes_1=p1,
+        pre_sign_hashes_2=p2,
+        expected_thumbprint=args.expected_thumbprint,
+        allow_mock=args.allow_mock,
+    )
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(json.dumps(res, indent=2), encoding="utf-8")

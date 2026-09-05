@@ -3,7 +3,7 @@
 Generates payload_manifest.json from an assembled <app_root> directory and
 evaluates the four fail-closed gates per Wayfinder Issue #24 and #26 charter:
 1. Untracked File Gate: all files in <app_root> mapped to concrete source artifacts.
-2. Integrity Gate: verified against frozen build-base hashes and valid digests.
+2. Integrity Gate: verified against authoritative frozen build-base hashes (fails closed on mismatch).
 3. Provenance Gate (experiment scope): every artifact has source, SHA-256, ownership, and verification status.
 4. Signature Gate: first-party PEs carry valid test-certificate signatures.
 """
@@ -17,7 +17,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-SCHEMA_VERSION = "1.1.0"
+SCHEMA_VERSION = "1.2.0"
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -38,6 +38,34 @@ def load_frozen_inventory() -> dict[str, Any]:
     return {}
 
 
+def build_expected_hashes_contract(frozen_inventory: dict[str, Any]) -> dict[str, str]:
+    """Build a mapping of relative app_root paths to expected SHA-256 hashes."""
+    expected: dict[str, str] = {}
+
+    # 1. Models
+    for m in frozen_inventory.get("onnx_models_inventory", []):
+        fn = m.get("filename")
+        sha = m.get("sha256")
+        if fn and sha:
+            expected[f"models/{fn}"] = sha
+
+    # 2. SQL Migrations
+    for mig in frozen_inventory.get("database_migrations", []):
+        fn = mig.get("filename")
+        sha = mig.get("sha256")
+        if fn and sha:
+            expected[f"resources/migrations_sql/{fn}"] = sha
+
+    # 3. Critical Native DLLs
+    for dll in frozen_inventory.get("critical_native_dlls", []):
+        fn = dll.get("filename")
+        sha = dll.get("sha256")
+        if fn and sha:
+            expected[f"lib/onnxruntime/capi/{fn}"] = sha
+
+    return expected
+
+
 def build_package_wheel_map(frozen_inventory: dict[str, Any]) -> dict[str, str]:
     """Build a mapping from top-level lib directory/dist-info names to exact wheel filenames."""
     wheel_map: dict[str, str] = {}
@@ -45,11 +73,9 @@ def build_package_wheel_map(frozen_inventory: dict[str, Any]) -> dict[str, str]:
         pkg_name = whl.get("package_name", "").lower()
         whl_filename = whl.get("wheel_filename", "")
         if pkg_name and whl_filename:
-            # Map canonical name, underscore variant, and hyphen variant
             wheel_map[pkg_name] = whl_filename
             wheel_map[pkg_name.replace("-", "_")] = whl_filename
             wheel_map[pkg_name.replace("_", "-")] = whl_filename
-            # Map dist-info prefix
             dist_prefix = f"{pkg_name.replace('-', '_')}-{whl.get('version', '')}.dist-info".lower()
             wheel_map[dist_prefix] = whl_filename
     return wheel_map
@@ -102,10 +128,8 @@ def classify_payload_file(
     elif norm.startswith("lib/"):
         parts = norm.split("/")
         top_name = parts[1].lower() if len(parts) > 1 else "unknown"
-        # Match against frozen wheel inventory
         matched_wheel = wheel_map.get(top_name)
         if not matched_wheel:
-            # Check if it starts with a package prefix (e.g. PySide6, onnxruntime, paddle)
             for k, v in wheel_map.items():
                 if top_name.startswith(k):
                     matched_wheel = v
@@ -152,12 +176,22 @@ def generate_manifest(
     output_file: Path | None = None,
     expected_hashes: dict[str, str] | None = None,
 ) -> dict[str, Any]:
-    """Inspect app_root and construct the complete payload manifest."""
+    """Inspect app_root and construct the complete payload manifest.
+
+    Integrity Gate compares against frozen build-base expected hashes and
+    fails closed on any hash mismatch.
+    """
     if not app_root.is_dir():
         raise ValueError(f"app_root directory not found: {app_root}")
 
     frozen_inv = load_frozen_inventory()
     wheel_map = build_package_wheel_map(frozen_inv)
+    frozen_expected = build_expected_hashes_contract(frozen_inv)
+
+    # Combine frozen expected hashes with any caller overrides
+    effective_expected = dict(frozen_expected)
+    if expected_hashes:
+        effective_expected.update(expected_hashes)
 
     files = []
     integrity_mismatches = []
@@ -168,14 +202,15 @@ def generate_manifest(
             size, sha256 = hash_file(p)
             meta = classify_payload_file(rel_path, wheel_map)
 
-            # Check integrity against expected hash contract if provided
-            if expected_hashes and rel_path in expected_hashes:
-                expected_sha = expected_hashes[rel_path]
-                if sha256 != expected_sha:
+            # Check integrity contract: if path has an expected hash, enforce equality
+            if rel_path in effective_expected:
+                exp_sha = effective_expected[rel_path]
+                if sha256 != exp_sha:
                     integrity_mismatches.append({
                         "path": rel_path,
                         "actual_sha256": sha256,
-                        "expected_sha256": expected_sha,
+                        "expected_sha256": exp_sha,
+                        "status": "HASH_MISMATCH",
                     })
 
             entry = {
@@ -198,9 +233,8 @@ def generate_manifest(
     ]
     unresolved_items = [f["path"] for f in files if f["verification_status"] == "unresolved"]
 
-    integrity_gate_pass = (len(integrity_mismatches) == 0) and all(
-        len(f["sha256"]) == 64 for f in files
-    )
+    # Integrity Gate fails closed if any mismatch was detected or if no files were found
+    integrity_gate_pass = (len(integrity_mismatches) == 0) and (len(files) > 0)
 
     gate_results = {
         "untracked_file_gate": "PASS" if not untracked_failures else "FAIL",
@@ -232,10 +266,18 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Generate GlyphCue payload_manifest.json")
     parser.add_argument("app_root", type=Path, help="Path to installed <app_root> directory")
     parser.add_argument("-o", "--output", type=Path, default=None, help="Output JSON path")
+    parser.add_argument("--expected-manifest", type=Path, default=None, help="Path to expected hashes contract JSON")
     args = parser.parse_args()
 
+    expected = None
+    if args.expected_manifest and args.expected_manifest.is_file():
+        expected = json.loads(args.expected_manifest.read_text(encoding="utf-8"))
+
     out_path = args.output or (args.app_root / "legal" / "manifest" / "payload_manifest.json")
-    m = generate_manifest(args.app_root, out_path)
+    m = generate_manifest(args.app_root, out_path, expected_hashes=expected)
     print(f"Generated payload manifest: {out_path}")
     print(f"Total files: {m['total_files_count']}, Total bytes: {m['total_payload_bytes']}")
     print(f"Gates: {m['gate_results']}")
+    if m["gate_results"]["integrity_gate"] != "PASS":
+        print(f"Integrity failures: {m['integrity_mismatches']}")
+        sys.exit(1)

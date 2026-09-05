@@ -13,10 +13,9 @@
   "trusted_source_commit": "5905df09d012cb63a34b98c484b43958477e52e8",
   "target_branch": "milestone/13-release-candidate",
   "windows_build_base": {
-    "os_name": "Windows 11 x64",
-    "target_arch": "x64 (amd64)",
-    "min_supported_windows_build": "Windows 10 Build 19041+ (DirectML / D3D12 Feature Level 11_0+)",
-    "d3d12_feature_level": "11_0+"
+    "host_reconstruction_os": "Microsoft Windows 11 Home 10.0.26200 (Build 26200, 64-bit)",
+    "supported_v1_target_os": "Windows 11 x64 (Build 22000+)",
+    "technical_directml_floor_reference": "Windows 10 Build 19041+ (DirectML / D3D12 Feature Level 11_0+ API minimum floor \u2014 technical reference only, not a supported V1 target OS)"
   },
   "cpython_embeddable_runtime": {
     "archive_filename": "python-3.12.10-embed-amd64.zip",
@@ -120,12 +119,13 @@
     "golden_reference_file": "docs/m13_synthetic_fixture_golden.json"
   },
   "toolchain_identities": {
-    "python_executable": "Python 3.12.10 (AMD64)",
-    "inno_setup_compiler": "Inno Setup 6.3.3 (ISCC.exe x64)",
-    "signtool_tool": "Windows SDK SignTool 10.0+ / PowerShell Authenticode API",
+    "python_executable": "CPython 3.12.10 (AMD64)",
+    "inno_setup_compiler": "Inno Setup 6.3.3 (ISCC.exe x64, PrivilegesRequired=lowest)",
+    "signtool_tool": "Windows SDK SignTool 10.0.26100.0 / PowerShell Authenticode API (Win11 Build 26200)",
     "test_certificate_subject": "CN=GlyphCue Development Test Certificate, O=GlyphCue Local Test Root",
+    "cyclonedx_py_version": "cyclonedx-py 5.1.1 (specVersion: 1.6)",
     "cyclonedx_sbom_spec": "CycloneDX 1.6 JSON (specVersion: 1.6)",
-    "drift_comparator": "tools/packaging/verify_payload_drift.py v1.1.0"
+    "drift_comparator": "tools/packaging/verify_payload_drift.py v1.2.0"
   },
   "content_addressed_staging_contract": {
     "downloads_cache_dir": "<cache_root>/downloads/{sha256}/{filename}",
