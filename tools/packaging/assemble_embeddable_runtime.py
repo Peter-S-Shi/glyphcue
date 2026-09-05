@@ -105,12 +105,16 @@ def assemble_app_root(
         for whl in sorted(wheels_dir.glob("*.whl")):
             unpack_wheel_to_lib(whl, lib_dir, qt_plugins_dir)
 
-    # 3. First-party application source
+    # 3. First-party application source (ignore dev __pycache__ bytecode)
     source_root = src_dir or (REPO_ROOT / "src" / "glyphcue")
     if source_root.is_dir():
         if app_src_dir.exists():
             shutil.rmtree(app_src_dir)
-        shutil.copytree(source_root, app_src_dir)
+        shutil.copytree(
+            source_root,
+            app_src_dir,
+            ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "*.pyo"),
+        )
 
     # 4. Database SQL Migrations
     src_migrations = source_root / "persistence" / "migrations_sql"
@@ -141,10 +145,11 @@ def assemble_app_root(
 
     # 9. Generate Manifest & CycloneDX 1.6 SBOM
     manifest_path = legal_dir / "payload_manifest.json"
-    generate_manifest(app_root, manifest_path)
-
     sbom_path = legal_dir / "sbom.json"
+    generate_manifest(app_root, manifest_path)
     generate_cyclonedx_sbom(manifest_path, sbom_path)
+    # Finalize manifest so it indexes the generated sbom.json as well
+    generate_manifest(app_root, manifest_path)
 
     return app_root
 

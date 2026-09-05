@@ -275,9 +275,15 @@ def generate_manifest(
     found_rel_paths = set()
     integrity_mismatches = []
 
+    target_out_path = output_file.resolve() if output_file else None
+
     for p in sorted(app_root.rglob("*")):
         if p.is_file():
+            if target_out_path and p.resolve() == target_out_path:
+                continue
             rel_path = str(p.relative_to(app_root)).replace("\\", "/")
+            if rel_path == "legal/manifest/payload_manifest.json":
+                continue
             found_rel_paths.add(rel_path)
             size, sha256 = hash_file(p)
             meta = classify_payload_file(

@@ -177,43 +177,31 @@ def hash_file(file_path: Path) -> str:
     return hashlib.sha256(file_path.read_bytes()).hexdigest()
 
 
-def download_or_copy_and_verify(
-    url: str,
+def stage_offline_artifact(
     dest_path: Path,
     expected_sha256: str,
     seed_cache_dir: Path | None = None,
 ) -> None:
-    """Ensure artifact is staged at dest_path and strictly matches expected SHA-256."""
+    """Ensure artifact is staged at dest_path strictly from local cache in fail-closed offline mode."""
     dest_path.parent.mkdir(parents=True, exist_ok=True)
     if dest_path.is_file():
         if hash_file(dest_path) == expected_sha256:
             return
         dest_path.unlink(missing_ok=True)
 
-    # Check seed cache if available
+    # Check seed cache
     if seed_cache_dir and seed_cache_dir.is_dir():
         candidate = seed_cache_dir / "downloads" / expected_sha256 / dest_path.name
         if candidate.is_file() and hash_file(candidate) == expected_sha256:
             shutil.copy2(candidate, dest_path)
             return
 
-    # Check local private_samples for models
-    local_model = REPO_ROOT / "private_samples" / "phase0b" / "rapid_models" / dest_path.name
-    if local_model.is_file() and hash_file(local_model) == expected_sha256:
-        shutil.copy2(local_model, dest_path)
-        return
-
-    # Download from authoritative URL
-    req = urllib.request.Request(url, headers={"User-Agent": "GlyphCue-Packaging-Experiment/1.0"})
-    with urllib.request.urlopen(req, timeout=30) as resp, open(dest_path, "wb") as out_f:
-        shutil.copyfileobj(resp, out_f)
-
-    actual_sha = hash_file(dest_path)
-    if actual_sha != expected_sha256:
-        dest_path.unlink(missing_ok=True)
-        raise ValueError(
-            f"SHA-256 mismatch for {dest_path.name}: expected {expected_sha256}, got {actual_sha}"
-        )
+    # Strictly offline: fail immediately without network or private_samples fallback
+    raise FileNotFoundError(
+        f"Strict offline reconstruction failure: required frozen artifact '{dest_path.name}' "
+        f"(SHA-256: {expected_sha256}) is missing from staged seed cache. "
+        f"Network download and undeclared sample fallbacks are prohibited during reconstruction."
+    )
 
 
 def populate_isolated_cache(
@@ -221,7 +209,7 @@ def populate_isolated_cache(
     frozen_inv: dict[str, Any],
     seed_cache_dir: Path | None = None,
 ) -> dict[str, Path]:
-    """Populate and verify isolated content-addressed staging cache."""
+    """Populate and verify isolated content-addressed staging cache in strict offline mode."""
     cache_dir.mkdir(parents=True, exist_ok=True)
     downloads_dir = cache_dir / "downloads"
     downloads_dir.mkdir(parents=True, exist_ok=True)
@@ -232,9 +220,8 @@ def populate_isolated_cache(
     cpython_info = frozen_inv["cpython_embeddable_runtime"]
     cp_fn = cpython_info["archive_filename"]
     cp_sha = cpython_info["sha256"]
-    cp_url = cpython_info["source_url"]
     cp_dest = downloads_dir / cp_sha / cp_fn
-    download_or_copy_and_verify(cp_url, cp_dest, cp_sha, seed_cache_dir=seed_cache_dir)
+    stage_offline_artifact(cp_dest, cp_sha, seed_cache_dir=seed_cache_dir)
     staged[cp_fn] = cp_dest
 
     # 2. 85 Frozen wheel / sdist artifacts
@@ -242,23 +229,16 @@ def populate_isolated_cache(
     for w in wheels:
         fn = w["wheel_filename"]
         sha = w["sha256"]
-        url = w["download_url"]
         dest = downloads_dir / sha / fn
-        download_or_copy_and_verify(url, dest, sha, seed_cache_dir=seed_cache_dir)
+        stage_offline_artifact(dest, sha, seed_cache_dir=seed_cache_dir)
         staged[fn] = dest
 
     # 3. Authoritative ONNX Models
-    model_urls = {
-        "PP-OCRv6_det_medium.onnx": "https://www.modelscope.cn/models/RapidAI/RapidOCR/resolve/v3.9.2/onnx/PP-OCRv6/det/PP-OCRv6_det_medium.onnx",
-        "PP-OCRv6_rec_small.onnx": "https://www.modelscope.cn/models/RapidAI/RapidOCR/resolve/v3.9.2/onnx/PP-OCRv6/rec/PP-OCRv6_rec_small.onnx",
-        "ch_ppocr_mobile_v2.0_cls_mobile.onnx": "https://www.modelscope.cn/models/RapidAI/RapidOCR/resolve/v3.9.2/onnx/PP-OCRv2/cls/ch_ppocr_mobile_v2.0_cls_mobile.onnx",
-    }
     for m in frozen_inv.get("onnx_models_inventory", []):
         m_fn = m["filename"]
         m_sha = m["sha256"]
         m_dest = downloads_dir / m_sha / m_fn
-        url = model_urls.get(m_fn, "")
-        download_or_copy_and_verify(url, m_dest, m_sha, seed_cache_dir=seed_cache_dir)
+        stage_offline_artifact(m_dest, m_sha, seed_cache_dir=seed_cache_dir)
         staged[m_fn] = m_dest
 
     return staged
@@ -453,9 +433,13 @@ def build_reconstruction_app_root(
                     "role": "qt_runtime_plugin",
                 }
 
-    # 4. First-party application source
+    # 4. First-party application source (ignore dev bytecode)
     src_origin = REPO_ROOT / "src" / "glyphcue"
-    shutil.copytree(src_origin, app_src_dir)
+    shutil.copytree(
+        src_origin,
+        app_src_dir,
+        ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "*.pyo"),
+    )
 
     # 5. Database SQL Migrations
     src_mig_origin = src_origin / "persistence" / "migrations_sql"
@@ -481,7 +465,16 @@ def build_reconstruction_app_root(
     sign_pe_file(launcher_exe, TEST_CERT_THUMBPRINT)
     postsign_sha = hash_file(launcher_exe)
 
-    # 10. Generate Payload Manifest & CycloneDX 1.6 SBOM
+    # 10. Generate Signature Inventory for app_root
+    sig_inv_path = legal_dir / "signature_inventory.json"
+    sig_inv = evaluate_signature_gate(
+        app_root,
+        expected_thumbprint=TEST_CERT_THUMBPRINT,
+        output_inventory=sig_inv_path,
+        allow_mock=False,
+    )
+
+    # 11. Generate Payload Manifest & CycloneDX 1.6 SBOM
     manifest_path = legal_dir / "payload_manifest.json"
     manifest = generate_manifest(
         app_root,
@@ -493,14 +486,24 @@ def build_reconstruction_app_root(
     sbom_path = legal_dir / "sbom.json"
     generate_cyclonedx_sbom(manifest_path, sbom_path)
 
-    # 11. Signature Inventory for app_root
-    sig_inv_path = legal_dir / "signature_inventory.json"
-    sig_inv = evaluate_signature_gate(
+    # Finalize payload manifest to index the generated sbom.json as well
+    manifest = generate_manifest(
         app_root,
-        expected_thumbprint=TEST_CERT_THUMBPRINT,
-        output_inventory=sig_inv_path,
-        allow_mock=False,
+        manifest_path,
+        enforce_all_expected_present=True,
+        extraction_provenance_map=extraction_map,
     )
+
+    # 12. Final payload tree reconciliation assertion against disk
+    disk_files = {p.relative_to(app_root).as_posix() for p in app_root.rglob("*") if p.is_file() and p != manifest_path}
+    manifest_files = {entry["path"].replace("\\", "/") for entry in manifest["files"]}
+    unindexed_on_disk = disk_files - manifest_files
+    missing_from_disk = manifest_files - disk_files
+    if unindexed_on_disk or missing_from_disk:
+        raise RuntimeError(
+            f"Final payload manifest reconciliation failed! "
+            f"Unindexed files on disk: {unindexed_on_disk}, Missing manifest files: {missing_from_disk}"
+        )
 
     return {
         "app_root": app_root,
@@ -514,8 +517,13 @@ def build_reconstruction_app_root(
 
 
 def test_runtime_sanity(app_root: Path) -> bool:
-    """Execute local sanity check of assembled private embeddable runtime."""
-    python_exe = app_root / "python" / "python.exe"
+    """Execute local sanity check on a disposable scratch copy of the assembled private runtime."""
+    scratch_dir = app_root.parent / f"_sanity_scratch_{app_root.name}"
+    if scratch_dir.exists():
+        shutil.rmtree(scratch_dir)
+    shutil.copytree(app_root, scratch_dir, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+
+    python_exe = scratch_dir / "python" / "python.exe"
     sanity_script = """
 import sys
 import os
@@ -541,7 +549,7 @@ assert qwindows_dll.is_file(), 'QPA platform plugin missing'
 # 4. PyAV import
 import av
 
-# 5. ONNX Runtime & DirectML session initialization
+# 5. ONNX Runtime & DirectML provider preflight
 import onnxruntime as ort
 providers = ort.get_available_providers()
 
@@ -565,7 +573,7 @@ engine = RapidOCR(params={
     'Rec.model_path': str(rec_small),
     'Cls.model_path': str(cls_mobile),
 })
-print('[Sanity] OK: private runtime verification succeeded completely.')
+print('[Sanity] OK: private runtime verification succeeded.')
 """
     cmd = [str(python_exe.resolve()), "-B", "-c", sanity_script]
     env = os.environ.copy()
@@ -573,19 +581,14 @@ print('[Sanity] OK: private runtime verification succeeded completely.')
     env.pop("PYTHONHOME", None)
     env.pop("PYTHONPATH", None)
 
-    res = subprocess.run(cmd, cwd=str(app_root), env=env, capture_output=True, text=True)
-
-    # Clean up any leftover __pycache__ or .pyc if accidentally generated
-    for pyc in app_root.rglob("*.pyc"):
-        pyc.unlink(missing_ok=True)
-    for pycache in app_root.rglob("__pycache__"):
-        if pycache.is_dir():
-            shutil.rmtree(pycache, ignore_errors=True)
-
-    if res.returncode != 0:
-        print("Sanity check stderr:", res.stderr, file=sys.stderr)
-        return False
-    return True
+    try:
+        res = subprocess.run(cmd, cwd=str(scratch_dir), env=env, capture_output=True, text=True)
+        if res.returncode != 0:
+            print("Sanity check stderr:", res.stderr, file=sys.stderr)
+            return False
+        return True
+    finally:
+        shutil.rmtree(scratch_dir, ignore_errors=True)
 
 
 def compile_inno_installer(iss_script: Path, app_root: Path, output_dir: Path) -> Path:
@@ -636,7 +639,7 @@ def execute_reconstruction(
     sanity_ok = test_runtime_sanity(app_root)
     if not sanity_ok:
         raise RuntimeError(f"[{recon_name}] Local runtime sanity check FAILED.")
-    print(f"[{recon_name}] Local runtime sanity check: PASS")
+    print(f"[{recon_name}] Local runtime sanity check: PASS (importability, migrations, Qt platform plugin, and ONNX DirectML provider preflight verified; detector/recognizer DirectML hardware acceptance reserved for Phase D)")
 
     # 4. Inno Setup installer
     iss_file = REPO_ROOT / "tools" / "packaging" / "glyphcue_installer.iss"

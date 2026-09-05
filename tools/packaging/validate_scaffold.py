@@ -322,6 +322,51 @@ def test_installer_envelope_comparison_mock(tmp_dir: Path) -> None:
     print("[OK] test_installer_envelope_comparison_mock passed")
 
 
+def test_final_payload_manifest_exact_disk_reconciliation(tmp_dir: Path) -> None:
+    """Validate that the final payload manifest exactly matches disk files with zero drift."""
+    app_root = tmp_dir / "reconcile_app_root"
+    assemble_app_root(app_root)
+
+    manifest_path = app_root / "legal" / "manifest" / "payload_manifest.json"
+    assert manifest_path.is_file()
+    m = json.loads(manifest_path.read_text(encoding="utf-8"))
+
+    manifest_paths = {e["path"].replace("\\", "/") for e in m["files"]}
+    disk_paths = {
+        p.relative_to(app_root).as_posix()
+        for p in app_root.rglob("*")
+        if p.is_file() and p != manifest_path
+    }
+
+    unindexed_on_disk = disk_paths - manifest_paths
+    missing_on_disk = manifest_paths - disk_paths
+
+    assert not unindexed_on_disk, f"Unindexed disk files found: {unindexed_on_disk}"
+    assert not missing_on_disk, f"Manifest files missing on disk: {missing_on_disk}"
+    assert len(manifest_paths) == len(disk_paths), "Manifest count must equal disk payload count"
+    print("[OK] test_final_payload_manifest_exact_disk_reconciliation passed (100% path/count match)")
+
+
+def test_strict_offline_reconstruction_fails_on_missing_staged_input(tmp_dir: Path) -> None:
+    """Validate that reconstruction fails closed in strict offline mode if an artifact is missing."""
+    from tools.packaging.execute_phase_c import stage_offline_artifact
+
+    dest = tmp_dir / "missing_artifact.whl"
+    fake_sha = "0" * 64
+    empty_seed = tmp_dir / "empty_seed_cache"
+    empty_seed.mkdir(parents=True, exist_ok=True)
+
+    failed_closed = False
+    try:
+        stage_offline_artifact(dest, fake_sha, seed_cache_dir=empty_seed)
+    except FileNotFoundError as exc:
+        failed_closed = True
+        assert "Strict offline reconstruction failure" in str(exc)
+
+    assert failed_closed, "Must fail closed in strict offline mode when input is missing"
+    print("[OK] test_strict_offline_reconstruction_fails_on_missing_staged_input passed (fail closed)")
+
+
 def run_all_scaffold_tests() -> bool:
     """Run complete scaffold validation suite."""
     test_dir = REPO_ROOT / "temp_scaffold_test"
@@ -338,6 +383,8 @@ def run_all_scaffold_tests() -> bool:
         test_manifest_source_artifact_sha_preservation(test_dir)
         test_extraction_conflict_gate_fail_closed(test_dir)
         test_installer_envelope_comparison_mock(test_dir)
+        test_final_payload_manifest_exact_disk_reconciliation(test_dir)
+        test_strict_offline_reconstruction_fails_on_missing_staged_input(test_dir)
         print("\nALL PHASE A/C SCAFFOLD & FROZEN-INPUT VALIDATION TESTS PASSED (INCLUDING REGRESSIONS).")
         return True
     finally:
