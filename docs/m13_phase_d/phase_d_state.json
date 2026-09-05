@@ -1,0 +1,50 @@
+{
+  "schema_version": "1.0",
+  "document_type": "phase_d_public_state",
+  "note": "Machine-local evidence and process state lives in build_artifacts/phase_d/relay_state.json (gitignored). This file contains only public-safe state.",
+  "branch": "milestone/13-release-candidate",
+  "head_commit": "00a3c65ccd7fca5180e94f242947c2438a0f9651",
+  "governing_issues": ["#26", "#27"],
+  "phase_c": {
+    "verdict": "FINAL_ACCEPTED",
+    "closure_commit": "00a3c65ccd7fca5180e94f242947c2438a0f9651"
+  },
+  "phase_d_modules": {
+    "D0": {
+      "name": "Execution Preflight & Relay Scaffold",
+      "status": "COMPLETE",
+      "completed_at": "2026-09-05"
+    },
+    "D1": {
+      "name": "Environment A — Clean Offline Install & First Launch",
+      "status": "NOT_STARTED"
+    },
+    "D2": {
+      "name": "Environment A — DirectML Runtime Fidelity",
+      "status": "NOT_STARTED"
+    },
+    "D3": {
+      "name": "Environment B — CPU Fallback Validation",
+      "status": "NOT_STARTED"
+    },
+    "D4": {
+      "name": "Evidence Reconciliation & Phase D Verdict",
+      "status": "NOT_STARTED"
+    }
+  },
+  "selected_installer": {
+    "source": "Clean Reconstruction A, Phase C Final Accepted",
+    "filename": "GlyphCue-Setup.exe",
+    "size_bytes": 441941848,
+    "sha256_signed": "3ea8720033d7d23a5c55296bb2ee08fffb3bc43e2f6a4d9ad0387c63951355a3",
+    "signer_subject": "CN=GlyphCue Development Test Certificate, O=GlyphCue Local Test Root",
+    "signer_thumbprint": "A3E4E5320779C9F63E513D870E209C26B819C61E",
+    "authenticode_status": "Valid"
+  },
+  "gates": {
+    "release_ready": false,
+    "redistribution_compliance": "OPEN",
+    "phase_d_verdict": "NOT_STARTED"
+  },
+  "relay_document": "docs/m13_phase_d/PHASE_D_RELAY.md"
+}

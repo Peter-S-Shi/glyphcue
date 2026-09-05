@@ -4,7 +4,7 @@
 
 ## Current milestone
 
-**Milestone 13 — Release Candidate & Signed Release / Minimum Runtime-Fidelity Packaging Experiment (Issue #27): Phase C FINAL ACCEPTED.**
+**Milestone 13 — Release Candidate & Signed Release / Minimum Runtime-Fidelity Packaging Experiment (Issue #27): Phase C FINAL ACCEPTED. Phase D0 Relay Scaffold COMPLETE.**
 
 Milestone 13 Minimum Runtime-Fidelity Packaging Experiment is executing on dedicated branch `milestone/13-release-candidate` governed by Wayfinder charter packages #17–#26 and execution issue #27:
 - **Phase A — Frozen Inputs & Experiment Scaffold: ACCEPTED (2026-09-05)**:
@@ -21,7 +21,15 @@ Milestone 13 Minimum Runtime-Fidelity Packaging Experiment is executing on dedic
   - Inno Setup installer envelope comparison: size delta 496 bytes within allowed Inno Setup header/timestamp and PKCS#7 envelope delta; signatures valid on both. Envelope verdict: **PASS**.
   - Manifest-to-disk reconciliation: 100% path and file count match (21,711 files) on both reconstructions with 0 unindexed and 0 missing files.
   - Gate verdicts: Integrity Gate: PASS, Untracked File Gate: PASS, Provenance Gate: PASS, Release Redistribution Compliance Gate: OPEN (recorded). Overall Phase C verdict: **FINAL PASS / ACCEPTED**.
-- **Phase D — Target-Machine Offline Runtime & DirectML Validation**: **NOT STARTED (eligible next)**.
+- **Phase D — Target-Machine Offline Runtime & DirectML Validation**:
+  - **D0 — Execution Preflight & Relay Scaffold: COMPLETE (2026-09-05)**:
+    - Relay authority: `docs/m13_phase_d/PHASE_D_RELAY.md`; machine-readable state: `docs/m13_phase_d/phase_d_state.json`; local gitignored evidence root: `build_artifacts/phase_d/` (covered by existing `build_artifacts/` gitignore).
+    - Selected installer frozen: Clean Reconstruction A `GlyphCue-Setup.exe`, 441,941,848 bytes, SHA-256 `3ea8720033d7d23a5c55296bb2ee08fffb3bc43e2f6a4d9ad0387c63951355a3`, Authenticode Valid.
+    - Four Phase D modules (D1–D4) defined with full evidence contracts and relay contract schema documented.
+  - **D1 — Environment A Clean Offline Install & First Launch: NOT STARTED**.
+  - **D2 — Environment A DirectML Runtime Fidelity: NOT STARTED**.
+  - **D3 — Environment B CPU Fallback Validation: NOT STARTED**.
+  - **D4 — Evidence Reconciliation & Phase D Verdict: NOT STARTED**.
 - **Release Status**: **Release Ready = NO** (Phase D and Release Redistribution Compliance Gate pending).
 - **Release Redistribution Compliance Gate**: **OPEN**.
 
