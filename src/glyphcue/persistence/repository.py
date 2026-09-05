@@ -58,7 +58,7 @@ class CueRepository:
 
     def list_all(self) -> list[Cue]:
         rows = self._conn.execute(
-            "SELECT id, start_time, end_time, review_state FROM cues ORDER BY start_time"
+            "SELECT id, start_time, end_time, review_state FROM cues ORDER BY start_time, end_time, id"
         ).fetchall()
         return [self._build_cue(row) for row in rows]
 
@@ -67,7 +67,7 @@ class CueRepository:
             return []
         rows = self._conn.execute(
             "SELECT id, start_time, end_time, review_state FROM cues "
-            "WHERE source_id = ? ORDER BY start_time",
+            "WHERE source_id = ? ORDER BY start_time, end_time, id",
             (source_id,),
         ).fetchall()
         return [self._build_cue(row) for row in rows]

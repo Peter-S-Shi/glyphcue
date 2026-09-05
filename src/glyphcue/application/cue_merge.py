@@ -64,5 +64,5 @@ ew_cues for processing
             accepted_new_cues.append(new_cue)
 
     all_cues = retained_existing + accepted_new_cues
-    all_cues.sort(key=lambda c: (c.start_time, c.end_time))
+    all_cues.sort(key=lambda c: (c.start_time, c.end_time, c.id))
     return all_cues
