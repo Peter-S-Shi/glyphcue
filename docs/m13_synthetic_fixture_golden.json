@@ -1,0 +1,51 @@
+{
+  "schema_version": "1.0.0",
+  "fixture_file": "glyphcue_synthetic_fixture_v1.mp4",
+  "fixture_sha256": "72a7621639730b62b5a06a266499ea66768df277cad15553cab6d2487b972465",
+  "fixture_size_bytes": 183789,
+  "total_frames_evaluated": 60,
+  "reconstructed_cues_count": 3,
+  "reconstructed_cues": [
+    {
+      "cue_index": 1,
+      "start_ms": 0,
+      "end_ms": 2000,
+      "text": "GLYPHCUE V1 PACKAGING TEST",
+      "avg_confidence": 0.9766
+    },
+    {
+      "cue_index": 2,
+      "start_ms": 2000,
+      "end_ms": 4000,
+      "text": "SYNTHETIC SUBTITLE RECONSTRUCTION",
+      "avg_confidence": 0.9996
+    },
+    {
+      "cue_index": 3,
+      "start_ms": 4000,
+      "end_ms": 6000,
+      "text": "HIGH FIDELITY DETERMINISTIC FIXTURE",
+      "avg_confidence": 0.9992
+    }
+  ],
+  "sample_frame_detections": [
+    {
+      "frame_idx": 10,
+      "timestamp_ms": 1000,
+      "text": "GLYPHCUE V1 PACKAGING TEST",
+      "confidence": 0.97
+    },
+    {
+      "frame_idx": 30,
+      "timestamp_ms": 3000,
+      "text": "SYNTHETIC SUBTITLE RECONSTRUCTION",
+      "confidence": 0.9996
+    },
+    {
+      "frame_idx": 50,
+      "timestamp_ms": 5000,
+      "text": "HIGH FIDELITY DETERMINISTIC FIXTURE",
+      "confidence": 0.9989
+    }
+  ]
+}

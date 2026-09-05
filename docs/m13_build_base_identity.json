@@ -1,0 +1,108 @@
+{
+  "schema_version": "1.0.0",
+  "document_title": "GlyphCue Milestone 13 — Frozen Build-Base Identity",
+  "governing_issues": ["#17", "#20", "#21", "#24", "#25", "#26", "#27"],
+  "trusted_source_commit": "5905df09d012cb63a34b98c484b43958477e52e8",
+  "target_branch": "milestone/13-release-candidate",
+  "cpython_embeddable_runtime": {
+    "archive_filename": "python-3.12.10-embed-amd64.zip",
+    "source_url": "https://www.python.org/ftp/python/3.12.10/python-3.12.10-embed-amd64.zip",
+    "size_bytes": 11133606,
+    "sha256": "4acbed6dd1c744b0376e3b1cf57ce906f9dc9e95e68824584c8099a63025a3c3",
+    "verification_source": "python.org official sigstore / SHA-256 release record"
+  },
+  "onnx_models_inventory": [
+    {
+      "filename": "PP-OCRv6_det_medium.onnx",
+      "size_bytes": 62119454,
+      "sha256": "92078b7355007ccfffcd4c8cd441a3afd4538904d06881b29a155e1e679907c2",
+      "role": "PP-OCRv6 Text Detector (Medium profile) — Authoritative Production Candidate per #20/#26",
+      "verification_status": "unresolved"
+    },
+    {
+      "filename": "PP-OCRv6_rec_small.onnx",
+      "size_bytes": 21234383,
+      "sha256": "6f327246b50388f3c176ae304bd95767ea6dc0c9ae92153ef8cbe210b3c14884",
+      "role": "PP-OCRv6 Text Recognizer (Small profile)",
+      "verification_status": "unresolved"
+    },
+    {
+      "filename": "ch_ppocr_mobile_v2.0_cls_mobile.onnx",
+      "size_bytes": 585532,
+      "sha256": "e47acedf663230f8863ff1ab0e64dd2d82b838fceb5957146dab185a89d6215c",
+      "role": "Text Direction Classifier (Mobile profile)",
+      "verification_status": "unresolved"
+    }
+  ],
+  "critical_native_dlls": [
+    {
+      "filename": "DirectML.dll",
+      "size_bytes": 18527776,
+      "sha256": "b73972115320e906a49602f2027a3266622881b0d325ba685e0f165a9482a8d7",
+      "role": "Direct3D 12 Hardware Acceleration Engine (from onnxruntime-directml==1.24.4)"
+    },
+    {
+      "filename": "onnxruntime.dll",
+      "size_bytes": 21111832,
+      "sha256": "302c69f9779d63ef4ab90316e59444c4acbaca7fe3455020d79d10bcfcb00715",
+      "role": "ONNX Runtime C++ Engine Binding (from onnxruntime-directml==1.24.4)"
+    }
+  ],
+  "database_migrations": [
+    {
+      "filename": "0001_create_cues.sql",
+      "size_bytes": 137,
+      "sha256": "823d7aa7551f3c3fc3e61683f4e23699eef6438efd09a564f8b7e3b1ab2d05ff"
+    },
+    {
+      "filename": "0002_create_language_layers.sql",
+      "size_bytes": 250,
+      "sha256": "be845d70da4be9c960b879ceb5e41192c1ec585940ab4f7c0f8c4626fd5f974a"
+    },
+    {
+      "filename": "0003_create_track_groups.sql",
+      "size_bytes": 193,
+      "sha256": "4c2d162d65b48ef558552849cf04fa2c5c69d377a408ca7d85e00eb6bb9a3118"
+    },
+    {
+      "filename": "0004_create_observations.sql",
+      "size_bytes": 531,
+      "sha256": "8c578d6bc72ac86ee8fd1e1015875e3b77e98578692d97b23df6b278ec4f1de0"
+    },
+    {
+      "filename": "0005_add_source_id_to_cues_and_observations.sql",
+      "size_bytes": 284,
+      "sha256": "7c821706ab1c45dc7b30823e1e874bcb0f265d51e14702bed9c75039dfef7ed7"
+    }
+  ],
+  "deterministic_synthetic_fixture": {
+    "recipe_script": "tools/packaging/generate_synthetic_fixture.py",
+    "output_filename": "glyphcue_synthetic_fixture_v1.mp4",
+    "size_bytes": 183789,
+    "sha256": "72a7621639730b62b5a06a266499ea66768df277cad15553cab6d2487b972465",
+    "golden_reference_file": "docs/m13_synthetic_fixture_golden.json"
+  },
+  "toolchain_specifications": {
+    "target_python_version": "3.12.10",
+    "installer_compiler": "Inno Setup 6 (x64compatible, PrivilegesRequired=lowest)",
+    "sbom_format": "CycloneDX 1.6 JSON (specVersion: 1.6)",
+    "signature_mechanism": "Windows SDK SignTool (Self-signed test certificate for experiment)"
+  },
+  "frozen_key_packages": {
+    "PySide6": "6.11.2",
+    "PySide6_Essentials": "6.11.2",
+    "shiboken6": "6.11.2",
+    "av": "18.1.0",
+    "numpy": "2.3.5",
+    "onnxruntime-directml": "1.24.4",
+    "rapidocr": "3.9.2",
+    "paddleocr": "3.7.0",
+    "paddlepaddle": "3.3.1",
+    "paddlex": "3.7.2",
+    "opencv-contrib-python": "4.10.0.84",
+    "pyclipper": "1.4.0",
+    "pypdfium2": "5.13.0",
+    "shapely": "2.1.2",
+    "python-bidi": "0.6.11"
+  }
+}
