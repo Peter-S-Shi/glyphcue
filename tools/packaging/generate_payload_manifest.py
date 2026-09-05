@@ -85,9 +85,23 @@ def build_package_wheel_map(frozen_inventory: dict[str, Any]) -> dict[str, str]:
 def classify_payload_file(
     rel_path_str: str,
     wheel_map: dict[str, str],
+    extraction_map: dict[str, dict[str, str]] | None = None,
 ) -> dict[str, Any]:
     """Classify an app_root relative path into role, source, and verification status."""
     norm = rel_path_str.replace("\\", "/")
+
+    if extraction_map and norm in extraction_map:
+        ext_info = extraction_map[norm]
+        source_art = ext_info.get("source_artifact", "unknown")
+        lic = ext_info.get("license", "Third-Party-Declared")
+        v_status = ext_info.get("verification_status", "verified")
+        role = ext_info.get("role", "vendored_python_dependency")
+        return {
+            "role": role,
+            "source_artifact": source_art,
+            "license": lic,
+            "verification_status": v_status,
+        }
 
     if norm.startswith("python/"):
         return {
@@ -177,6 +191,7 @@ def generate_manifest(
     output_file: Path | None = None,
     expected_hashes: dict[str, str] | None = None,
     enforce_all_expected_present: bool = False,
+    extraction_provenance_map: dict[str, dict[str, str]] | None = None,
 ) -> dict[str, Any]:
     """Inspect app_root and construct the complete payload manifest.
 
@@ -203,7 +218,7 @@ def generate_manifest(
             rel_path = str(p.relative_to(app_root)).replace("\\", "/")
             found_rel_paths.add(rel_path)
             size, sha256 = hash_file(p)
-            meta = classify_payload_file(rel_path, wheel_map)
+            meta = classify_payload_file(rel_path, wheel_map, extraction_map=extraction_provenance_map)
 
             # Check integrity contract: if path has an expected hash, enforce equality
             if rel_path in effective_expected:
