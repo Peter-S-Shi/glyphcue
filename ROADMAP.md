@@ -2,7 +2,7 @@
 
 **Document type:** Authoritative V1 milestone roadmap  
 **Project:** GlyphCue  
-**Lifecycle phase:** Production Development → Milestone 10 complete; **Milestone 11 (Product Hardening & Full Regression) is CLOSED (2026-09-04)** (Release Acceptance rejected by human adjudication); **Milestone 12 (Product Rework & Cue Quality Recovery) is CLOSED & ACCEPTED (2026-09-05)**: Stage ① (UI / Review Workflow Recovery) and Stage ② (Cue Production Quality Recovery via Cue Cleaner V0.6.1 "Clean Cues" integration) both completed and accepted; Feature Freeze is REINSTATED; Release Ready = NO; Release/Packaging SUSPENDED pending Product Hardening II gate. Next target: Product Hardening II & Full Regression pass before Milestone 13 (Release Candidate & Signed Release). See §19/§31 and `PROJECT_STATUS.md`.  
+**Lifecycle phase:** Production Development → Milestone 10 complete; **Milestone 11 (Product Hardening & Full Regression) is CLOSED (2026-09-04)** (Release Acceptance rejected by human adjudication); **Milestone 12 (Product Rework & Cue Quality Recovery) is CLOSED & ACCEPTED (2026-09-05)**: Stage ① (UI / Review Workflow Recovery) and Stage ② (Cue Production Quality Recovery via Cue Cleaner V0.6.1 "Clean Cues" integration) both completed and accepted; **Product Hardening II & Full Regression is CLOSED & ACCEPTED (2026-09-05)** via PR #16; Feature Freeze remains ACTIVE; Release Ready = NO; packaging suspension lifted for scoped Milestone 13 release work; approved to advance into Milestone 13 (Release Candidate & Signed Release). See §19/§20/§31 and `PROJECT_STATUS.md`.  
 **Status:** Current V1 execution roadmap  
 
 **Last updated:** 2026-09-05
@@ -146,8 +146,7 @@ Evaluated candidates:
 
 Current release-packaging decision:
 
-> **NO ACTIVE RELEASE PACKAGING PATH** — selection deferred until
-> Milestone 12 is accepted and Product Hardening II passes.
+> **NO ACTIVE RELEASE PACKAGING PATH** — packaging suspension from Milestone 12 / Hardening II lifted; selection and execution resume within scoped Milestone 13 work.
 
 Historical M11 evidence: Nuitka/pyside6-deploy was retired after
 repeated build-system/resource blockers (RAM exhaustion and an
@@ -161,7 +160,7 @@ selection is deliberately deferred.
 
 Future Packaging / RC form:
 
-> TBD after Milestone 12 acceptance and Product Hardening II.
+> Under evaluation within Milestone 13 (Release Candidate & Signed Release).
 
 Final installer technology:
 
@@ -1753,8 +1752,9 @@ Milestone 12 passes only when:
    (with the explicit conservative cleaner limitation);
 5. only after this gate closes does Milestone 13 (Release Candidate &
    Signed Release) become the next target, preceded by a second Product
-   Hardening & Full Regression pass. → **GATE CLOSED**: next engineering
-   action is Product Hardening II & Full Regression pass.
+   Hardening & Full Regression pass. → **GATE CLOSED**: Product Hardening II
+   & Full Regression pass completed and accepted (2026-09-05); product is
+   approved to advance into Milestone 13.
 
 ---
 
@@ -2185,10 +2185,13 @@ Milestone 11 — Product Hardening & Full Regression ✓ hardening complete / CL
 Milestone 12 — Product Rework & Cue Quality Recovery ✓ complete / CLOSED (2026-09-05)
   ├─ Stage ① UI / Review Workflow Recovery           ✓ complete (2026-09-04)
   └─ Stage ② Cue Production Quality Recovery          ✓ complete (2026-09-05)
+Product Hardening II & Full Regression              ✓ complete / CLOSED (2026-09-05, PR #16)
 
 Corrective Product Rework               CLOSED / ACCEPTED (2026-09-05)
-Feature Freeze                          REINSTATED
-Release / Packaging                     SUSPENDED (pending Product Hardening II gate)
+Product Hardening II & Full Regression  CLOSED / ACCEPTED (2026-09-05)
+Feature Freeze                          ACTIVE
+Release / Packaging                     Suspension lifted for scoped M13 release work
+Release Ready                           NO (pending M13 release gate)
 ```
 
 ---
@@ -2197,16 +2200,18 @@ Release / Packaging                     SUSPENDED (pending Product Hardening II 
 
 The next engineering action is:
 
-> **Product Hardening II & Full Regression Pass** (before Milestone 13 Release Candidate; packaging suspended until hardening gate passes)
+> **Milestone 13 — Release Candidate & Signed Release** (ROADMAP §20; packaging work resumes within scoped M13 release activities)
 
-**Milestone 12 — Product Rework & Cue Quality Recovery is CLOSED & ACCEPTED (2026-09-05).**
-Both stages have been completed and verified:
-1. **Stage ① UI / Review Workflow Recovery is COMPLETE & ACCEPTED (2026-09-04)**: resolved review UX via batch purge of discarded cues, linear chronological timeline sorting with semantic card borders and badges, continuous timeline resume workflow, destructive video cue clearing modal, and completion chime.
-2. **Stage ② Cue Production Quality Recovery is COMPLETE & ACCEPTED (2026-09-05)**: resolved Problem 1 by integrating the externally frozen Cue Cleaner V0.6.1 as a manual "Clean Cues" button in Path A post-reconstruction review workspace, preserving the upstream DirectML pipeline and its ≤5× realtime throughput. Eligible cues are partitioned by language-signature, multi-language cues are attributed safely fail-closed, and uncertainty clusters map to `ReviewState.NEEDS_REVIEW`. Total cross-layer cue ordering (`start_time, end_time, id`) is enforced deterministically.
-3. **Accepted V1 Known Limitation**: Per Human Adjudication (2026-09-05), Cue Cleaner V0.6.1 is accepted with the explicit known limitation that Clean Cues is conservative and not required to eliminate every residual duplicate or fragment. Remaining cases stay visible in the 3-pane workbench and are resolved via the existing manual Merge workflow (`M` shortcut / Merge tool). Residual duplicates are not release blockers.
-4. **Feature Freeze is REINSTATED**. Corrective product rework is closed. No new feature additions are permitted outside the agreed roadmap.
-5. **Release / Packaging remains SUSPENDED**. Packaging work will not resume until the Product Hardening II gate passes.
-6. **Next Target**: Scope and execute Product Hardening II & Full Regression Pass, followed by Milestone 13 (Release Candidate & Signed Release, §20).
+**Product Hardening II & Full Regression Pass is CLOSED & ACCEPTED (2026-09-05).**
+All verification gates have been satisfied:
+1. **Step ② Targeted Regressions**: 5 high-ROI seam regressions implemented in `tests/ui/test_product_hardening_ii_seams.py` passed (100% pass rate); 53 affected suite tests passed in 3.95s.
+2. **Step ④ Full Regression & Hardware Probe**: Local Windows suite achieved 962 passed, 1 skipped, 1 xfailed in 172.06s (0 failures); DirectML hardware probe confirmed `DmlExecutionProvider` active on detector and recognizer without silent fallback; clean-environment GitHub Actions CI (#152, Run ID `33966863334`) completed with SUCCESS.
+3. **Step ⑤ Final Human Acceptance**: Repository owner interactive real-product smoke check returned PASS (2026-09-05).
+4. **Accepted V1 Known Limitation Preserved**: Cue Cleaner V0.6.1 conservative contract preserved as a non-blocking V1 product trade-off; remaining cases resolved via manual Merge workflow.
+5. **Feature Freeze remains ACTIVE**.
+6. **Packaging Suspension Lifted**: Packaging work is no longer suspended by the Hardening II gate and may resume strictly within scoped Milestone 13 release/packaging work.
+7. **Release Ready remains NO** until the Milestone 13 release gate itself succeeds.
+8. **Next Target**: Milestone 13 (Release Candidate & Signed Release, §20).
 
 ---
 
@@ -2252,10 +2257,10 @@ Product Hardening + Full Regression (CLOSED; Release Acceptance REJECTED)
 M12
 Product Rework & Cue Quality Recovery (CLOSED / ACCEPTED 2026-09-05)
         ↓
-(Product Hardening II & Full Regression pass, NEXT)
+Product Hardening II & Full Regression (CLOSED / ACCEPTED 2026-09-05)
         ↓
 M13
-Release Candidate + Signed Release
+Release Candidate + Signed Release (NEXT)
         ↓
 M14
 Portfolio Packaging + Stop-Building Closure

@@ -4,9 +4,16 @@
 
 ## Current milestone
 
-**Milestone 12 — Product Rework & Cue Quality Recovery: CLOSED & ACCEPTED (2026-09-05). Next: Product Hardening II & Full Regression Pass.**
+**Product Hardening II & Full Regression: CLOSED & ACCEPTED (2026-09-05). Next: Milestone 13 — Release Candidate & Signed Release.**
 
-Milestone 11 Product Hardening & Full Regression is CLOSED; Release Acceptance was REJECTED BY HUMAN ADJUDICATION due to Cue quality, review UX, and packaging maturity. Milestone 12 lifted feature freeze strictly for targeted recovery across two problems, and both stages are now COMPLETED & ACCEPTED:
+Milestone 11 Product Hardening & Full Regression is CLOSED; Release Acceptance was REJECTED BY HUMAN ADJUDICATION due to Cue quality, review UX, and packaging maturity. Milestone 12 lifted feature freeze strictly for targeted recovery across two problems, both of which were COMPLETED & ACCEPTED (2026-09-05). Product Hardening II & Full Regression was then executed, verified, and accepted (2026-09-05) via PR #16:
+- **Product Hardening II & Full Regression — COMPLETED & ACCEPTED (2026-09-05, PR #16):**
+  1. *Step ② Targeted Regressions*: 5 high-ROI seam regressions implemented in `tests/ui/test_product_hardening_ii_seams.py` (A3/A4 post-clean manual merge/split & cleaner protection; A6 unified 4-format export conformance; C1 uncommitted edit across mode-switching; E1 reopen & total-order queue reconstruction; E2 multi-cycle incremental OCR clean lifecycle). All 5 passed in 1.03s; 53 affected suite tests passed in 3.95s.
+  2. *Step ④ Machine-Verifiable Full Regression*: Whole-repository pytest suite executed on native Windows dev environment achieving **962 passed, 1 skipped, 1 xfailed in 172.06s (0 failures)**.
+  3. *Step ④ DirectML Hardware & Provider Probe*: Hardware probe (`tools/devqa_directml_verify.py`) verified genuine `DmlExecutionProvider` activation on both detector and recognizer ONNX Runtime sessions with zero silent fallback.
+  4. *Step ④ Clean-Environment CI*: GitHub Actions CI (#152, Run ID `33966863334`) completed with SUCCESS on Ubuntu / Python 3.12 / Qt-offscreen.
+  5. *Step ⑤ Final Human Acceptance*: Repository owner completed interactive real-product smoke check and confirmed PASS (2026-09-05).
+  6. *Accepted V1 Known Limitation Preserved*: Cue Cleaner V0.6.1 conservative contract preserved as a non-blocking V1 product trade-off; remaining cases resolved via manual Merge workflow.
 - **Problem 2 (QA Review UX & Workflow) — Stage ① COMPLETED & ACCEPTED (2026-09-04, PR #14 merged at `a27ba23`):**
   1. *Left Cue Workbench Multi-select & Batch Purge*: Multi-select already Discarded Cues (`ExtendedSelection`) and batch purge them via `Purge Discarded` button (`#subtleDangerBtn`); cues disappear from visible queue; data safety ensures non-rejected cues are never purged.
   2. *Strict Chronological Ordering*: Queue sorting strictly follows `(cue.start_time, cue.end_time, cue.id)`; status badges (`[0.00s] [Level] [Badge]`) display state without breaking linear time.
@@ -25,17 +32,25 @@ Milestone 11 Product Hardening & Full Regression is CLOSED; Release Acceptance w
   6. *Deterministic Total Ordering*: Database queries (`list_for_source`, `list_all`) and queue reconstruction strictly enforce `(start_time, end_time, id)` tie-breakers.
   7. *Accepted V1 Known Limitation*: Per Human Adjudication (2026-09-05), Cue Cleaner V0.6.1 is accepted for V1 with the explicit known limitation that Clean Cues is conservative and not required to eliminate every residual duplicate or fragment. Remaining cases stay visible in the 3-pane workbench and are resolved via the existing manual Merge workflow (`M` shortcut / Merge button). Residual duplicates are explicitly not release blockers.
 - **Lifecycle & Governance Status:**
-  - Corrective Product Rework: **CLOSED / ACCEPTED (2026-09-05)**.
-  - Feature Freeze: **REINSTATED**.
-  - Packaging / Installer Work: **SUSPENDED** (pending Product Hardening II gate).
-  - Release Ready: **NO** (next target is Product Hardening II & Full Regression Pass).
+  - Corrective Product Rework (Milestone 12): **CLOSED / ACCEPTED (2026-09-05)**.
+  - Product Hardening II & Full Regression: **CLOSED / ACCEPTED (2026-09-05, PR #16)**.
+  - Feature Freeze: **ACTIVE**.
+  - Packaging / Installer Work: **Suspension lifted**; may resume strictly within scoped Milestone 13 release/packaging activities.
+  - Release Ready: **NO** (remains NO until the Milestone 13 release gate itself succeeds).
+  - Next Milestone: **Milestone 13 — Release Candidate & Signed Release** (not started).
 
 ### Validation
+- Product Hardening II Targeted Suite (`tests/ui/test_product_hardening_ii_seams.py`): **5 passed** in 1.03s.
+- Product Hardening II Affected Suites: **53 passed** in 3.95s.
+- Local Whole-Repository Regression: **962 passed, 1 skipped, 1 xfailed** in 172.06s (0 failures).
+- DirectML Hardware Preflight: **PASS** (`DmlExecutionProvider` confirmed active on detector and recognizer).
+- GitHub Actions Clean-Environment CI: **SUCCESS** (Run `33966863334`, CI #152).
+- Final Human Acceptance: **PASS** (repository owner real-product smoke check).
 - Stage ① UI Suite: **310 passed, 1 xfailed** (100% UI pass rate).
 - Stage ② Targeted Test Suites:
   - Cue Cleaning domain/adapter tests (`tests/application/test_cue_cleaning.py`): **25 passed**.
   - Clean Cues UI integration tests (`tests/ui/test_clean_cues_integration.py`): **14 passed**.
-- Whole-Repository Regression: **957 passed, 1 skipped, 1 xfailed** (verified on branch).
+- Whole-Repository Regression (M12 Stage ② baseline): **957 passed, 1 skipped, 1 xfailed**.
 
 ### Milestone 11 Retrospective Summary (CLOSED)
 
@@ -812,13 +827,15 @@ appears anywhere in the repository.
 
 ## Git / PR status
 
-- Authoritative state: `main` contains Milestone 12 Stage ② Cue Cleaner Integration from PR [#15](https://github.com/Peter-S-Shi/glyphcue/pull/15); Milestone 12 is CLOSED / ACCEPTED.
-- Active M12 working branch: none / no active Milestone 12 implementation branch.
+- Authoritative state: `main` contains Milestone 12 Stage ② (PR [#15](https://github.com/Peter-S-Shi/glyphcue/pull/15)) and Product Hardening II & Full Regression (PR [#16](https://github.com/Peter-S-Shi/glyphcue/pull/16)); Product Hardening II is CLOSED / ACCEPTED.
+- Active working branch: none / no active hardening or implementation branch.
+- Product Hardening II vehicle: PR [#16](https://github.com/Peter-S-Shi/glyphcue/pull/16) — Product Hardening II & Full Regression Pass; completed integration vehicle.
 - Milestone 12 Stage ② vehicle: PR [#15](https://github.com/Peter-S-Shi/glyphcue/pull/15) — Milestone 12 Stage ②: Cue Production Quality Recovery (Cue Cleaner V0.6.1 Integration); completed integration vehicle for Stage ②.
 
 ## Unresolved
 
-- Release Ready = NO. Packaging work remains SUSPENDED until Product Hardening II & Full Regression pass is scoped, executed, and accepted.
+- Release Ready = NO (remains NO until the Milestone 13 release gate itself succeeds).
+- Packaging suspension lifted; packaging work may resume strictly within scoped Milestone 13 release/packaging activities.
 - Residual non-blocking evaluation findings preserved (informational, not release blockers on their own):
   - `sample_c`: Isolated window-boundary non-text reading (`"zh": "3\n8"`) on Cue 1 (1.1s), safely fail-closed with `ambiguous_languages: ["zh"]`; non-contaminating.
   - `sample_f`: One illegible Chinese layer at 661.1s left untranscribed in GT rather than guessed; rapid b-roll editor button glyphs flagged ambiguous.
@@ -826,5 +843,5 @@ appears anywhere in the repository.
 
 ## Next action
 
-1. Scope and execute Product Hardening II & Full Regression Pass before Milestone 13 (Release Candidate & Signed Release).
-2. Packaging work remains SUSPENDED until the Product Hardening II gate passes.
+1. Advance into Milestone 13 (Release Candidate & Signed Release, ROADMAP §20).
+2. Packaging work may resume strictly within scoped Milestone 13 release/packaging deliverables.

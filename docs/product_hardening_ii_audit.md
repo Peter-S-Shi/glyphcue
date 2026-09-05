@@ -1,9 +1,9 @@
 # GlyphCue — Product Hardening II: Audit & Compact Risk Map
 
-**Status:** Read-only hardening audit & execution roadmap. No product code changed.  
+**Status:** Post-rework hardening audit, targeted regressions, full regression, and final human acceptance CLOSED / ACCEPTED (2026-09-05).  
 **Baseline:** `main` @ `a825cdbe3def54921376ca0f81535362a0f44c83` (includes merged PR #14 and PR #15).  
 **Branch:** `hardening/product-hardening-ii`.  
-**Lifecycle Context:** Milestone 12 is CLOSED & ACCEPTED (2026-09-05). Feature Freeze is REINSTATED. Packaging remains SUSPENDED until the Product Hardening II gate passes.  
+**Lifecycle Context:** Product Hardening II & Full Regression is CLOSED & ACCEPTED (2026-09-05) via PR #16. Feature Freeze remains active. The product is approved to advance into Milestone 13 — Release Candidate & Signed Release. Packaging is no longer suspended by the Product Hardening II gate and may resume only within the scoped M13 release/packaging work. Release Ready remains NO until the M13 release gate itself succeeds.  
 
 ---
 
@@ -14,7 +14,7 @@ Product Hardening II is a focused post-rework acceptance pass, **not** a repetit
 ### Closed Decisions & Non-Goals
 1. **Cue Cleaner V0.6.1 Decision is Closed**: V0.6.1 is intentionally conservative; residual duplicates and fragments are an accepted V1 limitation per Human Adjudication (2026-09-05). The existing manual Merge workflow (`M` shortcut / Merge button) is the designated human resolution path. Zero-duplicate purity is explicitly **not** a release blocker.
 2. **No Algorithmic Redesign**: No changes to Cue Cleaner V0.6.1, the DirectML OCR engine/detector, Paddle fallback, or upstream multi-frame consensus reconstruction.
-3. **Packaging Suspended**: Packaging (PyInstaller onedir, Inno Setup) remains frozen until this hardening gate passes.
+3. **Packaging Suspension Lifted**: Packaging (PyInstaller onedir, Inno Setup) was frozen during Hardening II; with this gate closed and accepted, packaging may resume strictly within scoped Milestone 13 release work.
 4. **Owner Testing Aggressively Minimized**: Everything that can be verified deterministically by the agent (automated unit/integration tests, simulated UI workflows, SQLite inspection, DirectML preflight probe) is assigned to the agent. Human testing is reserved solely for a single final smoke check before Milestone 13.
 
 ---
@@ -228,10 +228,39 @@ Result: **PASS**
 - **Upstream DirectML Pipeline**: Unchanged in Milestone 12 and Hardening II; preserves the Milestone 11 verified throughput target ($\le 5\times$ realtime, measured at 2.71×–4.16× realtime on representative media).
 
 ### Clean-Environment CI Verification (GitHub Actions)
-- Pull Request: [PR #16 (Draft)](https://github.com/Peter-S-Shi/glyphcue/pull/16)
-- Action Run: ID `33966824917` (`CI` workflow on Ubuntu / Python 3.12 / Qt-offscreen)
+- Pull Request: [PR #16](https://github.com/Peter-S-Shi/glyphcue/pull/16)
+- Action Run: ID `33966863334` (CI #152 on Ubuntu / Python 3.12 / Qt-offscreen) — **SUCCESS**
 - Purpose: Authoritative clean-environment machine regression check for cross-platform headless stability.
 
 ### Concrete Blockers Remaining Before Step ⑤
 **None.** Zero machine-verifiable defects or regressions remain.
+
+---
+
+## 8. Step ⑤ Final Human Acceptance & Hardening II Closure (2026-09-05)
+
+### Human Verification Execution
+- **Reviewer**: Repository Owner
+- **Scope**: Short real-product smoke check exercising Path A video load, OCR evidence extraction, Clean Cues secondary action, and QA review workspace responsiveness on real media.
+- **Outcome**: **PASS** (Human acceptance confirmed 2026-09-05).
+
+### Accepted V1 Contract Preservation
+- **Cue Cleaner V0.6.1 Limitation**: Retained as an explicit, non-blocking V1 product trade-off. Clean Cues is conservative and not required to eliminate every residual duplicate or fragment; remaining cases are visible in the 3-pane workbench and resolved via the existing manual Merge workflow (`M` shortcut / Merge button).
+
+### Comprehensive Gate Status Summary
+| Gate Item | Verification Mechanism | Result | Status |
+|---|---|---|---|
+| **Step ② Targeted Regressions** | 5 high-ROI seam regressions in `tests/ui/test_product_hardening_ii_seams.py` | 5 passed in 1.03s | **PASS** |
+| **Step ② Affected Suites** | `test_cue_cleaning.py`, `test_clean_cues_integration.py`, `test_workbench_persistent_shell.py`, etc. | 53 passed in 3.95s | **PASS** |
+| **Step ④ Local Full Suite** | Whole-repository pytest suite on Windows native dev environment | 962 passed, 1 skipped, 1 xfailed in 172.06s | **PASS** |
+| **DirectML Hardware Probe** | Real Windows hardware execution (`tools/devqa_directml_verify.py`) | Detector + Recognizer active with `DmlExecutionProvider` | **PASS** |
+| **Step ④ Clean-Environment CI** | GitHub Actions workflow on Ubuntu / Python 3.12 / Qt-offscreen | CI #152 (`33966863334`) | **SUCCESS** |
+| **Step ⑤ Final Human Smoke** | Repository owner interactive smoke check on real media | Pass confirmed by owner | **PASS** |
+
+### Lifecycle Disposition
+- **Product Hardening II & Full Regression**: **CLOSED / ACCEPTED (2026-09-05)**.
+- **Feature Freeze**: Remains **ACTIVE**.
+- **Packaging Suspension**: **LIFTED**; packaging work may resume strictly within scoped Milestone 13 release/packaging activities.
+- **Release Ready**: Remains **NO** until the Milestone 13 release gate itself succeeds.
+- **Next Milestone**: **Milestone 13 — Release Candidate & Signed Release** (not started).
 
