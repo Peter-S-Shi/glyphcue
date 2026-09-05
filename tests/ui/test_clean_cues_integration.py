@@ -88,11 +88,14 @@ def test_clean_cues_merges_duplicate_and_updates_workspace_and_persistence(qapp_
     assert merged.end_time == 2.0
     assert merged.language_layers[0].text == "hello world"
     assert merged.review_state == ReviewState.PENDING
+    assert merged.start_time < merged.end_time
 
     # Persistence reflects the same result (source-of-truth check).
     persisted = cue_repo.list_for_source("video_a")
     assert len(persisted) == 1
     assert persisted[0].language_layers[0].text == "hello world"
+    for cue in persisted:
+        assert cue.start_time < cue.end_time
 
 
 def test_clean_cues_only_touches_current_video_source(qapp_guard, tmp_path):
@@ -169,13 +172,46 @@ def test_clean_cues_preserves_approved_rejected_and_needs_review_unchanged(qapp_
     assert by_id["eligible"].review_state == ReviewState.PENDING
 
 
-def test_clean_cues_leaves_multilanguage_cues_untouched(qapp_guard, tmp_path):
+def test_clean_cues_merges_duplicate_bilingual_cues_and_splits_layers_back_correctly(qapp_guard, tmp_path):
+    """Bilingual (multi-language-layer) Cues are cleaner-eligible too --
+    see cue_cleaning.py's module docstring for how each language layer's
+    text is losslessly reconstructed after the frozen Cleaner's flat-text
+    merge, without guessing at which layer a surviving line belongs to."""
     multi1 = _make_multilang_cue("m1", 0.0, 1.0)
     multi2 = _make_multilang_cue("m2", 1.0, 2.0)
     pane, cue_repo = _make_pane(tmp_path, cues=[multi1, multi2])
 
-    # Multilingual-only source: no eligible (single-language) cues exist.
-    assert not pane.clean_cues_button.isEnabled()
+    assert pane.clean_cues_button.isEnabled()
+
+    pane._on_clean_cues_clicked()
+
+    assert len(pane.qa.cues) == 1
+    merged = pane.qa.cues[0]
+    assert merged.start_time == 0.0
+    assert merged.end_time == 2.0
+    assert merged.start_time < merged.end_time
+    layers = {layer.language: layer.text for layer in merged.language_layers}
+    assert layers == {"en": "hello", "zh": "你好"}
+
+
+def test_clean_cues_leaves_distinct_bilingual_cues_untouched(qapp_guard, tmp_path):
+    distinct1 = Cue(
+        id="m1", start_time=0.0, end_time=1.0,
+        language_layers=(
+            LanguageLayer(language="en", text="first line"),
+            LanguageLayer(language="zh", text="第一行"),
+        ),
+        review_state=ReviewState.PENDING,
+    )
+    distinct2 = Cue(
+        id="m2", start_time=5.0, end_time=6.0,
+        language_layers=(
+            LanguageLayer(language="en", text="second line"),
+            LanguageLayer(language="zh", text="第二行"),
+        ),
+        review_state=ReviewState.PENDING,
+    )
+    pane, cue_repo = _make_pane(tmp_path, cues=[distinct1, distinct2])
 
     pane._on_clean_cues_clicked()
 
@@ -195,6 +231,8 @@ def test_clean_cues_result_stays_chronologically_ordered(qapp_guard, tmp_path):
 
     starts = [c.start_time for c in pane.qa.cues]
     assert starts == sorted(starts)
+    for cue in pane.qa.cues:
+        assert cue.start_time < cue.end_time
 
 
 def test_export_controls_reads_cleaned_workspace_state(qapp_guard, tmp_path):

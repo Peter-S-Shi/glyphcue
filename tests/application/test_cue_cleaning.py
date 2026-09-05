@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from glyphcue.application import cue_cleaning
 from glyphcue.application.cue_cleaning import (
+    _reconstruct_multilayer_cue,
     clean_eligible_cues_for_source,
     is_cleaner_eligible_cue,
 )
@@ -20,37 +21,45 @@ def _cue(id_, start, end, text="hello", language="en", review_state=ReviewState.
     )
 
 
-def _multilang_cue(id_, start, end, review_state=ReviewState.PENDING):
+def _bilingual_cue(id_, start, end, en_text="hello", zh_text="你好", review_state=ReviewState.PENDING,
+                    en_observation_ids=(), zh_observation_ids=()):
     return Cue(
         id=id_,
         start_time=start,
         end_time=end,
         language_layers=(
-            LanguageLayer(language="en", text="hello"),
-            LanguageLayer(language="zh", text="你好"),
+            LanguageLayer(language="en", text=en_text, observation_ids=en_observation_ids),
+            LanguageLayer(language="zh", text=zh_text, observation_ids=zh_observation_ids),
         ),
         review_state=review_state,
     )
 
 
-def test_is_cleaner_eligible_cue_requires_pending_and_single_language_layer():
+def _assert_valid_timing(cues):
+    for cue in cues:
+        assert cue.start_time >= 0
+        assert cue.end_time > cue.start_time
+
+
+def test_is_cleaner_eligible_cue_requires_pending_regardless_of_layer_count():
     assert is_cleaner_eligible_cue(_cue("c1", 0.0, 1.0, review_state=ReviewState.PENDING))
+    assert is_cleaner_eligible_cue(_bilingual_cue("c1", 0.0, 1.0, review_state=ReviewState.PENDING))
     assert not is_cleaner_eligible_cue(_cue("c1", 0.0, 1.0, review_state=ReviewState.APPROVED))
     assert not is_cleaner_eligible_cue(_cue("c1", 0.0, 1.0, review_state=ReviewState.REJECTED))
     assert not is_cleaner_eligible_cue(_cue("c1", 0.0, 1.0, review_state=ReviewState.NEEDS_REVIEW))
-    assert not is_cleaner_eligible_cue(_multilang_cue("c1", 0.0, 1.0))
 
 
 def test_no_eligible_cues_is_a_safe_no_op():
     cues = [
         _cue("c1", 0.0, 1.0, review_state=ReviewState.APPROVED),
-        _multilang_cue("c2", 1.0, 2.0),
+        _bilingual_cue("c2", 1.0, 2.0, review_state=ReviewState.NEEDS_REVIEW),
     ]
 
     result = clean_eligible_cues_for_source(cues)
 
     assert {c.id for c in result} == {"c1", "c2"}
     assert result[0].review_state == ReviewState.APPROVED
+    _assert_valid_timing(result)
 
 
 def test_empty_cue_list_is_a_safe_no_op():
@@ -70,6 +79,7 @@ def test_unchanged_eligible_cue_keeps_its_own_id_and_state():
     assert result[0].id == "c1"
     assert result[0].review_state == ReviewState.PENDING
     assert result[0].language_layers[0].text == "a completely unique caption"
+    _assert_valid_timing(result)
 
 
 def test_duplicate_adjacent_eligible_cues_are_merged_and_stay_pending():
@@ -88,6 +98,7 @@ def test_duplicate_adjacent_eligible_cues_are_merged_and_stay_pending():
     assert merged.review_state == ReviewState.PENDING
     # Evidence from both contributing Cues is preserved, not dropped.
     assert set(merged.language_layers[0].observation_ids) == {"o1", "o2"}
+    _assert_valid_timing(result)
 
 
 def test_protected_cues_survive_completely_unchanged():
@@ -103,19 +114,6 @@ def test_protected_cues_survive_completely_unchanged():
     assert by_id["rejected"] is rejected
     assert by_id["needs_review"] is needs_review
     assert by_id["eligible"].review_state == ReviewState.PENDING
-
-
-def test_multilanguage_cues_pass_through_untouched_even_when_duplicated():
-    """Documented scope boundary: multi-language-layer Cues are never
-    cleaner-eligible (see `is_cleaner_eligible_cue`), even if a naive
-    single-language reading would treat them as duplicates."""
-    first = _multilang_cue("m1", 0.0, 1.0)
-    second = _multilang_cue("m2", 1.0, 2.0)
-
-    result = clean_eligible_cues_for_source([first, second])
-
-    assert {c.id for c in result} == {"m1", "m2"}
-    assert all(len(c.language_layers) == 2 for c in result)
 
 
 def test_cleaning_twice_is_idempotent():
@@ -152,28 +150,35 @@ def test_result_is_sorted_chronologically():
     assert [c.id for c in result] == ["early", "mid", "late"]
     for a, b in zip(result, result[1:]):
         assert a.start_time <= b.start_time
+    _assert_valid_timing(result)
 
 
-def test_preserve_complementary_evidence_cluster_maps_to_needs_review(monkeypatch):
-    """Deterministically exercises the adapter's own mapping logic for the
-    Cleaner's conservative complementary-evidence-cover fallback, without
-    depending on reverse-engineering the frozen algorithm's exact
-    clustering thresholds (already independently validated by its own
-    frozen-corpus freeze report: 9 real complementary-evidence clusters
-    found in Sample A-H)."""
+def test_preserve_complementary_evidence_cluster_maps_to_needs_review_even_when_unchanged(monkeypatch):
+    """Regression test for a real contract bug: a
+    `preserve_complementary_evidence_cluster` member is very often an
+    UNCHANGED single-origin observed Cue (the whole point of the
+    evidence cover is picking already-complete, already-correct
+    observations) -- the frozen Cleaner's own real output shape for
+    this action gives each cover member `source_indices=(its own single
+    origin index,)`, exactly like an ordinary untouched passthrough.
+    Earlier this made the adapter's is-unchanged-passthrough shortcut
+    return the original PENDING Cue before ever consulting the
+    needs-review mapping. The fake report below mirrors that real shape
+    (NOT `source_indices=(1, 2)` for both members, which would mask the
+    bug) -- deterministically exercising the adapter's own mapping
+    logic without depending on reverse-engineering the frozen
+    algorithm's exact clustering thresholds (already independently
+    validated by its own frozen-corpus freeze report: 9 real
+    complementary-evidence clusters found in Sample A-H)."""
 
     def fake_clean_cues(frozen_cues):
-        # Simulate: two eligible Cues (origin indices 1 and 2) were found
-        # to hold complementary recurring evidence with no single Cue
-        # covering both -- the Cleaner keeps both, unmodified, flagged
-        # for human review, exactly like `choose_evidence_cover` would.
         cleaned = [
             cue_cleaning.cleaner.Cue(
                 index=1,
                 start=frozen_cues[0].start,
                 end=frozen_cues[0].end,
                 text=frozen_cues[0].text,
-                source_indices=(1, 2),
+                source_indices=(1,),
                 selected_origin_index=1,
             ),
             cue_cleaning.cleaner.Cue(
@@ -181,7 +186,7 @@ def test_preserve_complementary_evidence_cluster_maps_to_needs_review(monkeypatc
                 start=frozen_cues[1].start,
                 end=frozen_cues[1].end,
                 text=frozen_cues[1].text,
-                source_indices=(1, 2),
+                source_indices=(2,),
                 selected_origin_index=2,
             ),
         ]
@@ -207,5 +212,205 @@ def test_preserve_complementary_evidence_cluster_maps_to_needs_review(monkeypatc
 
     assert len(result) == 2
     assert all(c.review_state == ReviewState.NEEDS_REVIEW for c in result)
-    texts = {c.language_layers[0].text for c in result}
-    assert texts == {"...life of", "abundance."}
+    # Same id/provenance preserved -- only the review state flips.
+    assert {c.id for c in result} == {"c1", "c2"}
+    by_id = {c.id: c for c in result}
+    assert by_id["c1"].language_layers[0].text == "...life of"
+    assert by_id["c2"].language_layers[0].text == "abundance."
+    _assert_valid_timing(result)
+
+
+def test_preserve_complementary_evidence_cluster_does_not_reflag_already_needs_review(monkeypatch):
+    """A protected (already NEEDS_REVIEW) Cue is never handed to the
+    Cleaner at all (see `is_cleaner_eligible_cue`), so this only matters
+    for the eligible/PENDING side -- but confirms the flip logic doesn't
+    error when a Cue is already at NEEDS_REVIEW going in isn't possible
+    here; this instead confirms it doesn't double-touch an unrelated
+    ordinary PENDING passthrough result in the same batch."""
+
+    def fake_clean_cues(frozen_cues):
+        cleaned = [
+            cue_cleaning.cleaner.Cue(
+                index=1,
+                start=frozen_cues[0].start,
+                end=frozen_cues[0].end,
+                text=frozen_cues[0].text,
+                source_indices=(1,),
+                selected_origin_index=1,
+            ),
+            cue_cleaning.cleaner.Cue(
+                index=2,
+                start=frozen_cues[1].start,
+                end=frozen_cues[1].end,
+                text=frozen_cues[1].text,
+                source_indices=(2,),
+                selected_origin_index=2,
+            ),
+        ]
+        report = {"actions": []}
+        return cleaned, report
+
+    monkeypatch.setattr(cue_cleaning.cleaner, "clean_cues", fake_clean_cues)
+
+    cues = [
+        _cue("c1", 0.0, 1.0, text="one"),
+        _cue("c2", 1.0, 2.0, text="two"),
+    ]
+
+    result = clean_eligible_cues_for_source(cues)
+
+    assert {c.id: c.review_state for c in result} == {
+        "c1": ReviewState.PENDING,
+        "c2": ReviewState.PENDING,
+    }
+
+
+# --- Bilingual / multi-language-layer reconstruction -----------------
+
+
+def test_bilingual_cue_is_eligible_and_passes_through_unchanged_when_unique():
+    cue = _bilingual_cue("c1", 0.0, 1.0, en_text="a unique line", zh_text="一句独特的话")
+
+    result = clean_eligible_cues_for_source([cue])
+
+    assert len(result) == 1
+    assert result[0].id == "c1"
+    assert result[0].review_state == ReviewState.PENDING
+    layers = {layer.language: layer.text for layer in result[0].language_layers}
+    assert layers == {"en": "a unique line", "zh": "一句独特的话"}
+    _assert_valid_timing(result)
+
+
+def test_bilingual_duplicate_adjacent_cues_merge_and_split_back_to_correct_layers():
+    """Two adjacent bilingual Cues with identical text in both layers
+    should merge into one -- and each language layer's text must be
+    correctly attributed back to its own layer, never mixed."""
+    cues = [
+        _bilingual_cue(
+            "c1", 0.0, 1.0, en_text="hello world", zh_text="你好世界",
+            en_observation_ids=("en1",), zh_observation_ids=("zh1",),
+        ),
+        _bilingual_cue(
+            "c2", 1.0, 2.0, en_text="hello world", zh_text="你好世界",
+            en_observation_ids=("en2",), zh_observation_ids=("zh2",),
+        ),
+    ]
+
+    result = clean_eligible_cues_for_source(cues)
+
+    assert len(result) == 1
+    merged = result[0]
+    assert merged.start_time == 0.0
+    assert merged.end_time == 2.0
+    assert merged.review_state == ReviewState.PENDING
+    layers = {layer.language: layer for layer in merged.language_layers}
+    assert layers["en"].text == "hello world"
+    assert layers["zh"].text == "你好世界"
+    # Evidence unioned per language layer, never cross-attributed.
+    assert set(layers["en"].observation_ids) == {"en1", "en2"}
+    assert set(layers["zh"].observation_ids) == {"zh1", "zh2"}
+    _assert_valid_timing(result)
+
+
+def test_bilingual_cue_with_distinct_content_stays_separate():
+    cues = [
+        _bilingual_cue("c1", 0.0, 1.0, en_text="first line", zh_text="第一行"),
+        _bilingual_cue("c2", 5.0, 6.0, en_text="second line", zh_text="第二行"),
+    ]
+
+    result = clean_eligible_cues_for_source(cues)
+
+    assert {c.id for c in result} == {"c1", "c2"}
+    _assert_valid_timing(result)
+
+
+def test_reconstruct_multilayer_cue_returns_none_when_output_line_is_not_a_verbatim_donor_line():
+    """Direct unit test of the safety net: if a cleaned output line
+    cannot be matched, verbatim and in order, against its donor's own
+    known lines (e.g. the rare content-modifying
+    strip_persistent_overlay_edges post-pass), attribution must refuse
+    to guess rather than silently mis-route a line to the wrong
+    language layer."""
+    donor = _bilingual_cue("donor", 0.0, 1.0, en_text="hello world", zh_text="你好")
+    donor_attribution = cue_cleaning._joined_lines_with_layer_index(donor)
+
+    frozen_cue = cue_cleaning.cleaner.Cue(
+        index=1,
+        start=0.0,
+        end=1.0,
+        text="hello there",  # modified, not a verbatim donor line
+        source_indices=(1,),
+        selected_origin_index=1,
+    )
+
+    result = _reconstruct_multilayer_cue(
+        frozen_cue, [donor], donor, donor_attribution, needs_review=False
+    )
+
+    assert result is None
+
+
+def test_clean_eligible_cues_falls_back_to_untouched_when_attribution_is_unsafe(monkeypatch):
+    """End-to-end: when the Cleaner's real output can't be safely
+    attributed back to language layers, the adapter must leave every
+    contributing Cue exactly as it was -- never guess, never lose or
+    mis-attribute evidence."""
+
+    def fake_clean_cues(frozen_cues):
+        cleaned = [
+            cue_cleaning.cleaner.Cue(
+                index=1,
+                start=frozen_cues[0].start,
+                end=frozen_cues[0].end,
+                text="a line that was never actually observed",
+                source_indices=(1,),
+                selected_origin_index=1,
+            ),
+        ]
+        return cleaned, {"actions": []}
+
+    monkeypatch.setattr(cue_cleaning.cleaner, "clean_cues", fake_clean_cues)
+
+    original = _bilingual_cue("c1", 0.0, 1.0, en_text="hello world", zh_text="你好")
+
+    result = clean_eligible_cues_for_source([original])
+
+    assert len(result) == 1
+    assert result[0] is original
+
+
+def test_bilingual_layer_fully_pruned_is_flagged_needs_review(monkeypatch):
+    """If cleaning would leave one language layer completely empty
+    while the Cue itself still has content, that is a meaningfully
+    different outcome from routine pruning and must be surfaced for
+    human review rather than silently accepted."""
+
+    def fake_clean_cues(frozen_cues):
+        # Simulate: only the English line survived a real cleaning pass
+        # (e.g. prune_transient_lines dropped the Chinese line as
+        # unsupported). This is a real, in-order subsequence of the
+        # donor's own lines -- a legitimate frozen-algorithm outcome.
+        cleaned = [
+            cue_cleaning.cleaner.Cue(
+                index=1,
+                start=frozen_cues[0].start,
+                end=frozen_cues[0].end,
+                text="hello world",
+                source_indices=(1,),
+                selected_origin_index=1,
+            ),
+        ]
+        return cleaned, {"actions": []}
+
+    monkeypatch.setattr(cue_cleaning.cleaner, "clean_cues", fake_clean_cues)
+
+    original = _bilingual_cue("c1", 0.0, 1.0, en_text="hello world", zh_text="你好")
+
+    result = clean_eligible_cues_for_source([original])
+
+    assert len(result) == 1
+    cleaned_cue = result[0]
+    assert cleaned_cue.review_state == ReviewState.NEEDS_REVIEW
+    layers = {layer.language: layer.text for layer in cleaned_cue.language_layers}
+    assert layers["en"] == "hello world"
+    assert layers["zh"] == ""
