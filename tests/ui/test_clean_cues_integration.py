@@ -81,6 +81,16 @@ def test_clean_cues_button_enabled_when_eligible_cues_exist(qapp_guard, tmp_path
     assert pane.clean_cues_button.isEnabled()
 
 
+def test_clean_cues_button_disables_when_cues_reviewed_via_qa(qapp_guard, tmp_path):
+    cues = [_make_cue("c1", 0.0, 1.0, state=ReviewState.PENDING)]
+    pane, _ = _make_pane(tmp_path, cues=cues)
+    assert pane.clean_cues_button.isEnabled()
+
+    # User approves the cue via QA workbench
+    pane.qa.approve_and_advance()
+    assert not pane.clean_cues_button.isEnabled()
+
+
 def test_clean_cues_merges_duplicate_and_updates_workspace_and_persistence(qapp_guard, tmp_path):
     cues = [
         _make_cue("c1", 0.0, 1.0, text="hello world", observation_ids=("o1",)),

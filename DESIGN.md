@@ -3,9 +3,9 @@
 **Document type:** Production-facing UI / UX design authority  
 **Project:** GlyphCue  
 **Repository:** `Peter-S-Shi/glyphcue`  
-**Lifecycle phase:** Production Development → Milestone 10 complete; Milestone 11 (Product Hardening & Full Regression) CLOSED (2026-09-04), Release Acceptance REJECTED BY HUMAN ADJUDICATION — Release Ready = NO, Release/Packaging SUSPENDED. **Milestone 12 (Product Rework & Cue Quality Recovery) Stage ① (UI / Review Workflow Recovery) COMPLETED (2026-09-04)**: review workflow recovery delivered linear chronological cue ordering, multi-select batch purge for discarded cues, continuous OCR seam indicator & click-to-seek, and destructive video cue reset. Stage ② (Cue Production Quality Recovery) next. See `ROADMAP.md` §18/§19 and `PROJECT_STATUS.md`.  
+**Lifecycle phase:** Production Development → Milestone 10 complete; Milestone 11 (Product Hardening & Full Regression) CLOSED (2026-09-04), Release Acceptance REJECTED BY HUMAN ADJUDICATION — Release Ready = NO, Release/Packaging SUSPENDED. **Milestone 12 (Product Rework & Cue Quality Recovery) Stages ① and ② COMPLETED & ACCEPTED (2026-09-05)**: review workflow recovery delivered linear chronological cue ordering, multi-select batch purge for discarded cues, card border review-state semantics, global horizontal overflow support, continuous OCR seam indicator & click-to-seek, and destructive video cue reset (Stage ①); post-reconstruction cue quality recovery integrated the externally frozen Cue Cleaner V0.6.1 as a manual "Clean Cues" secondary action in the Path A Center Pane with fail-closed safety and deterministic total ordering (Stage ②). Next target: Product Hardening II & Full Regression pass. See `ROADMAP.md` §18/§19/§31 and `PROJECT_STATUS.md`.  
 **Status:** Authoritative V1 design specification  
-**Last updated:** 2026-09-04
+**Last updated:** 2026-09-05
 
 ---
 
@@ -447,6 +447,17 @@ Recommended QA/media keyboard grammar:
 Exact frame-step semantics may depend on production media implementation.
 
 The meaning of Space must remain stable.
+
+---
+
+## 10.3 Action Hierarchy & Clean Cues
+
+## `FROZEN`
+
+The Path A Center Pane contains the primary evidence actions:
+
+1. **Run OCR Evidence** (`#primaryBtn`): starts the evidence extraction job over the selected timeline range.
+2. **Clean Cues** (`#secondaryBtn`): secondary post-reconstruction cue quality recovery action. Enabled only when the active video has one or more eligible cues (`ReviewState.PENDING`). Disables when no pending cues exist or all cues have been human-reviewed (`APPROVED`, `REJECTED`, `NEEDS_REVIEW`). Operates strictly downstream of reconstruction without altering the upstream DirectML pipeline; human reviews are preserved 100% untouched; conservative deduplication leaves residual duplicates visible in the queue for manual resolution via Merge (`M`).
 
 ---
 

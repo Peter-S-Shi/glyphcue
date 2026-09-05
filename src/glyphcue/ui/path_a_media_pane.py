@@ -685,6 +685,7 @@ class PathAMediaPane:
         self._last_pre_run_cues = None
         self.discard_latest_run_button.setEnabled(False)
         self.clear_video_cues_button.setEnabled(bool(self._source_id and self.qa.cues))
+        self._update_clean_cues_button_enabled()
         self._refresh_timeline()
         self._refresh_current_cue_relationship(self.controller.player.position() / 1000.0)
 
@@ -1359,11 +1360,10 @@ class PathAMediaPane:
 
         try:
             cleaned_cues = clean_eligible_cues_for_source(current_cues)
+            self._cue_repository.save_cues_for_source(self._source_id, cleaned_cues)
         except Exception:  # noqa: BLE001 -- fail closed, never leave a half-applied clean
             self.ocr_status_label.setText("Clean Cues failed -- workspace left unchanged.")
             return
-
-        self._cue_repository.save_cues_for_source(self._source_id, cleaned_cues)
 
         observations_by_id: dict = {}
         if self._observation_repository is not None:

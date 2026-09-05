@@ -1,27 +1,41 @@
 # GlyphCue — PROJECT_STATUS.md
 
-**Last updated:** 2026-09-04
+**Last updated:** 2026-09-05
 
 ## Current milestone
 
-**Milestone 12 — Product Rework & Cue Quality Recovery: Stage ① UI / Review Workflow Recovery — Round 1 Human QA Corrections COMPLETE; Round 2 Human QA IN PROGRESS (2026-09-04). Next: Stage ② Cue Production Quality Recovery.**
+**Milestone 12 — Product Rework & Cue Quality Recovery: CLOSED & ACCEPTED (2026-09-05). Next: Product Hardening II & Full Regression Pass.**
 
-Authoritative post-M11 baseline: `ab2a8588941a3a3c599cea314061969f8c3ee5cc`. Milestone 11 Product Hardening & Full Regression is CLOSED; Release Acceptance was REJECTED BY HUMAN ADJUDICATION due to Cue quality, review UX, and packaging maturity. Milestone 12 lifts feature freeze strictly for targeted recovery across two problems:
-- **Problem 2 (QA Review UX & Workflow) — Stage ① IMPLEMENTED & UNDER HUMAN QA (2026-09-04):**
+Milestone 11 Product Hardening & Full Regression is CLOSED; Release Acceptance was REJECTED BY HUMAN ADJUDICATION due to Cue quality, review UX, and packaging maturity. Milestone 12 lifted feature freeze strictly for targeted recovery across two problems, and both stages are now COMPLETED & ACCEPTED:
+- **Problem 2 (QA Review UX & Workflow) — Stage ① COMPLETED & ACCEPTED (2026-09-04, PR #14 merged at `a27ba23`):**
   1. *Left Cue Workbench Multi-select & Batch Purge*: Multi-select already Discarded Cues (`ExtendedSelection`) and batch purge them via `Purge Discarded` button (`#subtleDangerBtn`); cues disappear from visible queue; data safety ensures non-rejected cues are never purged.
   2. *Strict Chronological Ordering*: Queue sorting strictly follows `(cue.start_time, cue.end_time, cue.id)`; status badges (`[0.00s] [Level] [Badge]`) display state without breaking linear time.
   3. *Continuous Timeline OCR Seam & Resume*: `CompactTimeline` renders a distinct endpoint marker (cyan vertical line + top indicator cap) at `last_processed_end`; supports click-to-seek playback navigation via `seek_requested` signal; "Resume from Last End" button pre-fills range start and seeks video; successful OCR runs auto-prefill next range start for seamless editing.
   4. *Clear Current Video Cue History*: "Clear Video Cues…" (`#subtleDangerBtn`) with confirmation dialog (`QMessageBox` with impact warning) deletes cues specifically for `self._source_id` via `_cue_repository.delete_for_source`, safely preserving observations and other videos.
   5. *OCR Completion Audio Chime*: Short, low-disturbance synthesized hotel desk bell "ding" (~250ms, G6 1568Hz harmonic decay in pure Python wave format) played via `winsound` / `QApplication.beep()` on `JobState.SUCCEEDED` with zero external dependencies and fail-soft exception handling.
   6. *Visual Consistency*: Follows `DESIGN.md` tokens (`Color`, `Spacing`, `Radius`, `#subtleDangerBtn`, `#secondaryBtn`), avoiding arbitrary redesign.
-  7. *Card Border Semantics (Round 1 QA Correction)*: Replaced whole-line text coloring with distinct card border semantics: `Color.SUCCESS` green for Approved, `Color.BORDER_NEUTRAL_LIGHT` (`#cbd5e1`) white/neutral for Pending, `Color.WARNING` yellow for Needs Review, and `Color.DANGER` red for Discarded. User selection has highest visual priority with a blue border (`Color.ACCENT`) + selection background override. Text stays clear and readable in primary text color.
-  8. *Global Horizontal Overflow Support (Round 1 QA Correction)*: Outermost workbench shell wraps the 3-pane workspace stack in an outer `QScrollArea` (`_WORKBENCH_MIN_WIDTH = 1160px`). Under normal width (>=1160px), the horizontal scrollbar is hidden (`ScrollBarAsNeeded`); under constrained window width (<1160px), a global horizontal scrollbar appears at the bottom without adding per-pane horizontal scrollbars, preserving internal vertical scrolling, splitter resizing, and window maximization.
-- **Problem 1 (Cue Production Quality Recovery) — Stage ② QUEUED:**
-  Will investigate root cause of low-value/duplicate/fragmented Cues downstream of raw Observations, establish programmatic consolidation or model calibration, maintaining ≤5× realtime. Packaging work remains SUSPENDED until Milestone 12 is accepted.
+  7. *Card Border Semantics*: Replaced whole-line text coloring with distinct card border semantics: `Color.SUCCESS` green for Approved, `Color.BORDER_NEUTRAL_LIGHT` (`#cbd5e1`) white/neutral for Pending, `Color.WARNING` yellow for Needs Review, and `Color.DANGER` red for Discarded. User selection has highest visual priority with a blue border (`Color.ACCENT`) + selection background override. Text stays clear and readable in primary text color.
+  8. *Global Horizontal Overflow Support*: Outermost workbench shell wraps the 3-pane workspace stack in an outer `QScrollArea` (`_WORKBENCH_MIN_WIDTH = 1160px`). Under normal width (>=1160px), the horizontal scrollbar is hidden (`ScrollBarAsNeeded`); under constrained window width (<1160px), a global horizontal scrollbar appears at the bottom without adding per-pane horizontal scrollbars, preserving internal vertical scrolling, splitter resizing, and window maximization.
+- **Problem 1 (Cue Production Quality Recovery) — Stage ② COMPLETED & ACCEPTED (2026-09-05, PR #15):**
+  1. *Downstream Cue Cleaner Integration*: Integrated externally frozen Cue Cleaner V0.6.1 as a manual "Clean Cues" button in Path A Center Pane post-reconstruction review workspace, leaving the upstream DirectML OCR pipeline and ≤5× realtime throughput completely untouched.
+  2. *Eligibility & State Preservation*: Operates strictly on untouched machine results (`ReviewState.PENDING` only). Human-reviewed work (`APPROVED`, `REJECTED`, `NEEDS_REVIEW`) passes through 100% untouched with original object identities and review states preserved.
+  3. *Language-Signature Partitioning & Fail-Closed Attribution*: Eligible cues are partitioned by ordered language signatures (e.g. `("en",)`, `("zh",)`, `("en", "zh")`). Multi-language cues join lines in layer order, and cleaner output lines are attributed back via exact, order-preserving donor subsequence matching. Non-verbatim or ambiguous lines fail closed, leaving contributing cues untouched.
+  4. *Single-Language Edge-Strip Acceptance*: Single-language cues accept cleaner deduplications and edge-strip cleanups directly into their single layer.
+  5. *Uncertainty Surfacing*: Outputs from `preserve_complementary_evidence_cluster` are mapped to `ReviewState.NEEDS_REVIEW` to surface genuine complementary evidence for human verification rather than silently synthesizing cues.
+  6. *Deterministic Total Ordering*: Database queries (`list_for_source`, `list_all`) and queue reconstruction strictly enforce `(start_time, end_time, id)` tie-breakers.
+  7. *Accepted V1 Known Limitation*: Per Human Adjudication (2026-09-05), Cue Cleaner V0.6.1 is accepted for V1 with the explicit known limitation that Clean Cues is conservative and not required to eliminate every residual duplicate or fragment. Remaining cases stay visible in the 3-pane workbench and are resolved via the existing manual Merge workflow (`M` shortcut / Merge button). Residual duplicates are explicitly not release blockers.
+- **Lifecycle & Governance Status:**
+  - Corrective Product Rework: **CLOSED / ACCEPTED (2026-09-05)**.
+  - Feature Freeze: **REINSTATED**.
+  - Packaging / Installer Work: **SUSPENDED** (pending Product Hardening II gate).
+  - Release Ready: **NO** (next target is Product Hardening II & Full Regression Pass).
 
 ### Validation
-- Stage ① UI Suite: **310 passed, 1 xfailed in 50.79s** (100% UI pass rate).
-- Whole-Repository Regression: **918 passed, 1 skipped, 1 xfailed in 151.64s** (baseline was 902 passed).
+- Stage ① UI Suite: **310 passed, 1 xfailed** (100% UI pass rate).
+- Stage ② Targeted Test Suites:
+  - Cue Cleaning domain/adapter tests (`tests/application/test_cue_cleaning.py`): **25 passed**.
+  - Clean Cues UI integration tests (`tests/ui/test_clean_cues_integration.py`): **14 passed**.
+- Whole-Repository Regression: **957 passed, 1 skipped, 1 xfailed** (verified on branch).
 
 ### Milestone 11 Retrospective Summary (CLOSED)
 
@@ -641,9 +655,8 @@ Corrective Gate specifically — it does not by itself close Stage ⑤
 Representative Evaluation (below) or advance PR #13 out of Draft.
 
 Feature Freeze was ACTIVE at this point in the record (Milestones 0–10
-complete and merged, PRs #1–#12). **Update:** as of M11's 2026-09-04
-closure, Feature Freeze is lifted only for Milestone 12's named
-corrective-rework scope — see "Current milestone" at the top of this
+complete and merged, PRs #1–#12). **Update:** as of Milestone 12's 2026-09-05
+closure, Feature Freeze is REINSTATED — see "Current milestone" at the top of this
 document.
 
 
@@ -799,25 +812,19 @@ appears anywhere in the repository.
 
 ## Git / PR status
 
-- Authoritative baseline: `main` (`ab2a8588941a3a3c599cea314061969f8c3ee5cc`).
-- Active working branch: `milestone/12-ui-review-workflow-recovery`.
-- Milestone 12 Stage ① vehicle: PR [#14](https://github.com/Peter-S-Shi/glyphcue/pull/14) — Milestone 12 Stage ①: UI / Review Workflow Recovery. Submitted for human review and adjudication. Strictly no force push; do not auto-merge.
+- Authoritative baseline: `main` (`a27ba23367942bd796b288e1735db7157d3eb563`, merge commit of PR #14).
+- Active working branch: `milestone/12-cue-cleaner-integration`.
+- Milestone 12 Stage ② vehicle: PR [#15](https://github.com/Peter-S-Shi/glyphcue/pull/15) — Milestone 12 Stage ②: Cue Production Quality Recovery (Cue Cleaner V0.6.1 Integration). Prepared for merge review. Strictly no force push; do not auto-merge.
 
 ## Unresolved
 
-- Milestone 12 Stage ② (Cue Production Quality Recovery) is queued: investigate root cause of low-value / duplicate / fragmented Cues downstream of raw Observations, establish programmatic consolidation or model calibration, maintaining ≤5× realtime. Packaging work remains SUSPENDED until Milestone 12 is accepted.
-- Residual non-blocking evaluation findings preserved (informational,
-  not release blockers on their own):
+- Release Ready = NO. Packaging work remains SUSPENDED until Product Hardening II & Full Regression pass is scoped, executed, and accepted.
+- Residual non-blocking evaluation findings preserved (informational, not release blockers on their own):
   - `sample_c`: Isolated window-boundary non-text reading (`"zh": "3\n8"`) on Cue 1 (1.1s), safely fail-closed with `ambiguous_languages: ["zh"]`; non-contaminating.
   - `sample_f`: One illegible Chinese layer at 661.1s left untranscribed in GT rather than guessed; rapid b-roll editor button glyphs flagged ambiguous.
-- Packaging: Stage ⑦-A (build) and ⑦-B (technical smoke) automated
-  evidence completed 2026-09-04 via the PyInstaller onedir path; packaging
-  work of any kind (Inno Setup included) is **SUSPENDED**, not merely paused
-  mid-checklist — it does not resume until Milestone 12 (Product Rework &
-  Cue Quality Recovery) is accepted and a second Product Hardening pass is scoped.
+- Cue Cleaner V0.6.1 accepted conservative limitation: Clean Cues reduces cleanup burden but is not required to eliminate every residual duplicate/fragment; remaining cases stay visible in the queue for manual resolution via existing manual Merge workflow (`M` shortcut / Merge button). Residual duplicates are explicitly not release blockers.
 
 ## Next action
 
-1. Updated PR #14 with Round 1 Human QA UI corrections (item card border semantics and global horizontal overflow support).
-2. Continue Round 2 Human QA with the repository owner using `Launch-GlyphCue-DirectML-DevQA.bat`. Strictly no force push; do NOT auto-merge PR #14.
-3. Upon formal human acceptance of Stage ①, proceed to Milestone 12 Stage ② — Cue Production Quality Recovery. Packaging remains SUSPENDED.
+1. Formal review and merge of PR #15 (`milestone/12-cue-cleaner-integration`) into `main` by the repository owner (strictly no force push; do not self-merge).
+2. After PR #15 is merged, scope and execute Product Hardening II & Full Regression Pass before Milestone 13 (Release Candidate & Signed Release). Packaging remains SUSPENDED until the hardening gate passes.
