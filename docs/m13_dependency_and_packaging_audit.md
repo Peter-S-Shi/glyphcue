@@ -3,7 +3,7 @@
 **Document type:** Authoritative factual audit and runtime evidence baseline for Milestone 13  
 **Project:** GlyphCue  
 **Target Issue:** Wayfinder Issue #20 — Establish the Trusted GlyphCue Release-Runtime Baseline  
-**Trusted Source Commit:** `5905df07beaa6ce036eb5ec047bfdb184c13a07a` (`main` HEAD post-M12 & Product Hardening II merge)  
+**Trusted Source Commit:** `5905df09d012cb63a34b98c484b43958477e52e8` (`main` HEAD post-M12 & Product Hardening II merge)  
 **Branch:** `milestone/13-release-candidate`  
 **Status:** Audit & Factual Baseline (Read-Only evidence gathering; production behavior unchanged)  
 **Date:** 2026-09-05  
@@ -140,9 +140,9 @@ Live verification executed via `tools/devqa_directml_verify.py` against `.venv-d
 
 ### 3.3 Behavioral Divergence: Packaged vs. Trusted Dev Environment
 
-- **Performance Divergence**:
-  - The default packaged `.exe` executing CPU Paddle path ran at **19.7×–20× slower than realtime** because `PaddleOcrEngine` explicitly sets `enable_mkldnn=False` and lacks GPU acceleration.
-  - The DirectML path in the trusted environment ran at **4.02×–4.19× realtime** (measured at 4.806× median on `sample_g`), satisfying the $\le 5\times$ realtime target.
+- **Performance Divergence & Packaging Parity**:
+  - The default packaged `.exe` executing the CPU Paddle path ran at **19.7×–20× slower than realtime** (isolation benchmark: 19.7×) because `PaddleOcrEngine` explicitly sets `enable_mkldnn=False` and lacks GPU acceleration.
+  - The authoritative same-path isolation benchmark demonstrated packaging-performance parity for DirectML: **4.02× realtime unfrozen DirectML vs. 4.19× realtime packaged DirectML**, satisfying the $\le 5\times$ realtime target.
 - **Runtime Policy Adjustment**:
   - To prevent packaged builds from running the 20× slower CPU path by default, `src/glyphcue/ui/app.py` flipped the environment variable polarity: `GLYPHCUE_PREFER_DIRECTML_*` (opt-in) was replaced with `GLYPHCUE_DISABLE_DIRECTML_*` (opt-out), ensuring normal launches default to DirectML on Windows.
 
@@ -169,7 +169,7 @@ Any packaging candidate evaluated for Milestone 13 must strictly preserve seven 
 WAYFINDER ISSUE #20 HANDOFF BLOCK
 ================================================================================
 1. Trusted Source Commit:
-   5905df07beaa6ce036eb5ec047bfdb184c13a07a (main HEAD post-M12 / Hardening II)
+   5905df09d012cb63a34b98c484b43958477e52e8 (main HEAD post-M12 / Hardening II)
 
 2. Frozen Runtime & Dependency Identity:
    - Python: 3.12.10 (DirectML DevQA) / 3.11.9 (Dev)
