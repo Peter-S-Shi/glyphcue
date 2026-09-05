@@ -207,56 +207,111 @@ def _joined_text_key(cue: Cue) -> tuple[tuple[str, str], ...]:
     return tuple((layer.language, layer.text) for layer in cue.language_layers)
 
 
-def _collapse_split_duplicate_cues(cues: list[Cue], max_span_seconds: float = 8.0) -> list[Cue]:
-    """Safety net for a real frozen-Cleaner edge case (Human QA Case A): a
-    persistent caption observed across several consecutive near-duplicate
-    OCR frames can be interrupted by one non-absorbable garbled frame
-    (its text isn't a pure substring of the caption, so
-    `absorb_redundant_micro_fragments` can't fold it into a neighbor).
-    The frozen Cleaner's adjacency-based clustering then splits the burst
-    into two or more separate clusters that each *independently* reduce
-    to the exact same per-layer text -- two domain Cues that are
-    byte-identical representations of one single real observed moment.
+def _observation_provenance(cue: Cue) -> frozenset[str]:
+    return frozenset(
+        observation_id
+        for layer in cue.language_layers
+        for observation_id in layer.observation_ids
+    )
 
-    This never second-guesses a `preserve_complementary_evidence_cluster`
-    result: that action only ever keeps Cues whose texts are NOT fully
-    redundant with each other (see `choose_evidence_cover`'s own
-    coverage-based selection), so two Cues reaching here with an
-    identical `_joined_text_key` were never legitimate complementary
-    evidence -- they are the same observed text, genuinely split apart.
 
-    Cues sharing a `_joined_text_key` are merged only when temporally
-    close enough (`max_span_seconds`, matching the frozen Cleaner's own
-    `max_cluster_span_seconds` default) to plausibly be the same
-    split-apart observation rather than two unrelated, independently
-    repeated real captions far apart in the source. The merge is always
-    flagged `NEEDS_REVIEW`: collapsing two Cues the frozen Cleaner itself
-    chose to keep separate is the adapter overriding that decision, and
-    per this integration's fail-closed philosophy that must surface for
-    a human look rather than silently resolve as ordinary PENDING
-    output."""
-    by_key: dict[tuple, list[Cue]] = {}
-    order: list[tuple] = []
-    for cue in cues:
-        key = _joined_text_key(cue)
-        if key not in by_key:
-            by_key[key] = []
-            order.append(key)
-        by_key[key].append(cue)
+def _is_edge_corrupted_fragment(fragment: str, caption: str) -> bool:
+    """True only for a one-edge OCR corruption of a real caption fragment.
 
+    Removing exactly one leading or trailing character from the shorter
+    observation must leave a non-empty proper prefix or suffix of the full
+    caption.  This deliberately does not introduce fuzzy similarity or an
+    edit-distance threshold: anything less specific remains unresolved.
+    """
+    fragment_compact = cleaner.compact_text(fragment)
+    caption_compact = cleaner.compact_text(caption)
+    if len(fragment_compact) < 2 or len(fragment_compact) >= len(caption_compact):
+        return False
+
+    trimmed_edges = (fragment_compact[1:], fragment_compact[:-1])
+    return any(
+        trimmed and (caption_compact.startswith(trimmed) or caption_compact.endswith(trimmed))
+        for trimmed in trimmed_edges
+    )
+
+
+def _is_proven_split_burst(
+    left: tuple[Cue, tuple[int, ...]],
+    middle: tuple[Cue, tuple[int, ...]],
+    right: tuple[Cue, tuple[int, ...]],
+) -> bool:
+    """Whether three Cleaner outputs prove the narrow Case A split shape."""
+    left_cue, left_sources = left
+    middle_cue, middle_sources = middle
+    right_cue, right_sources = right
+
+    if (
+        _joined_text_key(left_cue) != _joined_text_key(right_cue)
+        or _joined_text_key(left_cue) == _joined_text_key(middle_cue)
+        or any(
+            cue.review_state != ReviewState.PENDING
+            for cue in (left_cue, middle_cue, right_cue)
+        )
+    ):
+        return False
+
+    # Frozen Cleaner source indices are the authoritative ordering link back
+    # to the adapter input. The noisy interruption must be exactly one origin,
+    # with no missing/reused origins between the two caption sides.
+    if not left_sources or len(middle_sources) != 1 or not right_sources:
+        return False
+    source_chain = left_sources + middle_sources + right_sources
+    if (
+        len(set(source_chain)) != len(source_chain)
+        or source_chain != tuple(range(source_chain[0], source_chain[-1] + 1))
+    ):
+        return False
+
+    # Reuse the frozen Cleaner's existing micro-fragment temporal contract;
+    # this adapter adds no new calibrated window. Ordinary repeats separated
+    # by a real gap fail closed and remain independent Cues.
+    left_gap = middle_cue.start_time - left_cue.end_time
+    right_gap = right_cue.start_time - middle_cue.end_time
+    if middle_cue.end_time - middle_cue.start_time > 0.50:
+        return False
+    if not (0.0 <= left_gap <= 0.10 and 0.0 <= right_gap <= 0.10):
+        return False
+
+    provenance = tuple(_observation_provenance(cue) for cue in (left_cue, middle_cue, right_cue))
+    if any(not ids for ids in provenance):
+        return False
+    if any(provenance[i] & provenance[j] for i in range(3) for j in range(i + 1, 3)):
+        return False
+
+    return _is_edge_corrupted_fragment(_joined_text(middle_cue), _joined_text(left_cue))
+
+
+def _collapse_split_duplicate_cues(
+    cues_with_sources: list[tuple[Cue, tuple[int, ...]]],
+) -> list[Cue]:
+    """Collapse only a provenance-proven `caption / garble / caption` split.
+
+    Exact text plus temporal proximity is intentionally insufficient: two
+    legitimate utterances may repeat nearby.  The adapter requires the exact
+    consecutive-origin, micro-observation, edge-corruption structure of Human
+    QA Case A. Any missing or ambiguous evidence preserves every Cue.
+    """
+    ordered = sorted(
+        cues_with_sources,
+        key=lambda item: (item[0].start_time, item[0].end_time, item[0].id),
+    )
     result: list[Cue] = []
-    for key in order:
-        members = sorted(by_key[key], key=lambda cue: (cue.start_time, cue.end_time, cue.id))
-
-        run: list[Cue] = [members[0]]
-        for cue in members[1:]:
-            span = cue.end_time - run[0].start_time
-            if span <= max_span_seconds:
-                run.append(cue)
-            else:
-                result.append(_merge_duplicate_run(run))
-                run = [cue]
-        result.append(_merge_duplicate_run(run))
+    index = 0
+    while index < len(ordered):
+        if index + 2 < len(ordered) and _is_proven_split_burst(
+            ordered[index], ordered[index + 1], ordered[index + 2]
+        ):
+            result.append(_merge_duplicate_run([ordered[index][0], ordered[index + 2][0]]))
+            result.append(ordered[index + 1][0])
+            index += 3
+            continue
+        result.append(ordered[index][0])
+        index += 1
 
     result.sort(key=lambda cue: (cue.start_time, cue.end_time, cue.id))
     return result
@@ -320,16 +375,23 @@ def _clean_one_signature_group(group: list[Cue]) -> list[Cue]:
                 if origin_index is not None:
                     needs_review_origin_indices.add(int(origin_index))
 
-    result: list[Cue] = []
+    # Keep the frozen source-index provenance beside each reconstructed Cue
+    # until the narrow split-burst check has run. It remains adapter-local;
+    # no domain or persistence schema change is required.
+    result: list[tuple[Cue, tuple[int, ...]]] = []
+    origin_index_by_id = {cue.id: index for index, cue in enumerate(eligible, start=1)}
     for frozen_cue in cleaned_frozen:
         contributing = [eligible[index - 1] for index in frozen_cue.source_indices]
+        frozen_sources = tuple(int(index) for index in frozen_cue.source_indices)
         donor_index = frozen_cue.selected_origin_index
 
         if donor_index is None:
             # Should not happen given how frozen_input/the frozen
             # algorithm itself always propagate this field -- but if it
             # ever does, there is no safe donor to attribute text to.
-            result.extend(contributing)
+            result.extend(
+                (cue, (origin_index_by_id[cue.id],)) for cue in contributing
+            )
             continue
 
         donor = eligible[donor_index - 1]
@@ -349,14 +411,16 @@ def _clean_one_signature_group(group: list[Cue]) -> list[Cue]:
                 # review even though this member's own text/timing
                 # needed no change. Same id/provenance preserved; only
                 # the review state flips.
-                result.append(replace(donor, review_state=ReviewState.NEEDS_REVIEW))
+                result.append(
+                    (replace(donor, review_state=ReviewState.NEEDS_REVIEW), frozen_sources)
+                )
             else:
                 # Real no-op: keep the exact same Cue (id and
                 # review_state included) so an unaffected Cue never
                 # appears to "change" across a Clean Cues click --
                 # required for idempotence and for not perturbing
                 # unrelated human-visible queue state.
-                result.append(donor)
+                result.append((donor, frozen_sources))
             continue
 
         reconstructed = _reconstruct_cue(
@@ -378,13 +442,21 @@ def _clean_one_signature_group(group: list[Cue]) -> list[Cue]:
             # silently reverting to PENDING just because the text-level
             # transformation itself had to be abandoned.
             if needs_review and donor.review_state != ReviewState.NEEDS_REVIEW:
-                result.append(replace(donor, review_state=ReviewState.NEEDS_REVIEW))
-                result.extend(cue for cue in contributing if cue.id != donor.id)
+                result.append(
+                    (replace(donor, review_state=ReviewState.NEEDS_REVIEW), (donor_index,))
+                )
+                result.extend(
+                    (cue, (origin_index_by_id[cue.id],))
+                    for cue in contributing
+                    if cue.id != donor.id
+                )
             else:
-                result.extend(contributing)
+                result.extend(
+                    (cue, (origin_index_by_id[cue.id],)) for cue in contributing
+                )
             continue
 
-        result.append(reconstructed)
+        result.append((reconstructed, frozen_sources))
 
     return _collapse_split_duplicate_cues(result)
 
@@ -466,13 +538,12 @@ def clean_eligible_cues_for_source(cues: list[Cue]) -> list[Cue]:
     the exact same per-layer text. Left alone, that is two domain Cues
     that are byte-identical representations of one real observed moment.
     `_collapse_split_duplicate_cues` (applied per language-signature
-    group, after per-Cue reconstruction) merges any such exact-text
-    duplicates that are close enough in time to plausibly be the same
-    split-apart observation, and always flags the merge `NEEDS_REVIEW`.
-    It never touches two Cues with genuinely different text -- that is
-    exactly what `preserve_complementary_evidence_cluster` produces, and
-    real complementary evidence is never text-identical by construction
-    (see `choose_evidence_cover`).
+    group, after per-Cue reconstruction) merges only the provenance-proven
+    consecutive-origin `caption / one garbled micro observation / same
+    caption` shape, and always flags the merge `NEEDS_REVIEW`. Exact text
+    plus temporal proximity alone is never treated as evidence: ordinary
+    repeated dialogue remains independent, and any missing or ambiguous
+    provenance fails closed.
     """
     eligible = [cue for cue in cues if is_cleaner_eligible_cue(cue)]
     protected = [cue for cue in cues if not is_cleaner_eligible_cue(cue)]

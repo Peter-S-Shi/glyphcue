@@ -666,3 +666,40 @@ def test_split_duplicate_collapse_never_merges_distant_unrelated_repeats():
 
     assert {c.id for c in result} == {"c1", "c2"}
     assert all(c.review_state == ReviewState.PENDING for c in result)
+
+
+def test_split_duplicate_collapse_preserves_nearby_independent_repeated_dialogue():
+    """Exact text and an under-eight-second gap do not prove that two Cues
+    came from one observation burst.  A speaker may legitimately repeat the
+    same short subtitle a few seconds later with no intervening garbled
+    observation; both independent Cues must survive unchanged."""
+    cues = [
+        _cue("c1", 0.0, 1.0, text="再试一次", observation_ids=("o1",)),
+        _cue("c2", 4.0, 5.0, text="再试一次", observation_ids=("o2",)),
+    ]
+
+    result = clean_eligible_cues_for_source(cues)
+
+    assert {cue.id for cue in result} == {"c1", "c2"}
+    assert all(cue.review_state == ReviewState.PENDING for cue in result)
+    assert [cue.start_time for cue in result] == [0.0, 4.0]
+
+    result2 = clean_eligible_cues_for_source(result)
+    assert {cue.id for cue in result2} == {"c1", "c2"}
+    assert [cue.start_time for cue in result2] == [0.0, 4.0]
+
+
+def test_split_duplicate_collapse_fails_closed_without_complete_provenance():
+    """Even an otherwise matching split triplet is not safe to collapse when
+    one observation has no persisted provenance."""
+    caption = "保持原始证据"
+    cues = [
+        _cue("c1", 0.00, 0.09, text=caption, language="zh", observation_ids=("o1",)),
+        _cue("c2", 0.09, 0.18, text="保持原始口", language="zh"),
+        _cue("c3", 0.18, 0.27, text=caption, language="zh", observation_ids=("o3",)),
+    ]
+
+    result = clean_eligible_cues_for_source(cues)
+
+    assert {cue.id for cue in result} == {"c1", "c2", "c3"}
+    assert all(cue.review_state == ReviewState.PENDING for cue in result)
