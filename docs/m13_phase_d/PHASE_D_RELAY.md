@@ -124,9 +124,9 @@ Every agent stopping normally, hitting quota exhaustion, encountering a failure,
 
 ### D2 Evidence Contract (Environment A — DirectML Runtime Fidelity)
 - [ ] Exact model SHA-256 identities verified on disk inside installed payload tree:
-  - `PP-OCRv6_det_medium.onnx` (`3ca2f33c3a936a282fb8d2e8aa8f9872e423528b17cebfca15fb38fb243bb2ff`)
-  - `PP-OCRv6_rec_small.onnx` (`73d2a09ecff1cfca1c9a4bd69ca9069d2d0b5e821558bf2a3fa416b23bfa9900`)
-  - `ch_ppocr_mobile_v2.0_cls_mobile.onnx` (`7c9fb2f87a87e382d6ce6df76e27b13480a4009e863375c3efefbfeb58fa05ef`)
+  - `PP-OCRv6_det_medium.onnx` (`92078b7355007ccfffcd4c8cd441a3afd4538904d06881b29a155e1e679907c2`)
+  - `PP-OCRv6_rec_small.onnx` (`6f327246b50388f3c176ae304bd95767ea6dc0c9ae92153ef8cbe210b3c14884`)
+  - `ch_ppocr_mobile_v2.0_cls_mobile.onnx` (`e47acedf663230f8863ff1ab0e64dd2d82b838fceb5957146dab185a89d6215c`)
 - [ ] Relevant runtime/DLL identities verified (`onnxruntime` libraries, bundled `DirectML.dll`, required C++ runtime dependencies)
 - [ ] `DmlExecutionProvider` confirmed active on both text detector and recognizer ONNX sessions (logged session provider array inspection)
 - [ ] Explicit proof of NO silent CPU-only fallback on Environment A (provider array starts with `DmlExecutionProvider`)
