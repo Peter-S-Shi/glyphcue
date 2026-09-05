@@ -3,7 +3,7 @@
 **Document type:** Authoritative post-Grill product architecture baseline  
 **Project:** GlyphCue  
 **Repository:** `Peter-S-Shi/glyphcue`  
-**Lifecycle phase:** Production Development → Milestone 10 complete; Milestone 11 (Product Hardening & Full Regression) CLOSED (2026-09-04); Milestone 12 (Product Rework & Cue Quality Recovery: Stages ① and ②) COMPLETED & ACCEPTED (2026-09-05) via PR #14 and PR #15 — Feature Freeze REINSTATED, Release Ready = NO, Release/Packaging SUSPENDED pending Product Hardening II gate. Next target: Product Hardening II & Full Regression pass before Milestone 13. See `ROADMAP.md` §18/§19/§31 and `PROJECT_STATUS.md`.  
+**Lifecycle phase:** Production Development → Milestone 10 complete; Milestone 11 (Product Hardening & Full Regression) CLOSED (2026-09-04); Milestone 12 (Product Rework & Cue Quality Recovery: Stages ① and ②) COMPLETED & ACCEPTED (2026-09-05) via PR #14 and PR #15; Product Hardening II & Full Regression COMPLETED & ACCEPTED (2026-09-05) via PR #16 — Feature Freeze ACTIVE, Release Ready = NO, packaging suspension lifted for scoped M13 release work. Next target: Milestone 13 (Release Candidate & Signed Release). See `ROADMAP.md` §18/§19/§20/§31 and `PROJECT_STATUS.md`.  
 **Status:** Authoritative V1 product architecture for production development  
 **Last updated:** 2026-09-05
 
@@ -1261,7 +1261,10 @@ Milestone 11 — Product Hardening & Full Regression
 ✓ hardening complete / CLOSED (2026-09-04) — Release Acceptance REJECTED BY HUMAN ADJUDICATION, see `ROADMAP.md` §18
 
 Milestone 12 — Product Rework & Cue Quality Recovery
-✓ complete / CLOSED (2026-09-05) — Stage ① UI / Review Workflow Recovery (2026-09-04) and Stage ② Cue Production Quality Recovery (2026-09-05) both accepted; Clean Cues integrated; Feature Freeze REINSTATED; next is Product Hardening II & Full Regression pass
+✓ complete / CLOSED (2026-09-05) — Stage ① UI / Review Workflow Recovery (2026-09-04) and Stage ② Cue Production Quality Recovery (2026-09-05) both accepted; Clean Cues integrated.
+
+Product Hardening II & Full Regression Pass
+✓ complete / CLOSED (2026-09-05) via PR #16 — Step ② targeted seam regressions PASS; Step ④ local full regression (962 passed, 1 skipped, 1 xfailed) & clean-environment CI PASS; Step ⑤ owner Human Acceptance PASS; Feature Freeze remains active; packaging suspension lifted for scoped M13 release work; approved to advance into Milestone 13 (Release Candidate & Signed Release).
 ```
 
 ---
