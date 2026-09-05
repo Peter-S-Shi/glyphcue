@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from glyphcue.application import cue_cleaning
 from glyphcue.application.cue_cleaning import (
-    _reconstruct_multilayer_cue,
+    _reconstruct_cue,
     clean_eligible_cues_for_source,
     is_cleaner_eligible_cue,
 )
@@ -343,7 +343,7 @@ def test_reconstruct_multilayer_cue_returns_none_when_output_line_is_not_a_verba
         selected_origin_index=1,
     )
 
-    result = _reconstruct_multilayer_cue(
+    result = _reconstruct_cue(
         frozen_cue, [donor], donor, donor_attribution, needs_review=False
     )
 
@@ -414,3 +414,179 @@ def test_bilingual_layer_fully_pruned_is_flagged_needs_review(monkeypatch):
     layers = {layer.language: layer.text for layer in cleaned_cue.language_layers}
     assert layers["en"] == "hello world"
     assert layers["zh"] == ""
+
+
+# --- Corrective round B --------------------------------------------
+
+
+def test_single_language_content_modifying_result_is_accepted_not_reverted(monkeypatch):
+    """A single-language Cue has no cross-layer attribution question at
+    all: the frozen Cleaner's returned text must be accepted directly,
+    even when it differs from every original line verbatim (e.g. the
+    real `strip_persistent_overlay_edges` post-pass, which strips a
+    persistent overlay phrase as a prefix/suffix of a longer line --
+    genuinely modifying that line's text, not merely keeping or
+    dropping it whole). Previously this was indistinguishable from an
+    unsafe multi-language attribution and the original Cue was reverted
+    instead of accepting the real, intended Cleaner result."""
+
+    def fake_clean_cues(frozen_cues):
+        cleaned = [
+            cue_cleaning.cleaner.Cue(
+                index=1,
+                start=frozen_cues[0].start,
+                end=frozen_cues[0].end,
+                text="a real subtitle line",  # edge-stripped, not a verbatim donor line
+                source_indices=(1,),
+                selected_origin_index=1,
+            ),
+        ]
+        return cleaned, {"actions": []}
+
+    monkeypatch.setattr(cue_cleaning.cleaner, "clean_cues", fake_clean_cues)
+
+    original = _cue(
+        "c1", 0.0, 1.0,
+        text="Speaker: Mel Robbins a real subtitle line",
+        observation_ids=("o1",),
+    )
+
+    result = clean_eligible_cues_for_source([original])
+
+    assert len(result) == 1
+    cleaned_cue = result[0]
+    # Accepted directly -- not reverted to the original overlay-laden text.
+    assert cleaned_cue.language_layers[0].text == "a real subtitle line"
+    assert cleaned_cue.review_state == ReviewState.PENDING
+    assert set(cleaned_cue.language_layers[0].observation_ids) == {"o1"}
+    _assert_valid_timing(result)
+
+
+def test_different_language_signatures_are_never_cleaned_together():
+    """Cues from an earlier single-language OCR range must never be
+    merged with, or have their evidence cross-unioned with, Cues from a
+    later run under a different Track Group language configuration."""
+    english_only = _cue("en1", 0.0, 1.0, language="en", text="hello world", observation_ids=("oe1",))
+    chinese_only = _cue("zh1", 1.0, 2.0, language="zh", text="hello world", observation_ids=("oz1",))
+
+    result = clean_eligible_cues_for_source([english_only, chinese_only])
+
+    # Identical compacted text would ordinarily merge two same-signature
+    # Cues (see test_duplicate_adjacent_eligible_cues_are_merged_and_stay_pending)
+    # -- but different signatures must keep them completely separate.
+    assert {c.id for c in result} == {"en1", "zh1"}
+    by_id = {c.id: c for c in result}
+    assert by_id["en1"].language_layers[0].observation_ids == ("oe1",)
+    assert by_id["zh1"].language_layers[0].observation_ids == ("oz1",)
+
+
+def test_reversed_bilingual_language_order_is_a_distinct_signature():
+    """`("en", "zh")` and `("zh", "en")` are different signatures even
+    though they share the same two languages -- never merged."""
+    en_then_zh = Cue(
+        id="c1", start_time=0.0, end_time=1.0,
+        language_layers=(
+            LanguageLayer(language="en", text="hello"),
+            LanguageLayer(language="zh", text="你好"),
+        ),
+        review_state=ReviewState.PENDING,
+    )
+    zh_then_en = Cue(
+        id="c2", start_time=1.0, end_time=2.0,
+        language_layers=(
+            LanguageLayer(language="zh", text="你好"),
+            LanguageLayer(language="en", text="hello"),
+        ),
+        review_state=ReviewState.PENDING,
+    )
+
+    result = clean_eligible_cues_for_source([en_then_zh, zh_then_en])
+
+    assert {c.id for c in result} == {"c1", "c2"}
+    by_id = {c.id: c for c in result}
+    assert [layer.language for layer in by_id["c1"].language_layers] == ["en", "zh"]
+    assert [layer.language for layer in by_id["c2"].language_layers] == ["zh", "en"]
+
+
+def test_ambiguous_shared_line_between_layers_fails_closed(monkeypatch):
+    """If identical text appears in two of a donor's own language
+    layers (e.g. a shared code/number), a surviving output line with
+    that exact text cannot be uniquely attributed to either layer from
+    content+order alone. The adapter must refuse to guess and leave the
+    affected result untouched, rather than silently routing it to
+    whichever layer the forward scan happens to reach first."""
+
+    def fake_clean_cues(frozen_cues):
+        # The donor's own joined text is "007\nhello\n007\n你好" (see
+        # donor construction below): "007" appears in both the en and
+        # zh layers. Simulate a real merge/prune pass surviving down to
+        # just the shared, ambiguous line.
+        cleaned = [
+            cue_cleaning.cleaner.Cue(
+                index=1,
+                start=frozen_cues[0].start,
+                end=frozen_cues[0].end,
+                text="007",
+                source_indices=(1,),
+                selected_origin_index=1,
+            ),
+        ]
+        return cleaned, {"actions": []}
+
+    monkeypatch.setattr(cue_cleaning.cleaner, "clean_cues", fake_clean_cues)
+
+    donor = _bilingual_cue("c1", 0.0, 1.0, en_text="007\nhello", zh_text="007\n你好")
+
+    result = clean_eligible_cues_for_source([donor])
+
+    # Unsafe to attribute -- the Cue is left completely untouched.
+    assert len(result) == 1
+    assert result[0] is donor
+
+
+def test_unsafe_attribution_fallback_still_flags_complementary_evidence_as_needs_review(monkeypatch):
+    """The frozen `preserve_complementary_evidence_cluster` contract must
+    hold even when the text/layer-level reconstruction itself has to be
+    abandoned as unsafe: the donor Cue that action selected must still
+    surface as NEEDS_REVIEW with its original id/text/timing/provenance,
+    never silently revert to PENDING."""
+
+    def fake_clean_cues(frozen_cues):
+        cleaned = [
+            cue_cleaning.cleaner.Cue(
+                index=1,
+                start=frozen_cues[0].start,
+                end=frozen_cues[0].end,
+                text="a line that was never actually observed",
+                source_indices=(1,),
+                selected_origin_index=1,
+            ),
+        ]
+        report = {
+            "actions": [
+                {
+                    "action": "preserve_complementary_evidence_cluster",
+                    "source_cues": [1],
+                    "selected_source_cues": [1],
+                }
+            ]
+        }
+        return cleaned, report
+
+    monkeypatch.setattr(cue_cleaning.cleaner, "clean_cues", fake_clean_cues)
+
+    original = _bilingual_cue("c1", 0.0, 1.0, en_text="hello world", zh_text="你好", en_observation_ids=("o1",))
+
+    result = clean_eligible_cues_for_source([original])
+
+    assert len(result) == 1
+    flagged = result[0]
+    assert flagged.id == "c1"
+    assert flagged.review_state == ReviewState.NEEDS_REVIEW
+    # Original text/timing/provenance untouched -- only review_state changed.
+    layers = {layer.language: layer.text for layer in flagged.language_layers}
+    assert layers == {"en": "hello world", "zh": "你好"}
+    assert flagged.start_time == 0.0
+    assert flagged.end_time == 1.0
+    en_layer = next(l for l in flagged.language_layers if l.language == "en")
+    assert en_layer.observation_ids == ("o1",)
