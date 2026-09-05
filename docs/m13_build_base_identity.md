@@ -24,9 +24,11 @@ Both required clean reconstructions (Reconstruction 1 and Reconstruction 2) and 
 | **Supported V1 Target OS** | Windows 11 x64 (Build 22000+) | Supported V1 Release Target |
 | **DirectML Technical Floor** | Windows 10 Build 19041+ (DirectML D3D12 Feature Level 11_0+ API minimum floor — technical reference only; not a supported V1 target OS) | Reference Only |
 | **Python Runtime** | CPython 3.12.10 (AMD64) | Frozen |
+| **First-Party Launcher Builder** | Microsoft (R) Visual C# Compiler version 4.8.9221.0 (`csc.exe /target:winexe /platform:x64`) | Frozen |
 | **Installer Compiler** | Inno Setup 6.3.3 (`ISCC.exe` x64, per-user `{localappdata}\Programs\GlyphCue`) | Frozen |
 | **Code Signing Mechanism** | Windows SDK SignTool 10.0.26100.0 / PowerShell Authenticode API (Win11 Build 26200) | Frozen |
 | **Approved Test Certificate Subject** | `CN=GlyphCue Development Test Certificate, O=GlyphCue Local Test Root` | Frozen |
+| **Approved Test Certificate Thumbprint** | `A3E4E5320779C9F63E513D870E209C26B819C61E` | Frozen |
 | **CycloneDX Generator Tool** | `cyclonedx-py 5.1.1` (`specVersion: "1.6"`) via `tools/packaging/generate_cyclonedx_sbom.py` | Frozen |
 | **Drift Comparator** | `tools/packaging/verify_payload_drift.py v1.2.0` | Frozen |
 

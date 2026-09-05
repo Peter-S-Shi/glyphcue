@@ -125,7 +125,9 @@
     "test_certificate_subject": "CN=GlyphCue Development Test Certificate, O=GlyphCue Local Test Root",
     "cyclonedx_py_version": "cyclonedx-py 5.1.1 (specVersion: 1.6)",
     "cyclonedx_sbom_spec": "CycloneDX 1.6 JSON (specVersion: 1.6)",
-    "drift_comparator": "tools/packaging/verify_payload_drift.py v1.2.0"
+    "drift_comparator": "tools/packaging/verify_payload_drift.py v1.2.0",
+    "test_certificate_thumbprint": "A3E4E5320779C9F63E513D870E209C26B819C61E",
+    "launcher_compiler": "Microsoft (R) Visual C# Compiler version 4.8.9221.0 (/target:winexe /platform:x64)"
   },
   "content_addressed_staging_contract": {
     "downloads_cache_dir": "<cache_root>/downloads/{sha256}/{filename}",
@@ -181,7 +183,7 @@
       "wheel_filename": "antlr4-python3-runtime-4.9.3.tar.gz",
       "size_bytes": 117034,
       "sha256": "f224469b4168294902bb1efa80a8bf7855f24c99aef99cbefc1bcd3cce77881b",
-      "download_url": "https://files.pythonhosted.org/packages/a7/21/b9f5f08573ef4d151978d3eb63a921d49e1e1fb591461ff635f79a92a543/antlr4-python3-runtime-4.9.3.tar.gz",
+      "download_url": "https://files.pythonhosted.org/packages/3e/38/7859ff46355f76f8d19459005ca000b6e7012f2f1ca597746cbcd1fbfe5e/antlr4-python3-runtime-4.9.3.tar.gz",
       "distribution_type": "sdist_pure_python"
     },
     {

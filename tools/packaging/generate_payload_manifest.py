@@ -3,7 +3,8 @@
 Generates payload_manifest.json from an assembled <app_root> directory and
 evaluates the four fail-closed gates per Wayfinder Issue #24 and #26 charter:
 1. Untracked File Gate: all files in <app_root> mapped to concrete source artifacts.
-2. Integrity Gate: verified against authoritative frozen build-base hashes (fails closed on mismatch).
+2. Integrity Gate: verified against authoritative frozen build-base hashes and fails closed
+   if any expected core artifact is missing or has a mismatched hash.
 3. Provenance Gate (experiment scope): every artifact has source, SHA-256, ownership, and verification status.
 4. Signature Gate: first-party PEs carry valid test-certificate signatures.
 """
@@ -17,7 +18,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-SCHEMA_VERSION = "1.2.0"
+SCHEMA_VERSION = "1.3.0"
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -175,11 +176,12 @@ def generate_manifest(
     app_root: Path,
     output_file: Path | None = None,
     expected_hashes: dict[str, str] | None = None,
+    enforce_all_expected_present: bool = False,
 ) -> dict[str, Any]:
     """Inspect app_root and construct the complete payload manifest.
 
-    Integrity Gate compares against frozen build-base expected hashes and
-    fails closed on any hash mismatch.
+    Integrity Gate compares against frozen build-base expected hashes,
+    checks for missing expected files when required, and fails closed.
     """
     if not app_root.is_dir():
         raise ValueError(f"app_root directory not found: {app_root}")
@@ -188,17 +190,18 @@ def generate_manifest(
     wheel_map = build_package_wheel_map(frozen_inv)
     frozen_expected = build_expected_hashes_contract(frozen_inv)
 
-    # Combine frozen expected hashes with any caller overrides
     effective_expected = dict(frozen_expected)
     if expected_hashes:
         effective_expected.update(expected_hashes)
 
     files = []
+    found_rel_paths = set()
     integrity_mismatches = []
 
     for p in sorted(app_root.rglob("*")):
         if p.is_file():
             rel_path = str(p.relative_to(app_root)).replace("\\", "/")
+            found_rel_paths.add(rel_path)
             size, sha256 = hash_file(p)
             meta = classify_payload_file(rel_path, wheel_map)
 
@@ -224,6 +227,17 @@ def generate_manifest(
             }
             files.append(entry)
 
+    # Check for completely missing expected files if enforced
+    if enforce_all_expected_present:
+        for exp_path, exp_sha in effective_expected.items():
+            if exp_path not in found_rel_paths:
+                integrity_mismatches.append({
+                    "path": exp_path,
+                    "actual_sha256": None,
+                    "expected_sha256": exp_sha,
+                    "status": "MISSING_EXPECTED_FILE",
+                })
+
     # Evaluate Gates
     untracked_failures = [f["path"] for f in files if f["source_artifact"] == "unknown"]
     provenance_failures = [
@@ -233,7 +247,6 @@ def generate_manifest(
     ]
     unresolved_items = [f["path"] for f in files if f["verification_status"] == "unresolved"]
 
-    # Integrity Gate fails closed if any mismatch was detected or if no files were found
     integrity_gate_pass = (len(integrity_mismatches) == 0) and (len(files) > 0)
 
     gate_results = {
@@ -267,6 +280,7 @@ if __name__ == "__main__":
     parser.add_argument("app_root", type=Path, help="Path to installed <app_root> directory")
     parser.add_argument("-o", "--output", type=Path, default=None, help="Output JSON path")
     parser.add_argument("--expected-manifest", type=Path, default=None, help="Path to expected hashes contract JSON")
+    parser.add_argument("--enforce-present", action="store_true", help="Fail if any expected file is completely missing")
     args = parser.parse_args()
 
     expected = None
@@ -274,7 +288,7 @@ if __name__ == "__main__":
         expected = json.loads(args.expected_manifest.read_text(encoding="utf-8"))
 
     out_path = args.output or (args.app_root / "legal" / "manifest" / "payload_manifest.json")
-    m = generate_manifest(args.app_root, out_path, expected_hashes=expected)
+    m = generate_manifest(args.app_root, out_path, expected_hashes=expected, enforce_all_expected_present=args.enforce_present)
     print(f"Generated payload manifest: {out_path}")
     print(f"Total files: {m['total_files_count']}, Total bytes: {m['total_payload_bytes']}")
     print(f"Gates: {m['gate_results']}")

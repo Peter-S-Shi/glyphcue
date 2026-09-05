@@ -11,9 +11,9 @@ Verifies:
    and CycloneDX 1.6 JSON generation (explicitly labeled as scaffold self-test).
 5. Payload drift comparator on identical vs drifted mock trees.
 6. Fail-closed regressions:
-   - Integrity Gate fails closed on hash mismatch.
+   - Integrity Gate fails closed on hash mismatch AND missing expected files.
    - Drift verifier fails closed on missing/mismatched pre-sign hashes for signed PEs.
-   - Signature Gate fails closed on unauthorized/wrong certificate signers.
+   - Signature Gate fails closed on unauthorized/wrong certificate signers or thumbprint mismatch.
 
 NOTE: Tests exercising placeholder python.exe / GlyphCue.exe are strictly
 scaffold and manifest logic validations; they do NOT prove runtime readiness
@@ -46,6 +46,7 @@ from tools.packaging.generate_synthetic_fixture import (
 from tools.packaging.verify_payload_drift import compare_reconstructions
 from tools.packaging.verify_signatures import (
     APPROVED_TEST_CERT_SUBJECT,
+    check_pe_signature,
     evaluate_signature_gate,
 )
 
@@ -71,6 +72,7 @@ def test_frozen_build_base_completeness() -> None:
     assert "Inno Setup 6" in toolchain["inno_setup_compiler"]
     assert "SignTool" in toolchain["signtool_tool"]
     assert toolchain["test_certificate_subject"] == APPROVED_TEST_CERT_SUBJECT
+    assert toolchain["test_certificate_thumbprint"] == "A3E4E5320779C9F63E513D870E209C26B819C61E"
     assert "CycloneDX 1.6" in toolchain["cyclonedx_sbom_spec"]
 
     # Models & DLLs
@@ -190,11 +192,11 @@ def test_drift_comparator_mock(tmp_dir: Path) -> None:
 
 
 def test_integrity_gate_fail_closed_regression(tmp_dir: Path) -> None:
-    """Prove that generate_manifest Integrity Gate fails closed on hash mismatch."""
+    """Prove that generate_manifest Integrity Gate fails closed on hash mismatch AND missing expected files."""
     app_root = tmp_dir / "integrity_test_root"
     assemble_app_root(app_root)
 
-    # Corrupt a known migration file
+    # 1. Corrupt a known migration file -> must FAIL
     corrupt_file = app_root / "resources" / "migrations_sql" / "0001_create_cues.sql"
     corrupt_file.write_text("CORRUPT SQL CONTENT\n", encoding="utf-8")
 
@@ -203,7 +205,15 @@ def test_integrity_gate_fail_closed_regression(tmp_dir: Path) -> None:
     assert len(manifest["integrity_mismatches"]) > 0
     mismatch = manifest["integrity_mismatches"][0]
     assert mismatch["path"] == "resources/migrations_sql/0001_create_cues.sql"
-    print("[OK] test_integrity_gate_fail_closed_regression passed (fails closed on hash mismatch)")
+
+    # 2. Delete an expected file with enforce_all_expected_present -> must FAIL
+    corrupt_file.unlink()
+    manifest_missing = generate_manifest(app_root, enforce_all_expected_present=True)
+    assert manifest_missing["gate_results"]["integrity_gate"] == "FAIL", "Integrity Gate must fail on missing file"
+    missing_entries = [m for m in manifest_missing["integrity_mismatches"] if m.get("status") == "MISSING_EXPECTED_FILE"]
+    assert len(missing_entries) > 0
+
+    print("[OK] test_integrity_gate_fail_closed_regression passed (fails closed on hash mismatch & missing files)")
 
 
 def test_drift_presign_mismatch_regression(tmp_dir: Path) -> None:
@@ -230,7 +240,7 @@ def test_drift_presign_mismatch_regression(tmp_dir: Path) -> None:
 
 
 def test_signature_gate_wrong_certificate_regression(tmp_dir: Path) -> None:
-    """Prove that evaluate_signature_gate fails closed on unsigned or wrong-certificate binaries."""
+    """Prove that evaluate_signature_gate fails closed on unauthorized certificate signers or thumbprint mismatch."""
     app_root = tmp_dir / "sig_test_root"
     assemble_app_root(app_root)
 
@@ -238,6 +248,12 @@ def test_signature_gate_wrong_certificate_regression(tmp_dir: Path) -> None:
     sig_report = evaluate_signature_gate(app_root, allow_mock=False)
     assert sig_report["signature_gate_status"] == "FAIL", "Signature Gate must fail on unsigned placeholder"
     assert len(sig_report["first_party_failures"]) > 0
+
+    # If wrong thumbprint is specified, check_pe_signature must fail
+    wrong_thumb = "0000000000000000000000000000000000000000"
+    res = check_pe_signature(app_root / "GlyphCue.exe", expected_thumbprint=wrong_thumb)
+    assert not res["verified_first_party"], "Must fail on thumbprint mismatch"
+
     print("[OK] test_signature_gate_wrong_certificate_regression passed (fails closed on unapproved signer)")
 
 
