@@ -1,9 +1,11 @@
 {
   "schema_version": "1.0",
   "document_type": "phase_d_public_state",
-  "note": "Machine-local evidence and process state lives in build_artifacts/phase_d/relay_state.json (gitignored). This file contains only public-safe state.",
+  "note": "Machine-local evidence and process state lives in build_artifacts/phase_d/relay_state.json (gitignored). Tracked docs do not store dynamic HEAD to avoid commit churn.",
   "branch": "milestone/13-release-candidate",
-  "head_commit": "00a3c65ccd7fca5180e94f242947c2438a0f9651",
+  "phase_c_closure_commit": "00a3c65ccd7fca5180e94f242947c2438a0f9651",
+  "d0_scaffold_baseline_commit": "182bc46788df66c95b272aa64193937ebed0fb4f",
+  "dynamic_head_rule": "Every relay agent MUST dynamically resolve git rev-parse HEAD at module start and record source_head in build_artifacts/phase_d/relay_state.json",
   "governing_issues": ["#26", "#27"],
   "phase_c": {
     "verdict": "FINAL_ACCEPTED",
@@ -16,15 +18,15 @@
       "completed_at": "2026-09-05"
     },
     "D1": {
-      "name": "Environment A — Clean Offline Install & First Launch",
+      "name": "Environment A — Clean Offline Install, First Launch & Relaunch",
       "status": "NOT_STARTED"
     },
     "D2": {
-      "name": "Environment A — DirectML Runtime Fidelity",
+      "name": "Environment A — DirectML Runtime Fidelity (Bounded Smoke)",
       "status": "NOT_STARTED"
     },
     "D3": {
-      "name": "Environment B — CPU Fallback Validation",
+      "name": "Environment B — CPU Fallback Validation (Bounded Smoke)",
       "status": "NOT_STARTED"
     },
     "D4": {
@@ -44,7 +46,9 @@
   "gates": {
     "release_ready": false,
     "redistribution_compliance": "OPEN",
-    "phase_d_verdict": "NOT_STARTED"
+    "phase_d_verdict": "NOT_STARTED",
+    "phase_e_required": true,
+    "phase_f_required": true
   },
   "relay_document": "docs/m13_phase_d/PHASE_D_RELAY.md"
 }
