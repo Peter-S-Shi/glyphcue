@@ -235,6 +235,48 @@ def test_clean_cues_result_stays_chronologically_ordered(qapp_guard, tmp_path):
         assert cue.start_time < cue.end_time
 
 
+def test_clean_cues_queue_has_no_duplicate_rows_immediately_after_click_no_restart(qapp_guard, tmp_path):
+    """Human QA Case A: a persistent caption observed across several
+    near-duplicate OCR frames, interrupted by one non-absorbable garbled
+    frame, could previously survive Clean Cues as two text-identical
+    domain Cues (see test_noise_split_persistent_caption_does_not_survive_as_duplicate_text
+    in test_cue_cleaning.py for the minimized adapter-level repro). Human
+    QA additionally reported the QA queue looking transiently
+    duplicated/out-of-order immediately after clicking Clean Cues, before
+    any restart. This asserts the queue is correct immediately: exactly
+    one row per current self.qa.cues entry, in chronological order, with
+    matching ids -- no restart needed to "normalize" it."""
+    caption = "我直接从三个最具体的问题拆解"
+    noisy = caption[: len(caption) // 2] + "口"
+    cues = [
+        _make_cue("c1", 0.00, 0.09, text=caption, observation_ids=("o1",)),
+        _make_cue("c2", 0.09, 0.18, text=noisy, observation_ids=("o2",)),
+        _make_cue("c3", 0.18, 0.27, text=caption, observation_ids=("o3",)),
+    ]
+    pane, cue_repo = _make_pane(tmp_path, cues=cues)
+
+    pane._on_clean_cues_clicked()
+
+    # No restart, no re-read from the repository -- inspect the live
+    # in-memory workspace and queue widget directly.
+    workspace_cues = pane.qa.cues
+    queue_ids = [pane.qa.cue_id_for_row(row) for row in range(pane.qa.queue.count())]
+
+    assert len(queue_ids) == len(workspace_cues)
+    assert queue_ids == [c.id for c in workspace_cues]
+    assert len(set(queue_ids)) == len(queue_ids), f"duplicate rows in queue: {queue_ids}"
+
+    starts = [c.start_time for c in workspace_cues]
+    assert starts == sorted(starts)
+
+    texts = [layer.text for c in workspace_cues for layer in c.language_layers]
+    assert texts.count(caption) <= 1, f"caption duplicated in live workspace: {texts}"
+
+    # Persistence agrees with the live workspace (no restart needed).
+    persisted = cue_repo.list_for_source("video_a")
+    assert {c.id for c in persisted} == {c.id for c in workspace_cues}
+
+
 def test_export_controls_reads_cleaned_workspace_state(qapp_guard, tmp_path):
     """All four export formats share the same `get_cues` seam
     (`self.qa.cues`), so proving this callback reflects the cleaned

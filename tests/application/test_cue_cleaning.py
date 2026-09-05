@@ -590,3 +590,79 @@ def test_unsafe_attribution_fallback_still_flags_complementary_evidence_as_needs
     assert flagged.end_time == 1.0
     en_layer = next(l for l in flagged.language_layers if l.language == "en")
     assert en_layer.observation_ids == ("o1",)
+
+
+def test_noise_split_persistent_caption_does_not_survive_as_duplicate_text():
+    """Human QA Case A (release-blocking): a real, persistent caption
+    observed across several consecutive near-duplicate OCR frames can be
+    interrupted by a single garbled frame whose text is not a pure
+    substring of the caption (so `absorb_redundant_micro_fragments`
+    cannot safely fold it into a neighbor). The frozen Cleaner's
+    adjacency-based clustering (`clean_one_pass`) then splits the burst
+    into two separate clusters that each *independently* reduce to the
+    exact same caption text -- two domain Cues that are text-identical
+    representations of one single real observed moment, with the noisy
+    frame surviving as its own tiny Cue in between. A human reviewer
+    sees this as the same line "duplicated". This is the minimized,
+    deterministic repro of that defect (3 input Cues is already
+    sufficient)."""
+    caption = "我直接从三个最具体的问题拆解"
+    noisy = caption[: len(caption) // 2] + "口"
+    cues = [
+        _cue("c1", 0.00, 0.09, text=caption, language="zh", observation_ids=("o1",)),
+        _cue("c2", 0.09, 0.18, text=noisy, language="zh", observation_ids=("o2",)),
+        _cue("c3", 0.18, 0.27, text=caption, language="zh", observation_ids=("o3",)),
+    ]
+
+    result = clean_eligible_cues_for_source(cues)
+
+    texts = [layer.text for cue in result for layer in cue.language_layers]
+    assert texts.count(caption) <= 1, (
+        f"the persistent caption survived as more than one domain Cue: {result}"
+    )
+    _assert_valid_timing(result)
+
+    # Second click: idempotent, no further change.
+    result2 = clean_eligible_cues_for_source(result)
+    texts2 = [layer.text for cue in result2 for layer in cue.language_layers]
+    assert texts2.count(caption) <= 1
+    assert len(result2) == len(result)
+
+    merged = next(
+        cue for cue in result
+        if any(layer.text == caption for layer in cue.language_layers)
+    )
+    assert merged.review_state == ReviewState.NEEDS_REVIEW
+    assert merged.start_time == 0.00
+    assert merged.end_time == 0.27
+    merged_layer = merged.language_layers[0]
+    assert merged_layer.observation_ids == ("o1", "o3")
+
+    # The genuinely distinct garbled frame is untouched, still PENDING,
+    # still its own Cue -- the fix must not remove real (non-duplicate)
+    # evidence, only collapse the exact-text-duplicate split.
+    noisy_cue = next(
+        cue for cue in result
+        if any(layer.text == noisy for layer in cue.language_layers)
+    )
+    assert noisy_cue.review_state == ReviewState.PENDING
+    assert noisy_cue.id == "c2"
+
+
+def test_split_duplicate_collapse_never_merges_distant_unrelated_repeats():
+    """Two Cues sharing exact text but far apart in time (further than
+    the frozen Cleaner's own max_cluster_span_seconds default of 8.0s)
+    are legitimately independent real repeats of the same dialogue, not
+    a single observation split apart by clustering noise -- e.g. the
+    same short phrase said twice, minutes apart. The split-duplicate
+    safety net must never merge these; distant identical text is not
+    evidence of a Cleaner-side split artifact."""
+    cues = [
+        _cue("c1", 0.0, 1.0, text="谢谢观看", observation_ids=("o1",)),
+        _cue("c2", 120.0, 121.0, text="谢谢观看", observation_ids=("o2",)),
+    ]
+
+    result = clean_eligible_cues_for_source(cues)
+
+    assert {c.id for c in result} == {"c1", "c2"}
+    assert all(c.review_state == ReviewState.PENDING for c in result)

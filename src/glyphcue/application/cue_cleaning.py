@@ -199,6 +199,94 @@ def _reconstruct_cue(
     )
 
 
+def _joined_text_key(cue: Cue) -> tuple[tuple[str, str], ...]:
+    """The exact (language, text) pair for every layer of `cue`, in layer
+    order -- two Cues sharing this key are byte-for-byte the same
+    observed result (same per-layer text), independent of id, timing, or
+    observation_ids."""
+    return tuple((layer.language, layer.text) for layer in cue.language_layers)
+
+
+def _collapse_split_duplicate_cues(cues: list[Cue], max_span_seconds: float = 8.0) -> list[Cue]:
+    """Safety net for a real frozen-Cleaner edge case (Human QA Case A): a
+    persistent caption observed across several consecutive near-duplicate
+    OCR frames can be interrupted by one non-absorbable garbled frame
+    (its text isn't a pure substring of the caption, so
+    `absorb_redundant_micro_fragments` can't fold it into a neighbor).
+    The frozen Cleaner's adjacency-based clustering then splits the burst
+    into two or more separate clusters that each *independently* reduce
+    to the exact same per-layer text -- two domain Cues that are
+    byte-identical representations of one single real observed moment.
+
+    This never second-guesses a `preserve_complementary_evidence_cluster`
+    result: that action only ever keeps Cues whose texts are NOT fully
+    redundant with each other (see `choose_evidence_cover`'s own
+    coverage-based selection), so two Cues reaching here with an
+    identical `_joined_text_key` were never legitimate complementary
+    evidence -- they are the same observed text, genuinely split apart.
+
+    Cues sharing a `_joined_text_key` are merged only when temporally
+    close enough (`max_span_seconds`, matching the frozen Cleaner's own
+    `max_cluster_span_seconds` default) to plausibly be the same
+    split-apart observation rather than two unrelated, independently
+    repeated real captions far apart in the source. The merge is always
+    flagged `NEEDS_REVIEW`: collapsing two Cues the frozen Cleaner itself
+    chose to keep separate is the adapter overriding that decision, and
+    per this integration's fail-closed philosophy that must surface for
+    a human look rather than silently resolve as ordinary PENDING
+    output."""
+    by_key: dict[tuple, list[Cue]] = {}
+    order: list[tuple] = []
+    for cue in cues:
+        key = _joined_text_key(cue)
+        if key not in by_key:
+            by_key[key] = []
+            order.append(key)
+        by_key[key].append(cue)
+
+    result: list[Cue] = []
+    for key in order:
+        members = sorted(by_key[key], key=lambda cue: (cue.start_time, cue.end_time, cue.id))
+
+        run: list[Cue] = [members[0]]
+        for cue in members[1:]:
+            span = cue.end_time - run[0].start_time
+            if span <= max_span_seconds:
+                run.append(cue)
+            else:
+                result.append(_merge_duplicate_run(run))
+                run = [cue]
+        result.append(_merge_duplicate_run(run))
+
+    result.sort(key=lambda cue: (cue.start_time, cue.end_time, cue.id))
+    return result
+
+
+def _merge_duplicate_run(run: list[Cue]) -> Cue:
+    if len(run) == 1:
+        return run[0]
+
+    first = run[0]
+    layer_count = len(first.language_layers)
+    new_layers = [
+        LanguageLayer(
+            language=first.language_layers[layer_index].language,
+            text=first.language_layers[layer_index].text,
+            observation_ids=_dedupe_preserve_order(
+                *(cue.language_layers[layer_index].observation_ids for cue in run)
+            ),
+        )
+        for layer_index in range(layer_count)
+    ]
+    return Cue(
+        id=str(uuid.uuid4()),
+        start_time=min(cue.start_time for cue in run),
+        end_time=max(cue.end_time for cue in run),
+        language_layers=tuple(new_layers),
+        review_state=ReviewState.NEEDS_REVIEW,
+    )
+
+
 def _clean_one_signature_group(group: list[Cue]) -> list[Cue]:
     """Runs the frozen Cleaner over one language-signature-homogeneous
     group of eligible Cues (see `_language_signature`) and returns the
@@ -298,7 +386,7 @@ def _clean_one_signature_group(group: list[Cue]) -> list[Cue]:
 
         result.append(reconstructed)
 
-    return result
+    return _collapse_split_duplicate_cues(result)
 
 
 def clean_eligible_cues_for_source(cues: list[Cue]) -> list[Cue]:
@@ -369,6 +457,22 @@ def clean_eligible_cues_for_source(cues: list[Cue]) -> list[Cue]:
     unchanged eligible Cue's original text, or text/lines the frozen
     Cleaner itself selected/pruned/kept from one or more real eligible
     Cues.
+
+    Split-duplicate safety net (Human QA Case A): the frozen Cleaner's
+    adjacency-based clustering can occasionally split one persistent
+    caption's burst of near-duplicate observed frames into two separate
+    clusters -- e.g. a single non-absorbable garbled frame in the middle
+    breaks the similarity link -- each of which independently reduces to
+    the exact same per-layer text. Left alone, that is two domain Cues
+    that are byte-identical representations of one real observed moment.
+    `_collapse_split_duplicate_cues` (applied per language-signature
+    group, after per-Cue reconstruction) merges any such exact-text
+    duplicates that are close enough in time to plausibly be the same
+    split-apart observation, and always flags the merge `NEEDS_REVIEW`.
+    It never touches two Cues with genuinely different text -- that is
+    exactly what `preserve_complementary_evidence_cluster` produces, and
+    real complementary evidence is never text-identical by construction
+    (see `choose_evidence_cover`).
     """
     eligible = [cue for cue in cues if is_cleaner_eligible_cue(cue)]
     protected = [cue for cue in cues if not is_cleaner_eligible_cue(cue)]
