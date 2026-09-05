@@ -2,11 +2,10 @@
 
 **Document type:** Authoritative V1 milestone roadmap  
 **Project:** GlyphCue  
-**Repository:** `Peter-S-Shi/glyphcue`  
-**Lifecycle phase:** Production Development → Milestone 10 complete (evidence/evaluation closure accepted; representative-video gate transferred to Milestone 11, not waived — see §17's gate audit disposition). **Milestone 11 (Product Hardening & Full Regression) is CLOSED (2026-09-04)** — every acceptance-gate item (regression, the transferred M10 representative-video evaluation, Stage ⑦ packaging/DirectML-default work) executed with real evidence (see `docs/m11_targeted_regression.md`, `docs/m11_representative_evaluation.md`, `PROJECT_STATUS.md`) — **but Release Acceptance for the resulting product was REJECTED BY HUMAN ADJUDICATION (§18 closure disposition)**: the repository owner's hands-on retest of the approved DirectML production path found final reconstructed Cue output unacceptable for release (too many low-value/duplicate/fragmented Cues; root cause open, deferred to Milestone 12 — not yet attributed to the DirectML backend itself), QA review UX is not acceptable (Discard doesn't remove Cues from view, review ordering isn't linear), and Windows packaging remains exploratory. **Release Ready = NO. Release/Packaging work is SUSPENDED.** Feature Freeze is lifted only for corrective rework. **Milestone 12 — Product Rework & Cue Quality Recovery** (§19) is the next engineering milestone, QUEUED but NOT YET STARTED; the originally-next Release Candidate milestone is renumbered to Milestone 13 (§20) and does not begin until Milestone 12 is complete and accepted, followed by a second Product Hardening & Full Regression pass.
+**Lifecycle phase:** Production Development → Milestone 10 complete; **Milestone 11 (Product Hardening & Full Regression) is CLOSED (2026-09-04)** (Release Acceptance rejected by human adjudication); **Milestone 12 (Product Rework & Cue Quality Recovery) is CLOSED & ACCEPTED (2026-09-05)**: Stage ① (UI / Review Workflow Recovery) and Stage ② (Cue Production Quality Recovery via Cue Cleaner V0.6.1 "Clean Cues" integration) both completed and accepted; Feature Freeze is REINSTATED; Release Ready = NO; Release/Packaging SUSPENDED pending Product Hardening II gate. Next target: Product Hardening II & Full Regression pass before Milestone 13 (Release Candidate & Signed Release). See §19/§31 and `PROJECT_STATUS.md`.  
 **Status:** Current V1 execution roadmap  
 
-**Last updated:** 2026-09-04
+**Last updated:** 2026-09-05
 
 
 ---
@@ -1639,62 +1638,82 @@ back Milestone 11's processing-speed gains, in direct response to the
 three release-blocking findings in Milestone 11's closure disposition
 above. This milestone exists because Human Adjudication rejected Release
 Acceptance following Milestone 11's hardening — it is corrective rework,
-not new V1 feature scope, and the Feature Freeze exception below is
-scoped to it accordingly.
+not new V1 feature scope, and the Feature Freeze exception was scoped
+strictly to it.
 
-This milestone is intentionally **not** pre-scoped to a specific
-implementation. Per the repository owner's own instruction, no candidate
-direction below is an approved solution — this section records the
-problem and the candidate directions considered, and stays open until a
-direction is actually chosen and scoped.
+**Status: CLOSED / ACCEPTED by Human Adjudication (2026-09-05).**
+Both Stage ① (UI / Review Workflow Recovery) and Stage ② (Cue Production
+Quality Recovery) have been implemented, verified, and accepted by the
+repository owner.
 
-## Scope
+## Scope & Resolution
 
-### Problem 1 — final Cue production quality is unacceptable for release
+### Problem 1 — Final Cue Production Quality Recovery (Stage ② COMPLETED & ACCEPTED)
 
 The DirectML-accelerated production path meets its ≤5× realtime target,
-but the repository owner's hands-on product-level retest found the
-final reconstructed Cue output unacceptable for release (too many
-low-value / duplicate / fragmented Cues). The root cause is not yet
-established: the fail-closed DevQA DirectML verifier (Milestone 11
-Stage ⑦) only proved the intended DirectML backend is reachable and
-genuinely active — its periodic raw Observation confirmations are
-expected diagnostic behavior, not evidence of where the final-output
-defect originates. Milestone 12 must first determine the actual causal
-seam (detection, recognition, Observation aggregation, caption
-identity, reconstruction, downstream cleanup, or an interaction among
-them) before selecting a direction. Candidate directions to investigate
-(not yet decided between,
-none pre-approved):
+and Problem 1 was addressed by choosing and implementing the downstream
+programmatic consolidation direction on real evidence:
+- **Chosen Direction**: Keep the DirectML detector and recognizer pipeline
+  and its ≤5× realtime processing speed unchanged, and integrate the
+  externally frozen **Cue Cleaner V0.6.1** as a manual **Clean Cues**
+  button in Path A post-reconstruction review workspace.
+- **Integration Contract & Architecture Seams**:
+  1. *Eligibility*: Operates strictly on untouched machine results
+     (`ReviewState.PENDING` only). Protected human review work
+     (`APPROVED`, `REJECTED`, `NEEDS_REVIEW`) passes through 100%
+     untouched with original object identities and review states preserved.
+  2. *Multilingual Support & Provenance Reconstruction*: multi-language Cues
+     are cleaner-eligible; layers are joined into flat text in layer order
+     for the frozen cleaner, and surviving output lines are attributed back
+     to their original language layer via an exact, order-preserving
+     subsequence match against donor lines (never guessing script or language).
+     If a surviving line is ambiguous between layers or non-verbatim,
+     attribution fails closed and contributing Cues remain untouched.
+  3. *Language-Signature Isolation*: eligible Cues are partitioned by their
+     exact ordered language-layer signature (e.g. `("en",)`, `("zh",)`,
+     `("en", "zh")`, `("zh", "en")`) before cleaning, preventing cross-unioning
+     across different Track Group configurations from incremental OCR.
+  4. *Single-Language Edge-Strip Acceptance*: single-language Cues accept
+     cleaner output directly into their single layer (including edge-strip
+     cleanups), with no cross-layer attribution ambiguity.
+  5. *Uncertainty Surfacing*: outputs from
+     `preserve_complementary_evidence_cluster` are mapped to
+     `ReviewState.NEEDS_REVIEW` to surface genuine complementary evidence
+     for human verification rather than silently dropping or synthesizing cues.
+     Layers emptied during cleaning are likewise marked `NEEDS_REVIEW`.
+  6. *Atomic Persistence & Fail-Closed Safety*: Cues are atomically replaced
+     for the active source via `CueRepository.save_cues_for_source`. Any
+     unexpected error leaves the workspace and database completely untouched.
+  7. *Deterministic Cross-Layer Total Ordering*: SQL repository queries
+     (`CueRepository.list_for_source`, `list_all`) and merge sorting enforce
+     `ORDER BY start_time, end_time, id`, guaranteeing total ordering
+     consistency with `ReconstructionQaWorkspace._rebuild_queue()`.
+- **Accepted V1 Known Limitation**:
+  Per Human Adjudication (2026-09-05), Cue Cleaner V0.6.1 is accepted for V1
+  with an explicit known limitation: **Clean Cues is conservative and is
+  not required to eliminate every residual duplicate or fragment.**
+  Its product role is to materially reduce human cleanup burden; remaining
+  cases stay visible for human QA in the 3-pane workbench and can be
+  resolved through the existing manual Merge workflow (`M` shortcut / Merge
+  tool). Residual duplicates/fragments are therefore explicitly **not**
+  release blockers.
 
-- Keep the current recognition/detection backend and speed, and insert a
-  deterministic, programmatic cue-cleanup / fragmentation-consolidation
-  stage downstream of raw observations, rather than changing the OCR
-  backend itself.
-- Re-evaluate the detector/recognizer backend combination itself against
-  real evidence, rather than assuming the current DirectML pairing is
-  fixed.
-- Investigate local speech recognition (ASR) as an assist/calibration
-  signal alongside OCR — check first for any existing prior prototype or
-  artifacts (repo history, sibling working folders, `prompt-drafts/`)
-  before starting from scratch.
-
-### Problem 2 — QA review UX (Stage ① Completed)
+### Problem 2 — QA review UX (Stage ① COMPLETED & ACCEPTED)
 
 - `Discard` must actually remove a discarded Cue from the visible
   QA list/layout, not merely change its review-state label while it
-  stays visually present. → **RESOLVED in Stage ①**: multi-selection of
+  stays visually present. → **RESOLVED in Stage ① (2026-09-04)**: multi-selection of
   discarded cues and batch purge (`Purge Discarded`) permanently clears
   rejected cues from the visible workspace and updates SQLite persistence,
   with strict data safety protecting non-rejected cues.
 - Cue ordering in the review queue must support a genuinely linear,
   chronological read, rather than letting Pending/Needs-Review/Approved
-  state interleaving scramble the reading order. → **RESOLVED in Stage ①**:
+  state interleaving scramble the reading order. → **RESOLVED in Stage ① (2026-09-04)**:
   the queue strictly enforces chronological timeline order `(start_time, end_time)`
   as the primary sorting principle; review states and priority levels are
   communicated via discrete badges and subtle semantic token colors (`Color.SUCCESS`,
-  `Color.TEXT_MUTED`, `Color.WARNING`, `Color.TEXT_PRIMARY`) without breaking
-  linear time.
+  `Color.BORDER_NEUTRAL_LIGHT`, `Color.WARNING`, `Color.DANGER`) and card border
+  semantics without breaking linear time.
 - Continuous timeline workflow: `CompactTimeline` renders the last processed
   endpoint seam marker, supports click-to-seek, provides a "Resume from Last End"
   button, and automatically pre-fills the next range start on successful OCR runs.
@@ -1703,14 +1722,14 @@ none pre-approved):
   explicit confirmation, preserving raw observations and other videos.
 - Low-disturbance OCR completion chime: a synthesized hotel desk bell "ding"
   plays upon genuine OCR job success (`JobState.SUCCEEDED`).
-- Upstream junk-Cue volume reduction remains scoped to Stage ② (Problem 1).
+- Responsive UI: global horizontal overflow support for displays <1160px.
 
 ### Explicitly out of scope for Milestone 12
 
 - Packaging work (PyInstaller/Briefcase/Nuitka/Inno Setup) — deferred to
   Milestone 13, not resumed here.
 - Any second round of general Product Hardening / Full Regression — that
-  is Milestone 12's own exit criterion (below), not concurrent work.
+  is Milestone 12's exit criterion (below), not concurrent work.
 - Any change to Architecture B, OCR recognition logic, or detector
   thresholds that is not directly required to address Problem 1 above.
 
@@ -1718,20 +1737,24 @@ none pre-approved):
 
 Milestone 12 passes only when:
 
-1. a concrete direction for Problem 1 has been chosen (from the
-   candidates above or otherwise) on real evidence, scoped, implemented,
-   and evaluated against representative material without giving back the
-   ≤5× realtime target Milestone 11 already achieved;
-2. `Discard` genuinely removes a Cue from the visible QA workspace;
+1. a concrete direction for Problem 1 has been chosen on real evidence,
+   scoped, implemented, and evaluated against representative material without
+   giving back the ≤5× realtime target Milestone 11 achieved; → **PASSED**:
+   downstream Cue Cleaner V0.6.1 integrated as "Clean Cues" button;
+   DirectML runtime and realtime throughput fully preserved;
+2. `Discard` genuinely removes a Cue from the visible QA workspace; →
+   **PASSED**: multi-select batch purge permanently clears discarded cues;
 3. Cue review ordering reads linearly/chronologically regardless of
-   Pending/Needs-Review/Approved state interleaving;
+   Pending/Needs-Review/Approved state interleaving; → **PASSED**: queue
+   strictly ordered chronologically with status badges and card borders;
 4. the repository owner is satisfied with the resulting product quality
-   and UX — this is a human-adjudicated gate, not an automated one, same
-   as Milestone 11's own closure above;
+   and UX — this is a human-adjudicated gate, not an automated one; →
+   **PASSED**: Human Adjudication accepted both Stage ① and Stage ②
+   (with the explicit conservative cleaner limitation);
 5. only after this gate closes does Milestone 13 (Release Candidate &
-   Signed Release, immediately below) become the next engineering action,
-   preceded by a second Product Hardening & Full Regression pass scoped
-   at that time.
+   Signed Release) become the next target, preceded by a second Product
+   Hardening & Full Regression pass. → **GATE CLOSED**: next engineering
+   action is Product Hardening II & Full Regression pass.
 
 ---
 
@@ -2159,13 +2182,13 @@ Milestone 8 — Path B Deepening: CJK / Rolling Normalization ✓ complete
 Milestone 9 — V1 Product Completion & Feature Freeze ✓ complete
 Milestone 10 — Evaluation & Career Evidence Closure ✓ complete (gate audit accepted 2026-08-31; representative-video target transferred to Milestone 11 as a mandatory gate, not waived — see §17)
 Milestone 11 — Product Hardening & Full Regression ✓ hardening complete / CLOSED (2026-09-04) — Release Acceptance REJECTED BY HUMAN ADJUDICATION (§18 closure disposition); see PROJECT_STATUS.md
-Milestone 12 — Product Rework & Cue Quality Recovery IN PROGRESS (Stage ① complete, Stage ② next)
+Milestone 12 — Product Rework & Cue Quality Recovery ✓ complete / CLOSED (2026-09-05)
   ├─ Stage ① UI / Review Workflow Recovery           ✓ complete (2026-09-04)
-  └─ Stage ② Cue Production Quality Recovery          QUEUED / NEXT
+  └─ Stage ② Cue Production Quality Recovery          ✓ complete (2026-09-05)
 
-Corrective Product Rework               IN PROGRESS — Milestone 12 Stage ① complete
-Feature Freeze                          LIFTED FOR REWORK ONLY (Milestone 9's freeze remains the default outside Milestone 12's named scope)
-Release / Packaging                     SUSPENDED
+Corrective Product Rework               CLOSED / ACCEPTED (2026-09-05)
+Feature Freeze                          REINSTATED
+Release / Packaging                     SUSPENDED (pending Product Hardening II gate)
 ```
 
 ---
@@ -2174,59 +2197,16 @@ Release / Packaging                     SUSPENDED
 
 The next engineering action is:
 
-> **Milestone 12 Stage ② — Cue Production Quality Recovery** (§19; Problem 1 investigation and recovery)
+> **Product Hardening II & Full Regression Pass** (before Milestone 13 Release Candidate; packaging suspended until hardening gate passes)
 
-**Milestone 12 Stage ① UI / Review Workflow Recovery is COMPLETE (2026-09-04).**
-Stage ① resolved the UX review workflow deficiencies identified in Problem 2:
-1. Multi-select & batch purge (`Purge Discarded`) permanently removes rejected Cues from the visible workspace and SQLite persistence while safely protecting non-rejected cues.
-2. Queue sorting strictly follows linear subtitle timeline `(start_time, end_time)` as the primary sort order; review state and priority levels are communicated cleanly through badges and subtle semantic token colors without disrupting chronological order.
-3. Continuous OCR timeline workflow: `CompactTimeline` provides an endpoint seam marker, click-to-seek, a "Resume from Last End" action, and automatic pre-fill of the next range start.
-4. "Clear Video Cues…" provides destructive cue history clearing specifically for the active video with an explicit warning modal, safely preserving raw observations and other videos.
-5. A low-disturbance synthesized hotel desk bell chime sounds upon genuine OCR job success (`JobState.SUCCEEDED`).
-6. Full test suite passes: 305 passed / 1 xfailed in UI suite; 913 passed / 1 skipped / 1 xfailed across the entire repository.
-
-**Milestone 11 — Product Hardening & Full Regression is CLOSED (2026-09-04).**
-Stage ④ Targeted Regression, Stage ⑤ Representative Evaluation (including
-the transferred M10 gate), Stage ⑥ Full Regression, and Stage ⑦ Formal
-Human QA & Packaging Hardening (including the Runtime Default Corrective
-Gate) all executed with real, CI-verified evidence — see
-`docs/m11_targeted_regression.md`, `docs/m11_representative_evaluation.md`,
-and `PROJECT_STATUS.md` for the full record. Every M11 acceptance-gate
-item (§18) was executed and adjudicated. M11 is CLOSED because the
-hardening process completed and surfaced release-blocking product
-findings; Release Acceptance itself did NOT pass.
-
-**Human Adjudication (2026-09-04) rejected Release Acceptance for the
-resulting product** after hands-on re-testing surfaced three
-release-blocking findings the automated gates above cannot catch — see
-§18's closure disposition for the full reasoning:
-
-1. the approved ≤5× realtime DirectML production path's final
-   reconstructed Cue output is unacceptable for release (too many
-   low-value/duplicate/fragmented Cues); root cause open, deferred to
-   Milestone 12 Stage ②, not yet attributed to the DirectML backend itself;
-2. QA review UX was not acceptable (addressed in Stage ① above);
-3. Windows packaging remains exploratory, not release-grade.
-
-`Release Ready = NO`. Release/Packaging work is **SUSPENDED**. Feature
-Freeze is lifted only for the corrective scope named in Milestone 12
-(§19) — it is not a general reopening of V1 feature scope.
-
-Do not ask AG2.0 to implement the whole roadmap.
-
-Advance one milestone at a time.
-
-Milestone 12 carries no mandatory pre-scoped implementation — per its own
-acceptance gate (§19), a concrete direction for the Cue-quality trade-off
-must first be chosen on real evidence before implementation begins.
-
-After Milestone 12 is genuinely accepted by the repository owner (§19's
-acceptance gate):
-
-1. scope and run a second Product Hardening & Full Regression pass;
-2. verify it against a gate equivalent to §18's;
-3. only then does Milestone 13 (Release Candidate & Signed Release, §20)
-   become the next engineering action.
+**Milestone 12 — Product Rework & Cue Quality Recovery is CLOSED & ACCEPTED (2026-09-05).**
+Both stages have been completed and verified:
+1. **Stage ① UI / Review Workflow Recovery is COMPLETE & ACCEPTED (2026-09-04)**: resolved review UX via batch purge of discarded cues, linear chronological timeline sorting with semantic card borders and badges, continuous timeline resume workflow, destructive video cue clearing modal, and completion chime.
+2. **Stage ② Cue Production Quality Recovery is COMPLETE & ACCEPTED (2026-09-05)**: resolved Problem 1 by integrating the externally frozen Cue Cleaner V0.6.1 as a manual "Clean Cues" button in Path A post-reconstruction review workspace, preserving the upstream DirectML pipeline and its ≤5× realtime throughput. Eligible cues are partitioned by language-signature, multi-language cues are attributed safely fail-closed, and uncertainty clusters map to `ReviewState.NEEDS_REVIEW`. Total cross-layer cue ordering (`start_time, end_time, id`) is enforced deterministically.
+3. **Accepted V1 Known Limitation**: Per Human Adjudication (2026-09-05), Cue Cleaner V0.6.1 is accepted with the explicit known limitation that Clean Cues is conservative and not required to eliminate every residual duplicate or fragment. Remaining cases stay visible in the 3-pane workbench and are resolved via the existing manual Merge workflow (`M` shortcut / Merge tool). Residual duplicates are not release blockers.
+4. **Feature Freeze is REINSTATED**. Corrective product rework is closed. No new feature additions are permitted outside the agreed roadmap.
+5. **Release / Packaging remains SUSPENDED**. Packaging work will not resume until the Product Hardening II gate passes.
+6. **Next Target**: Scope and execute Product Hardening II & Full Regression Pass, followed by Milestone 13 (Release Candidate & Signed Release, §20).
 
 ---
 
@@ -2270,9 +2250,9 @@ M11
 Product Hardening + Full Regression (CLOSED; Release Acceptance REJECTED)
         ↓
 M12
-Product Rework & Cue Quality Recovery (corrective; current stage)
+Product Rework & Cue Quality Recovery (CLOSED / ACCEPTED 2026-09-05)
         ↓
-(second Product Hardening & Full Regression pass, scoped when M12 closes)
+(Product Hardening II & Full Regression pass, NEXT)
         ↓
 M13
 Release Candidate + Signed Release

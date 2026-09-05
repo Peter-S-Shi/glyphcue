@@ -3,9 +3,9 @@
 **Document type:** Authoritative post-Grill product architecture baseline  
 **Project:** GlyphCue  
 **Repository:** `Peter-S-Shi/glyphcue`  
-**Lifecycle phase:** Production Development → Milestone 10 complete; Milestone 11 (Product Hardening & Full Regression) CLOSED (2026-09-04), Release Acceptance REJECTED BY HUMAN ADJUDICATION — Release Ready = NO, Release/Packaging SUSPENDED, Feature Freeze lifted only for **Milestone 12 (Product Rework & Cue Quality Recovery)**'s named corrective scope. See `ROADMAP.md` §18/§19 and `PROJECT_STATUS.md` for the full disposition.  
+**Lifecycle phase:** Production Development → Milestone 10 complete; Milestone 11 (Product Hardening & Full Regression) CLOSED (2026-09-04); Milestone 12 (Product Rework & Cue Quality Recovery: Stages ① and ②) COMPLETED & ACCEPTED (2026-09-05) via PR #14 and PR #15 — Feature Freeze REINSTATED, Release Ready = NO, Release/Packaging SUSPENDED pending Product Hardening II gate. Next target: Product Hardening II & Full Regression pass before Milestone 13. See `ROADMAP.md` §18/§19/§31 and `PROJECT_STATUS.md`.  
 **Status:** Authoritative V1 product architecture for production development  
-**Last updated:** 2026-09-04
+**Last updated:** 2026-09-05
 
 ---
 
@@ -1260,8 +1260,8 @@ Milestone 10 — Evaluation & Career Evidence Closure
 Milestone 11 — Product Hardening & Full Regression
 ✓ hardening complete / CLOSED (2026-09-04) — Release Acceptance REJECTED BY HUMAN ADJUDICATION, see `ROADMAP.md` §18
 
-Production Development
-IN PROGRESS — corrective rework, Milestone 12 (Product Rework & Cue Quality Recovery, `ROADMAP.md` §19) — Feature Freeze lifted only for that named scope, Release/Packaging SUSPENDED
+Milestone 12 — Product Rework & Cue Quality Recovery
+✓ complete / CLOSED (2026-09-05) — Stage ① UI / Review Workflow Recovery (2026-09-04) and Stage ② Cue Production Quality Recovery (2026-09-05) both accepted; Clean Cues integrated; Feature Freeze REINSTATED; next is Product Hardening II & Full Regression pass
 ```
 
 ---
