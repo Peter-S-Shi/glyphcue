@@ -4,27 +4,29 @@
 
 ## Current milestone
 
-**Milestone 13 — Release Candidate & Signed Release / Minimum Runtime-Fidelity Packaging Experiment (Issue #27): Phase C same-session deterministic reconstruction PASS; final Phase C acceptance pending independent-agent/session reconstruction and final-payload manifest corrective verification.**
+**Milestone 13 — Release Candidate & Signed Release / Minimum Runtime-Fidelity Packaging Experiment (Issue #27): Phase C FINAL ACCEPTED.**
 
 Milestone 13 Minimum Runtime-Fidelity Packaging Experiment is executing on dedicated branch `milestone/13-release-candidate` governed by Wayfinder charter packages #17–#26 and execution issue #27:
-- **Phase A — Frozen Inputs & Experiment Scaffold: COMPLETED & ACCEPTED (2026-09-05)**:
+- **Phase A — Frozen Inputs & Experiment Scaffold: ACCEPTED (2026-09-05)**:
   - Authoritative build-base identity frozen in `docs/m13_build_base_identity.json` and `.md` across 85 wheels/sdists, CPython 3.12.10 embeddable archive, and 3 authoritative ONNX models.
   - Fail-closed scaffold test suite in `tools/packaging/validate_scaffold.py` with 13 passing tests.
-- **Phase B — Primary Runtime Assembly & First Installer Build: COMPLETED & ACCEPTED (2026-09-05)**:
+- **Phase B — Primary Runtime Assembly & First Installer Build: ACCEPTED (2026-09-05)**:
   - First-party launcher `GlyphCue.exe` compiled and inner-signed with test certificate `A3E4E5320779C9F63E513D870E209C26B819C61E`.
   - Authoritative models (`PP-OCRv6_det_medium.onnx`, `PP-OCRv6_rec_small.onnx`, `ch_ppocr_mobile_v2.0_cls_mobile.onnx`) and migrations assembled.
   - CycloneDX 1.6 JSON SBOM and Payload Manifest generated; Inno Setup offline installer built.
-- **Phase C — Second Isolated Clean Reconstruction & Drift Verification: SAME-SESSION DETERMINISM PASS (2026-09-05)**:
-  - Two isolated clean reconstructions (`recon1` and `recon2`) produced in separate directories with isolated staging caches.
-  - Strict payload drift verification: 21,709 unsigned payload files compared with 0 mismatches (100% byte-for-byte equality); first-party signed PE `GlyphCue.exe` pre-sign hash identical (`0a1612e3...`) with valid Authenticode signature; installer envelope delta 160 bytes within allowed compiler timestamp/PKCS#7 signature envelope. Same-session verdict: **PASS**.
-  - **Phase C Corrective Completion Pass**:
-    1. *Payload-Finalization Order*: Final payload manifest, CycloneDX 1.6 SBOM, and signature inventory are generated after the installer-owned payload tree is frozen. Runtime sanity runs on a disposable scratch copy (`_sanity_scratch_*`) ensuring `<app_root>` remains 100% immutable.
-    2. *Manifest Count Reconciliation*: Reconciled the prior 21,906 manifest count vs 21,710 payload tree (199 `.pyc` files from checkout were copied and subsequently deleted by sanity cleanup; `assemble_embeddable_runtime.py` and `execute_phase_c.py` now ignore `__pycache__` and `*.pyc`). Added fail-closed assertion verifying 0 unindexed files and 0 missing files.
-    3. *Strict Offline Staging*: Reconstruction mode fails closed immediately (`FileNotFoundError`) if any frozen artifact is missing from the staged seed cache; network downloads and undeclared sample fallbacks are strictly prohibited.
-    4. *Independent Reconstruction Runbook*: Created `docs/m13_independent_reconstruction_handoff.md` with complete frozen recipes, baseline hashes, commands, and verification gates for clean independent verification.
-    5. *Report Wording*: Local sanity import probes clearly distinguished from DirectML hardware acceptance (reserved for Phase D).
+- **Phase C — Clean Reconstruction & Drift Verification: FINAL ACCEPTED (2026-09-05)**:
+  - Two independent clean reconstructions (Clean Reconstruction A and Clean Reconstruction B) produced from trusted source commit `5905df09d012cb63a34b98c484b43958477e52e8`. The earlier same-session AG baseline was contaminated by local checkout bytecode and is superseded.
+  - Strict payload drift verification across 21,712 total files: 21,711 unsigned payload files compared with 0 mismatches (100% byte-for-byte SHA-256 equality); 0 missing/additional files.
+  - First-party launcher `GlyphCue.exe`: pre-sign SHA-256 identical (`0a1612e3f5897f4147a758c045723aafacaeba206218327d5296f72202569102`), post-sign SHA-256 identical (`187ee188700d0ec599cbbe0854931967e35bab90fd5e09409fb7d18320516e17`), Authenticode signature valid under approved test certificate `A3E4E5320779C9F63E513D870E209C26B819C61E`.
+  - Inno Setup installer envelope comparison: size delta 496 bytes within allowed Inno Setup header/timestamp and PKCS#7 envelope delta; signatures valid on both. Envelope verdict: **PASS**.
+  - Manifest-to-disk reconciliation: 100% path and file count match (21,711 files) on both reconstructions with 0 unindexed and 0 missing files.
+  - Gate verdicts: Integrity Gate: PASS, Untracked File Gate: PASS, Provenance Gate: PASS, Release Redistribution Compliance Gate: OPEN (recorded). Overall Phase C verdict: **FINAL PASS / ACCEPTED**.
+- **Phase D — Target-Machine Offline Runtime & DirectML Validation**: **NOT STARTED (eligible next)**.
+- **Release Status**: **Release Ready = NO** (Phase D and Release Redistribution Compliance Gate pending).
+- **Release Redistribution Compliance Gate**: **OPEN**.
 
 ### Validation
+- Clean Reconstruction A vs B Verification: **PASS** (21,711/21,711 unsigned files identical, signed PE identical, installer envelope PASS).
 - Packaging Experiment Scaffold & Drift Test Suite (`tools/packaging/validate_scaffold.py`): **13 passed** (including manifest-to-disk reconciliation and strict offline staging regressions).
 - Phase C Isolated Clean Reconstruction & Drift Pipeline (`tools/packaging/execute_phase_c.py`): **PASS** (zero unsigned file drift, zero signed PE drift, envelope drift PASS).
 - Private Runtime Local Import Sanity Checks: **PASS** (imports and migrations verified on disposable scratch copies; DirectML hardware acceptance reserved for Phase D).
