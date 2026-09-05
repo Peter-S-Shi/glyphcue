@@ -67,6 +67,46 @@ def build_expected_hashes_contract(frozen_inventory: dict[str, Any]) -> dict[str
     return expected
 
 
+def build_source_artifact_sha_map(frozen_inventory: dict[str, Any]) -> dict[str, str]:
+    """Build a mapping from source artifact identifiers to their authoritative SHA-256."""
+    sha_map: dict[str, str] = {}
+
+    # 1. CPython embeddable runtime
+    cp = frozen_inventory.get("cpython_embeddable_runtime", {})
+    if cp.get("archive_filename") and cp.get("sha256"):
+        sha_map[cp["archive_filename"]] = cp["sha256"]
+
+    # 2. Frozen wheels
+    for whl in frozen_inventory.get("frozen_wheel_artifacts", []):
+        fn = whl.get("wheel_filename")
+        sha = whl.get("sha256")
+        if fn and sha:
+            sha_map[fn] = sha
+
+    # 3. ONNX models
+    for m in frozen_inventory.get("onnx_models_inventory", []):
+        fn = m.get("filename")
+        sha = m.get("sha256")
+        if fn and sha:
+            sha_map[fn] = sha
+            sha_map[f"frozen_model:{fn}"] = sha
+
+    # 4. Migrations
+    for mig in frozen_inventory.get("database_migrations", []):
+        fn = mig.get("filename")
+        sha = mig.get("sha256")
+        if fn and sha:
+            sha_map[fn] = sha
+            sha_map[f"glyphcue-migration:{fn}"] = sha
+
+    # 5. First-party source commit
+    commit_sha = frozen_inventory.get("trusted_source_commit", "5905df09d012cb63a34b98c484b43958477e52e8")
+    sha_map[f"glyphcue-source-commit:{commit_sha}"] = commit_sha
+    sha_map["glyphcue_first_party_launcher"] = "dea596e97c1648d9480494f2923e9d0aeee6a2f02ab91fd4455e10592c82400a"
+
+    return sha_map
+
+
 def build_package_wheel_map(frozen_inventory: dict[str, Any]) -> dict[str, str]:
     """Build a mapping from top-level lib directory/dist-info names to exact wheel filenames."""
     wheel_map: dict[str, str] = {}
@@ -85,58 +125,72 @@ def build_package_wheel_map(frozen_inventory: dict[str, Any]) -> dict[str, str]:
 def classify_payload_file(
     rel_path_str: str,
     wheel_map: dict[str, str],
+    source_sha_map: dict[str, str] | None = None,
     extraction_map: dict[str, dict[str, str]] | None = None,
 ) -> dict[str, Any]:
-    """Classify an app_root relative path into role, source, and verification status."""
+    """Classify an app_root relative path into role, source, source SHA-256, and verification status."""
     norm = rel_path_str.replace("\\", "/")
+    sha_lookup = source_sha_map or {}
 
     if extraction_map and norm in extraction_map:
         ext_info = extraction_map[norm]
         source_art = ext_info.get("source_artifact", "unknown")
+        source_art_sha = ext_info.get("source_artifact_sha256") or ext_info.get("sha256") or sha_lookup.get(source_art)
         lic = ext_info.get("license", "Third-Party-Declared")
         v_status = ext_info.get("verification_status", "verified")
         role = ext_info.get("role", "vendored_python_dependency")
         return {
             "role": role,
             "source_artifact": source_art,
+            "source_artifact_sha256": source_art_sha,
             "license": lic,
             "verification_status": v_status,
         }
 
     if norm.startswith("python/"):
+        src_art = "python-3.12.10-embed-amd64.zip"
         return {
             "role": "cpython_embeddable_runtime",
-            "source_artifact": "python-3.12.10-embed-amd64.zip",
+            "source_artifact": src_art,
+            "source_artifact_sha256": sha_lookup.get(src_art, "4acbed6dd1c744b0376e3b1cf57ce906f9dc9e95e68824584c8099a63025a3c3"),
             "license": "Python-2.0",
             "verification_status": "verified",
         }
     elif norm.startswith("app/glyphcue/"):
+        src_art = "glyphcue-source-commit:5905df09d012cb63a34b98c484b43958477e52e8"
         return {
             "role": "first_party_application_source",
-            "source_artifact": "glyphcue-source-commit:5905df09d012cb63a34b98c484b43958477e52e8",
+            "source_artifact": src_art,
+            "source_artifact_sha256": sha_lookup.get(src_art, "5905df09d012cb63a34b98c484b43958477e52e8"),
             "license": "UNRESOLVED — Product License Gate",
             "verification_status": "unresolved",
         }
     elif norm.startswith("models/"):
         model_name = Path(norm).name
+        src_art = f"frozen_model:{model_name}"
         return {
             "role": "onnx_model_weights",
-            "source_artifact": f"frozen_model:{model_name}",
+            "source_artifact": src_art,
+            "source_artifact_sha256": sha_lookup.get(src_art) or sha_lookup.get(model_name),
             "license": "Apache-2.0 (Redistribution Unconfirmed)",
             "verification_status": "unresolved",
         }
     elif norm.startswith("resources/migrations_sql/"):
         sql_name = Path(norm).name
+        src_art = f"glyphcue-migration:{sql_name}"
         return {
             "role": "first_party_database_migration",
-            "source_artifact": f"glyphcue-migration:{sql_name}",
+            "source_artifact": src_art,
+            "source_artifact_sha256": sha_lookup.get(src_art) or sha_lookup.get(sql_name),
             "license": "UNRESOLVED — Product License Gate",
             "verification_status": "unresolved",
         }
     elif norm.startswith("qt/plugins/"):
+        src_art = "PySide6-6.11.2-cp310-abi3-win_amd64.whl"
         return {
             "role": "qt_runtime_plugin",
-            "source_artifact": "PySide6-6.11.2-cp310-abi3-win_amd64.whl",
+            "source_artifact": src_art,
+            "source_artifact_sha256": sha_lookup.get(src_art),
             "license": "LGPL-3.0-only",
             "verification_status": "verified",
         }
@@ -153,6 +207,7 @@ def classify_payload_file(
         return {
             "role": "vendored_python_dependency",
             "source_artifact": source_art,
+            "source_artifact_sha256": sha_lookup.get(source_art),
             "license": "Third-Party-Declared",
             "verification_status": "verified" if matched_wheel else "unresolved",
         }
@@ -160,20 +215,25 @@ def classify_payload_file(
         return {
             "role": "packaging_manifest_evidence",
             "source_artifact": "glyphcue_packaging_scaffold",
+            "source_artifact_sha256": None,
             "license": "N/A",
             "verification_status": "verified",
         }
     elif norm.startswith("diagnostics/"):
+        src_art = "glyphcue-source-commit:5905df09d012cb63a34b98c484b43958477e52e8"
         return {
             "role": "diagnostic_probe_tool",
-            "source_artifact": "glyphcue-source-commit:5905df09d012cb63a34b98c484b43958477e52e8",
+            "source_artifact": src_art,
+            "source_artifact_sha256": sha_lookup.get(src_art, "5905df09d012cb63a34b98c484b43958477e52e8"),
             "license": "UNRESOLVED — Product License Gate",
             "verification_status": "unresolved",
         }
     elif norm in ("GlyphCue.exe", "unins000.exe"):
+        src_art = "glyphcue_first_party_launcher"
         return {
             "role": "first_party_launcher_pe",
-            "source_artifact": "glyphcue_first_party_launcher",
+            "source_artifact": src_art,
+            "source_artifact_sha256": sha_lookup.get(src_art, "dea596e97c1648d9480494f2923e9d0aeee6a2f02ab91fd4455e10592c82400a"),
             "license": "UNRESOLVED — Product License Gate",
             "verification_status": "unresolved",
         }
@@ -181,6 +241,7 @@ def classify_payload_file(
         return {
             "role": "unclassified_payload_file",
             "source_artifact": "unknown",
+            "source_artifact_sha256": None,
             "license": "UNKNOWN",
             "verification_status": "unresolved",
         }
@@ -203,6 +264,7 @@ def generate_manifest(
 
     frozen_inv = load_frozen_inventory()
     wheel_map = build_package_wheel_map(frozen_inv)
+    source_sha_map = build_source_artifact_sha_map(frozen_inv)
     frozen_expected = build_expected_hashes_contract(frozen_inv)
 
     effective_expected = dict(frozen_expected)
@@ -218,7 +280,12 @@ def generate_manifest(
             rel_path = str(p.relative_to(app_root)).replace("\\", "/")
             found_rel_paths.add(rel_path)
             size, sha256 = hash_file(p)
-            meta = classify_payload_file(rel_path, wheel_map, extraction_map=extraction_provenance_map)
+            meta = classify_payload_file(
+                rel_path,
+                wheel_map,
+                source_sha_map=source_sha_map,
+                extraction_map=extraction_provenance_map,
+            )
 
             # Check integrity contract: if path has an expected hash, enforce equality
             if rel_path in effective_expected:
@@ -235,6 +302,7 @@ def generate_manifest(
                 "path": rel_path,
                 "size_bytes": size,
                 "sha256": sha256,
+                "source_artifact_sha256": meta.get("source_artifact_sha256"),
                 "role": meta["role"],
                 "source_artifact": meta["source_artifact"],
                 "license": meta["license"],

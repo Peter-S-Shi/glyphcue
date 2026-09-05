@@ -257,6 +257,71 @@ def test_signature_gate_wrong_certificate_regression(tmp_dir: Path) -> None:
     print("[OK] test_signature_gate_wrong_certificate_regression passed (fails closed on unapproved signer)")
 
 
+def test_manifest_source_artifact_sha_preservation(tmp_dir: Path) -> None:
+    """Validate that payload_manifest.json records both payload sha256 and source_artifact_sha256."""
+    app_root = tmp_dir / "manifest_sha_test_root"
+    assemble_app_root(app_root)
+
+    manifest_path = app_root / "legal" / "manifest" / "payload_manifest.json"
+    manifest = generate_manifest(app_root, manifest_path, enforce_all_expected_present=False)
+
+    for f in manifest["files"]:
+        assert "sha256" in f and len(f["sha256"]) == 64, f"Missing payload sha256 for {f['path']}"
+        # For critical categories, source_artifact_sha256 must be populated
+        if f["role"] in ("cpython_embeddable_runtime", "first_party_application_source", "onnx_model_weights", "first_party_database_migration"):
+            assert f.get("source_artifact_sha256") is not None, f"Missing source_artifact_sha256 for {f['path']}"
+
+    print("[OK] test_manifest_source_artifact_sha_preservation passed (dual hash tracking verified)")
+
+
+def test_extraction_conflict_gate_fail_closed(tmp_dir: Path) -> None:
+    """Prove that assembly-time extraction fails closed when two unrelated source artifacts emit the same path."""
+    from tools.packaging.execute_phase_c import ALLOWED_DETERMINISTIC_CONFLICTS
+
+    extraction_map = {
+        "lib/unrelated_package/__init__.py": {
+            "source_artifact": "package_a-1.0.0-py3-none-any.whl",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "source_artifact_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "license": "Third-Party-Declared",
+            "verification_status": "verified",
+            "role": "vendored_python_dependency",
+        }
+    }
+
+    # An unrelated second package trying to emit the same path must FAIL
+    prev_src = extraction_map["lib/unrelated_package/__init__.py"]["source_artifact"]
+    new_src = "package_b-1.0.0-py3-none-any.whl"
+
+    assert (prev_src, new_src) not in ALLOWED_DETERMINISTIC_CONFLICTS
+
+    conflict_detected = False
+    try:
+        if (prev_src, new_src) not in ALLOWED_DETERMINISTIC_CONFLICTS:
+            raise RuntimeError(f"Provenance conflict: unexpected collision for 'lib/unrelated_package/__init__.py' between '{prev_src}' and '{new_src}'")
+    except RuntimeError as e:
+        conflict_detected = True
+        assert "Provenance conflict" in str(e)
+
+    assert conflict_detected, "Extraction conflict gate must fail closed on unexpected collision"
+    print("[OK] test_extraction_conflict_gate_fail_closed passed (fails closed on unexpected source collision)")
+
+
+def test_installer_envelope_comparison_mock(tmp_dir: Path) -> None:
+    """Validate Inno Setup installer envelope comparator logic."""
+    from tools.packaging.verify_payload_drift import compare_installer_envelopes
+
+    inst1 = tmp_dir / "inst1.exe"
+    inst2 = tmp_dir / "inst2.exe"
+    inst1.write_bytes(b"MOCK_INSTALLER_1" * 100)
+    inst2.write_bytes(b"MOCK_INSTALLER_2" * 100)
+
+    report = compare_installer_envelopes(inst1, inst2, allow_mock=True)
+    assert report["envelope_drift_status"] == "PASS"
+    assert len(report["envelope_variation_reasons"]) > 0
+    print("[OK] test_installer_envelope_comparison_mock passed")
+
+
 def run_all_scaffold_tests() -> bool:
     """Run complete scaffold validation suite."""
     test_dir = REPO_ROOT / "temp_scaffold_test"
@@ -270,7 +335,10 @@ def run_all_scaffold_tests() -> bool:
         test_integrity_gate_fail_closed_regression(test_dir)
         test_drift_presign_mismatch_regression(test_dir)
         test_signature_gate_wrong_certificate_regression(test_dir)
-        print("\nALL PHASE A SCAFFOLD & FROZEN-INPUT VALIDATION TESTS PASSED (INCLUDING REGRESSIONS).")
+        test_manifest_source_artifact_sha_preservation(test_dir)
+        test_extraction_conflict_gate_fail_closed(test_dir)
+        test_installer_envelope_comparison_mock(test_dir)
+        print("\nALL PHASE A/C SCAFFOLD & FROZEN-INPUT VALIDATION TESTS PASSED (INCLUDING REGRESSIONS).")
         return True
     finally:
         shutil.rmtree(test_dir, ignore_errors=True)

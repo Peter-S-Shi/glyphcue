@@ -119,9 +119,8 @@ def assemble_app_root(
             shutil.copy2(sql_file, migrations_target_dir / sql_file.name)
 
     # 5. ONNX Models
-    models_source = models_dir or REPO_ROOT
-    if models_source.is_dir():
-        for model_file in models_source.glob("*.onnx"):
+    if models_dir and models_dir.is_dir():
+        for model_file in models_dir.glob("*.onnx"):
             shutil.copy2(model_file, models_target_dir / model_file.name)
 
     # 6. Diagnostics Probe

@@ -4,42 +4,27 @@
 
 ## Current milestone
 
-**Product Hardening II & Full Regression: CLOSED & ACCEPTED (2026-09-05). Next: Milestone 13 — Release Candidate & Signed Release.**
+**Milestone 13 — Release Candidate & Signed Release / Minimum Runtime-Fidelity Packaging Experiment (Issue #27): Phase C COMPLETED & VERIFIED.**
 
-Milestone 11 Product Hardening & Full Regression is CLOSED; Release Acceptance was REJECTED BY HUMAN ADJUDICATION due to Cue quality, review UX, and packaging maturity. Milestone 12 lifted feature freeze strictly for targeted recovery across two problems, both of which were COMPLETED & ACCEPTED (2026-09-05). Product Hardening II & Full Regression was then executed, verified, and accepted (2026-09-05) via PR #16:
-- **Product Hardening II & Full Regression — COMPLETED & ACCEPTED (2026-09-05, PR #16):**
-  1. *Step ② Targeted Regressions*: 5 high-ROI seam regressions implemented in `tests/ui/test_product_hardening_ii_seams.py` (A3/A4 post-clean manual merge/split & cleaner protection; A6 unified 4-format export conformance; C1 uncommitted edit across mode-switching; E1 reopen & total-order queue reconstruction; E2 multi-cycle incremental OCR clean lifecycle). All 5 passed in 1.03s; 53 affected suite tests passed in 3.95s.
-  2. *Step ④ Machine-Verifiable Full Regression*: Whole-repository pytest suite executed on native Windows dev environment achieving **962 passed, 1 skipped, 1 xfailed in 172.06s (0 failures)**.
-  3. *Step ④ DirectML Hardware & Provider Probe*: Hardware probe (`tools/devqa_directml_verify.py`) verified genuine `DmlExecutionProvider` activation on both detector and recognizer ONNX Runtime sessions with zero silent fallback.
-  4. *Step ④ Clean-Environment CI*: GitHub Actions CI (#152, Run ID `33966863334`) completed with SUCCESS on Ubuntu / Python 3.12 / Qt-offscreen.
-  5. *Step ⑤ Final Human Acceptance*: Repository owner completed interactive real-product smoke check and confirmed PASS (2026-09-05).
-  6. *Accepted V1 Known Limitation Preserved*: Cue Cleaner V0.6.1 conservative contract preserved as a non-blocking V1 product trade-off; remaining cases resolved via manual Merge workflow.
-- **Problem 2 (QA Review UX & Workflow) — Stage ① COMPLETED & ACCEPTED (2026-09-04, PR #14 merged at `a27ba23`):**
-  1. *Left Cue Workbench Multi-select & Batch Purge*: Multi-select already Discarded Cues (`ExtendedSelection`) and batch purge them via `Purge Discarded` button (`#subtleDangerBtn`); cues disappear from visible queue; data safety ensures non-rejected cues are never purged.
-  2. *Strict Chronological Ordering*: Queue sorting strictly follows `(cue.start_time, cue.end_time, cue.id)`; status badges (`[0.00s] [Level] [Badge]`) display state without breaking linear time.
-  3. *Continuous Timeline OCR Seam & Resume*: `CompactTimeline` renders a distinct endpoint marker (cyan vertical line + top indicator cap) at `last_processed_end`; supports click-to-seek playback navigation via `seek_requested` signal; "Resume from Last End" button pre-fills range start and seeks video; successful OCR runs auto-prefill next range start for seamless editing.
-  4. *Clear Current Video Cue History*: "Clear Video Cues…" (`#subtleDangerBtn`) with confirmation dialog (`QMessageBox` with impact warning) deletes cues specifically for `self._source_id` via `_cue_repository.delete_for_source`, safely preserving observations and other videos.
-  5. *OCR Completion Audio Chime*: Short, low-disturbance synthesized hotel desk bell "ding" (~250ms, G6 1568Hz harmonic decay in pure Python wave format) played via `winsound` / `QApplication.beep()` on `JobState.SUCCEEDED` with zero external dependencies and fail-soft exception handling.
-  6. *Visual Consistency*: Follows `DESIGN.md` tokens (`Color`, `Spacing`, `Radius`, `#subtleDangerBtn`, `#secondaryBtn`), avoiding arbitrary redesign.
-  7. *Card Border Semantics*: Replaced whole-line text coloring with distinct card border semantics: `Color.SUCCESS` green for Approved, `Color.BORDER_NEUTRAL_LIGHT` (`#cbd5e1`) white/neutral for Pending, `Color.WARNING` yellow for Needs Review, and `Color.DANGER` red for Discarded. User selection has highest visual priority with a blue border (`Color.ACCENT`) + selection background override. Text stays clear and readable in primary text color.
-  8. *Global Horizontal Overflow Support*: Outermost workbench shell wraps the 3-pane workspace stack in an outer `QScrollArea` (`_WORKBENCH_MIN_WIDTH = 1160px`). Under normal width (>=1160px), the horizontal scrollbar is hidden (`ScrollBarAsNeeded`); under constrained window width (<1160px), a global horizontal scrollbar appears at the bottom without adding per-pane horizontal scrollbars, preserving internal vertical scrolling, splitter resizing, and window maximization.
-- **Problem 1 (Cue Production Quality Recovery) — Stage ② COMPLETED & ACCEPTED (2026-09-05, PR #15):**
-  1. *Downstream Cue Cleaner Integration*: Integrated externally frozen Cue Cleaner V0.6.1 as a manual "Clean Cues" button in Path A Center Pane post-reconstruction review workspace, leaving the upstream DirectML OCR pipeline and ≤5× realtime throughput completely untouched.
-  2. *Eligibility & State Preservation*: Operates strictly on untouched machine results (`ReviewState.PENDING` only). Human-reviewed work (`APPROVED`, `REJECTED`, `NEEDS_REVIEW`) passes through 100% untouched with original object identities and review states preserved.
-  3. *Language-Signature Partitioning & Fail-Closed Attribution*: Eligible cues are partitioned by ordered language signatures (e.g. `("en",)`, `("zh",)`, `("en", "zh")`). Multi-language cues join lines in layer order, and cleaner output lines are attributed back via exact, order-preserving donor subsequence matching. Non-verbatim or ambiguous lines fail closed, leaving contributing cues untouched.
-  4. *Single-Language Edge-Strip Acceptance*: Single-language cues accept cleaner deduplications and edge-strip cleanups directly into their single layer.
-  5. *Uncertainty Surfacing*: Outputs from `preserve_complementary_evidence_cluster` are mapped to `ReviewState.NEEDS_REVIEW` to surface genuine complementary evidence for human verification rather than silently synthesizing cues.
-  6. *Deterministic Total Ordering*: Database queries (`list_for_source`, `list_all`) and queue reconstruction strictly enforce `(start_time, end_time, id)` tie-breakers.
-  7. *Accepted V1 Known Limitation*: Per Human Adjudication (2026-09-05), Cue Cleaner V0.6.1 is accepted for V1 with the explicit known limitation that Clean Cues is conservative and not required to eliminate every residual duplicate or fragment. Remaining cases stay visible in the 3-pane workbench and are resolved via the existing manual Merge workflow (`M` shortcut / Merge button). Residual duplicates are explicitly not release blockers.
-- **Lifecycle & Governance Status:**
-  - Corrective Product Rework (Milestone 12): **CLOSED / ACCEPTED (2026-09-05)**.
-  - Product Hardening II & Full Regression: **CLOSED / ACCEPTED (2026-09-05, PR #16)**.
-  - Feature Freeze: **ACTIVE**.
-  - Packaging / Installer Work: **Suspension lifted**; may resume strictly within scoped Milestone 13 release/packaging activities.
-  - Release Ready: **NO** (remains NO until the Milestone 13 release gate itself succeeds).
-  - Next Milestone: **Milestone 13 — Release Candidate & Signed Release** (not started).
+Milestone 13 Minimum Runtime-Fidelity Packaging Experiment is executing on dedicated branch `milestone/13-release-candidate` governed by Wayfinder charter packages #17–#26 and execution issue #27:
+- **Phase A — Frozen Inputs & Experiment Scaffold: COMPLETED & ACCEPTED (2026-09-05)**:
+  - Authoritative build-base identity frozen in `docs/m13_build_base_identity.json` and `.md` across 85 wheels/sdists, CPython 3.12.10 embeddable archive, and 3 authoritative ONNX models.
+  - Fail-closed scaffold test suite in `tools/packaging/validate_scaffold.py` with 11 passing tests.
+- **Phase B — Primary Runtime Assembly & First Installer Build: COMPLETED & ACCEPTED (2026-09-05)**:
+  - First-party launcher `GlyphCue.exe` compiled and inner-signed with test certificate `A3E4E5320779C9F63E513D870E209C26B819C61E`.
+  - Authoritative models (`PP-OCRv6_det_medium.onnx`, `PP-OCRv6_rec_small.onnx`, `ch_ppocr_mobile_v2.0_cls_mobile.onnx`) and migrations assembled.
+  - CycloneDX 1.6 JSON SBOM and Payload Manifest generated; Inno Setup offline installer built.
+- **Phase C — Second Isolated Clean Reconstruction & Drift Verification: COMPLETED & VERIFIED (2026-09-05)**:
+  - Two isolated clean reconstructions (`recon1` and `recon2`) produced in separate directories with isolated staging caches.
+  - Reconstruction 1: 21,906 files, 1,739,858,740 bytes, pre-sign SHA-256 `0a1612e3f5897f4147a758c045723aafacaeba206218327d5296f72202569102`, signed installer `441,861,136` bytes.
+  - Reconstruction 2: 21,906 files, 1,739,858,740 bytes, pre-sign SHA-256 `0a1612e3f5897f4147a758c045723aafacaeba206218327d5296f72202569102`, signed installer `441,860,976` bytes.
+  - Gate verdicts on both: Untracked File Gate: PASS, Integrity Gate: PASS, Provenance Gate: PASS, Release Redistribution Compliance Gate: OPEN (recorded).
+  - Strict payload drift verification: 21,709 unsigned payload files compared with 0 mismatches (100% byte-for-byte equality); first-party signed PE `GlyphCue.exe` pre-sign hash identical (`0a1612e3...`) with valid Authenticode signature; installer envelope delta 160 bytes within allowed compiler timestamp/PKCS#7 signature envelope. Overall Phase C verdict: **PASS**.
 
 ### Validation
+- Packaging Experiment Scaffold & Drift Test Suite (`tools/packaging/validate_scaffold.py`): **11 passed** (including fail-closed integrity, drift, signature, dual-hash preservation, and conflict gate regressions).
+- Phase C Isolated Clean Reconstruction & Drift Pipeline (`tools/packaging/execute_phase_c.py`): **PASS** (zero unsigned file drift, zero signed PE drift, envelope drift PASS).
+- Private Runtime Smoke/Sanity Checks: **PASS** on both Reconstruction 1 and Reconstruction 2 (DirectML OCR provider, migrations, Qt platform plugin, PyAV, ONNX runtime).
 - Product Hardening II Targeted Suite (`tests/ui/test_product_hardening_ii_seams.py`): **5 passed** in 1.03s.
 - Product Hardening II Affected Suites: **53 passed** in 3.95s.
 - Local Whole-Repository Regression: **962 passed, 1 skipped, 1 xfailed** in 172.06s (0 failures).

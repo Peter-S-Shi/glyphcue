@@ -110,20 +110,105 @@ def evaluate_signature_gate(
     records = []
     first_party_failures = []
 
-    for pe in pe_files:
-        info = check_pe_signature(pe, expected_thumbprint=expected_thumbprint)
-        records.append(info)
-        if pe.name in REQUIRED_FIRST_PARTY_PES:
-            if allow_mock:
-                # In scaffold/mock test mode, record placeholder presence
-                pass
-            elif not info["verified_first_party"]:
-                first_party_failures.append({
-                    "file": pe.name,
-                    "status": info["authenticode_status"],
-                    "subject": info.get("subject", ""),
-                    "reason": info.get("rejection_reason"),
-                })
+    if allow_mock:
+        for pe in pe_files:
+            info = check_pe_signature(pe, expected_thumbprint=expected_thumbprint)
+            records.append(info)
+    else:
+        # Batch query all PE files in single PowerShell invocation via temp file
+        temp_paths_file = app_root / "legal" / "manifest" / "_temp_pe_paths.json"
+        temp_paths_file.parent.mkdir(parents=True, exist_ok=True)
+        temp_paths_file.write_text(json.dumps([str(p.resolve()) for p in pe_files]), encoding="utf-8")
+
+        batch_script = f"""
+        $filePaths = Get-Content -Raw '{temp_paths_file.resolve()}' | ConvertFrom-Json
+        $sigs = Get-AuthenticodeSignature -FilePath $filePaths
+        $results = foreach ($sig in $sigs) {{
+            $cert = $sig.SignerCertificate
+            [PSCustomObject]@{{
+                Path = $sig.Path
+                Status = $sig.Status.ToString()
+                StatusMessage = $sig.StatusMessage
+                Subject = if ($cert) {{ $cert.Subject }} else {{ '' }}
+                Issuer = if ($cert) {{ $cert.Issuer }} else {{ '' }}
+                Thumbprint = if ($cert) {{ $cert.Thumbprint }} else {{ '' }}
+                HasSignature = ($sig.Status -ne 'NotSigned')
+            }}
+        }}
+        $results | ConvertTo-Json -Compress
+        """
+        try:
+            cmd = ["powershell", "-NoProfile", "-Command", batch_script]
+            res = subprocess.run(cmd, capture_output=True, text=True, check=True)
+            temp_paths_file.unlink(missing_ok=True)
+            raw_data = json.loads(res.stdout.strip())
+            if isinstance(raw_data, dict):
+                raw_data = [raw_data]
+
+            raw_by_path = {r["Path"].lower(): r for r in raw_data if isinstance(r, dict) and "Path" in r}
+
+            for pe in pe_files:
+                key = str(pe.resolve()).lower()
+                data = raw_by_path.get(key, {})
+                status_str = data.get("Status", "Unknown")
+                subject_str = data.get("Subject", "").strip()
+                thumbprint_str = data.get("Thumbprint", "").strip()
+                has_sig = data.get("HasSignature", False)
+
+                subject_match = (subject_str == APPROVED_TEST_CERT_SUBJECT)
+                thumbprint_match = True
+                if expected_thumbprint:
+                    thumbprint_match = (thumbprint_str.upper() == expected_thumbprint.upper())
+
+                is_verified_first_party = has_sig and subject_match and thumbprint_match
+
+                rel_path = (
+                    str(pe.relative_to(app_root)).replace("\\", "/")
+                    if (app_root in pe.parents or pe == app_root)
+                    else pe.name
+                )
+                info = {
+                    "path": pe.name,
+                    "relative_path": rel_path,
+                    "authenticode_status": status_str,
+                    "subject": subject_str,
+                    "issuer": data.get("Issuer", ""),
+                    "thumbprint": thumbprint_str,
+                    "is_signed": has_sig,
+                    "verified_first_party": is_verified_first_party,
+                    "rejection_reason": None if is_verified_first_party else (
+                        "NOT_SIGNED" if not has_sig else
+                        f"UNAPPROVED_SIGNER_SUBJECT: {subject_str!r}" if not subject_match else
+                        f"THUMBPRINT_MISMATCH: {thumbprint_str} != {expected_thumbprint}"
+                    ),
+                }
+                records.append(info)
+                if pe.name in REQUIRED_FIRST_PARTY_PES:
+                    if not is_verified_first_party:
+                        first_party_failures.append({
+                            "file": pe.name,
+                            "status": status_str,
+                            "subject": subject_str,
+                            "reason": info["rejection_reason"],
+                        })
+        except Exception:
+            # Fallback to single file check
+            for pe in pe_files:
+                info = check_pe_signature(pe, expected_thumbprint=expected_thumbprint)
+                rel_path = (
+                    str(pe.relative_to(app_root)).replace("\\", "/")
+                    if (app_root in pe.parents or pe == app_root)
+                    else pe.name
+                )
+                info["relative_path"] = rel_path
+                records.append(info)
+                if pe.name in REQUIRED_FIRST_PARTY_PES and not info["verified_first_party"]:
+                    first_party_failures.append({
+                        "file": pe.name,
+                        "status": info["authenticode_status"],
+                        "subject": info.get("subject", ""),
+                        "reason": info.get("rejection_reason"),
+                    })
 
     signature_gate_status = "PASS" if not first_party_failures else "FAIL"
 

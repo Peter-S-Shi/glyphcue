@@ -154,6 +154,50 @@ def compare_reconstructions(
     return report
 
 
+def compare_installer_envelopes(
+    installer1: Path,
+    installer2: Path,
+    expected_thumbprint: str | None = None,
+    allow_mock: bool = False,
+) -> dict[str, Any]:
+    """Evaluate Inno Setup installer envelope drift against the approved envelope allowlist."""
+    if not installer1.is_file() or not installer2.is_file():
+        raise ValueError(f"Both installer files must exist: {installer1}, {installer2}")
+
+    s1, h1 = hash_file(installer1)
+    s2, h2 = hash_file(installer2)
+
+    if allow_mock:
+        sig1_info = {"status": "MOCK", "verified_first_party": True}
+        sig2_info = {"status": "MOCK", "verified_first_party": True}
+        sig_pass = True
+    else:
+        sig1_info = check_pe_signature(installer1, expected_thumbprint=expected_thumbprint)
+        sig2_info = check_pe_signature(installer2, expected_thumbprint=expected_thumbprint)
+        sig_pass = bool(sig1_info.get("verified_first_party") and sig2_info.get("verified_first_party"))
+
+    size_diff = abs(s1 - s2)
+    envelope_allowed = (size_diff <= 4096) and sig_pass
+
+    envelope_report = {
+        "installer_1": str(installer1),
+        "installer_2": str(installer2),
+        "installer_1_size_bytes": s1,
+        "installer_2_size_bytes": s2,
+        "installer_1_sha256": h1,
+        "installer_2_sha256": h2,
+        "size_delta_bytes": size_diff,
+        "signature_1": sig1_info,
+        "signature_2": sig2_info,
+        "envelope_variation_reasons": [
+            "Inno Setup PE header TimeDateStamp",
+            "Authenticode PKCS#7 digital signature timestamp and ASN.1 container",
+        ],
+        "envelope_drift_status": "PASS" if envelope_allowed else "FAIL",
+    }
+    return envelope_report
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Verify payload drift between two reconstructions")
     parser.add_argument("dir1", type=Path, help="Reconstruction 1 directory")
