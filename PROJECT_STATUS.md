@@ -22,11 +22,12 @@ Milestone 13 Minimum Runtime-Fidelity Packaging Experiment is executing on dedic
   - Manifest-to-disk reconciliation: 100% path and file count match (21,711 files) on both reconstructions with 0 unindexed and 0 missing files.
   - Gate verdicts: Integrity Gate: PASS, Untracked File Gate: PASS, Provenance Gate: PASS, Release Redistribution Compliance Gate: OPEN (recorded). Overall Phase C verdict: **FINAL PASS / ACCEPTED**.
 - **Phase D — Target-Machine Offline Runtime & DirectML Validation**:
-  - **D0 — Execution Preflight & Relay Scaffold: COMPLETE (2026-09-05)**:
+  - **D0 — Execution Preflight, Relay Scaffold & Owner VM Qualification Gate: COMPLETE (2026-09-05)**:
+    - Operating Model: Owner-executed, agent-instrumented validation (owner operates clean target VM environment; AI assistants supply deterministic step-by-step guidance/commands; agents analyze & reconcile logs/screenshots in `build_artifacts/phase_d/`).
     - Relay authority: `docs/m13_phase_d/PHASE_D_RELAY.md`; machine-readable state: `docs/m13_phase_d/phase_d_state.json`; local evidence root: `build_artifacts/phase_d/`.
-    - Baselines: `phase_c_closure_commit` = `00a3c65ccd7fca5180e94f242947c2438a0f9651`; `d0_scaffold_baseline_commit` = `182bc46788df66c95b272aa64193937ebed0fb4f`. Live branch HEAD is dynamically resolved by relay agents at module start into `build_artifacts/phase_d/relay_state.json`.
+    - Baselines: `phase_c_closure_commit` = `00a3c65ccd7fca5180e94f242947c2438a0f9651`; `d0_scaffold_baseline_commit` = `182bc46788df66c95b272aa64193937ebed0fb4f`. Live branch HEAD dynamically resolved into `build_artifacts/phase_d/relay_state.json`.
     - Selected installer frozen: Clean Reconstruction A `GlyphCue-Setup.exe`, 441,941,848 bytes, SHA-256 `3ea8720033d7d23a5c55296bb2ee08fffb3bc43e2f6a4d9ad0387c63951355a3`, Authenticode Valid.
-    - Strengthened evidence contracts (D1 offline install/first launch/reboot/relaunch; D2 model SHA & `DmlExecutionProvider` proof with bounded functional smoke only; D3 intentional CPU fallback with `CPUExecutionProvider` proof; D4 Phase E progression only).
+    - Owner VM Qualification Gate added before D1 (classifies target VM as Environment A DirectML-capable, Environment B CPU fallback, or Ineligible).
     - Scope boundary: formal performance/quality benchmarking reserved for Phase E; lifecycle/upgrade/repair/uninstall reserved for Phase F. Release Ready = NO.
   - **D1 — Environment A Clean Offline Install, First Launch & Relaunch: NOT STARTED**.
   - **D2 — Environment A DirectML Runtime Fidelity (Bounded Smoke): NOT STARTED**.

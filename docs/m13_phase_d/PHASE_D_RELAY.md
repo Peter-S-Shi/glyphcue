@@ -3,6 +3,7 @@
 **Document type:** Public Canonical Phase D Relay Document  
 **Status:** D0 — Execution Preflight & Relay Scaffold COMPLETE. D1 — NOT STARTED.  
 **Branch:** `milestone/13-release-candidate`  
+**Operating Model:** Owner-executed, Agent-instrumented Validation  
 **Phase C Closure Commit:** `00a3c65ccd7fca5180e94f242947c2438a0f9651`  
 **D0 Scaffold Baseline Commit:** `182bc46788df66c95b272aa64193937ebed0fb4f`  
 **Governing Issues:** [#26](https://github.com/Peter-S-Shi/glyphcue/issues/26), [#27](https://github.com/Peter-S-Shi/glyphcue/issues/27)  
@@ -10,20 +11,30 @@
 
 ---
 
-## 1. Authority & Dynamic HEAD Resolution Rule
+## 1. Operating Model & Authority
 
 Phase C is **FINAL ACCEPTED**. Both independent clean reconstructions (Clean Reconstruction A and Clean Reconstruction B) produced identical pre-sign payloads with verified Authenticode signatures.
+
+### Owner-Executed, Agent-Instrumented Validation Model
+
+Validation across Milestone 13 (Phases D, E, F) operates under an **owner-executed, agent-instrumented** paradigm:
+- The repository owner personally operates the target environment: VM boot/shutdown/reboot, network adapter isolation toggling, installer execution, UI interactions, native screenshot captures, and executing diagnostic commands supplied by AI assistants.
+- Coding agents are **not** assumed to directly operate the clean target VM environment.
+- Owner-executed actions and evidence collection performed according to frozen checklists are explicitly **valid, primary evidence**. No agent shall demand repeating human VM operations merely for "independent execution".
+- AI assistants (ChatGPT, Claude, AG, Codex) guide the owner step-by-step with explicit command strings, checklist steps, and evidence requirements.
+- Agents inspect, reconcile, and audit the resulting logs, screenshots, and command outputs deposited into `build_artifacts/phase_d/`.
+- `build_artifacts/phase_d/relay_state.json` serves as the machine-local handoff and evidence authority. Interrupted owner testing **must** be resumable from an exact recorded evidence checkpoint rather than restarted blindly.
 
 > [!IMPORTANT]
 > **Dynamic HEAD Resolution Rule:**  
 > Tracked repository documents (`PHASE_D_RELAY.md`, `phase_d_state.json`) record fixed historical baselines (`phase_c_closure_commit` = `00a3c65...` and `d0_scaffold_baseline_commit` = `182bc46...`) and do not store a static "current HEAD" to avoid self-referential commit churn.  
 > Every executing relay agent **must** dynamically resolve the live branch HEAD at module execution start via `git rev-parse HEAD` and record that exact SHA into `build_artifacts/phase_d/relay_state.json` under `source_head`.
 
-Any agent executing Phase D must:
+Any agent or owner executing Phase D must:
 1. Read this document in full before taking any action.
-2. Read `docs/m13_phase_d/phase_d_state.json` to determine current module and status.
-3. Read `build_artifacts/phase_d/relay_state.json` for live machine-local handoff state (local paths, PIDs, log locations, background processes, dynamically resolved `source_head`).
-4. Check for any healthy running background tasks before starting new ones.
+2. Complete the **Owner VM Qualification Gate** before starting D1.
+3. Read `docs/m13_phase_d/phase_d_state.json` to determine current module and status.
+4. Read `build_artifacts/phase_d/relay_state.json` for live machine-local handoff state (local paths, evidence locations, background processes, dynamically resolved `source_head`).
 5. Confirm the selected installer SHA-256 before running any install.
 
 ---
@@ -42,16 +53,30 @@ This is the **single canonical installer** for all Phase D testing. Do not subst
 | **Signer Thumbprint** | `A3E4E5320779C9F63E513D870E209C26B819C61E` |
 | **Authenticode Status** | `Valid` (verified) |
 
-Before any Phase D installation, the executing agent **must** independently verify the installer SHA-256. If it does not match exactly, **stop immediately**.
+Before any Phase D installation, the owner/agent **must** independently verify the installer SHA-256 (`Get-FileHash GlyphCue-Setup.exe -Algorithm SHA256`). If it does not match exactly, **stop immediately**.
 
 ---
 
-## 3. Target Environment Roles
+## 3. Owner VM Qualification Gate (Pre-D1 Mandatory Check)
 
-| Role | Requirements |
-|---|---|
-| **Environment A** | Clean Windows 11 x64 target with DirectML-capable hardware (D3D12 Feature Level 11_0+, compatible GPU). Network-blocked offline installation from the canonical signed installer. No prior GlyphCue installation. |
-| **Environment B** | Clean Windows 11 x64 target where DirectML is definitively unavailable or disabled by design (no discrete GPU or GPU disabled), exercising the explicit CPU-only fallback path. Network-blocked offline installation from the canonical signed installer. No prior GlyphCue installation. |
+Before launching D1, the repository owner must run this qualification checklist on their target Windows VM environment to classify the target environment:
+
+### Owner VM Qualification Checklist
+1. **OS Version Verification**:
+   - Run `Get-CimInstance Win32_OperatingSystem | Select-Object Caption, Version, BuildNumber`
+   - Requirement: Windows 11 x64 (Build 22000+) clean environment.
+2. **Network Isolation Capability**:
+   - Verify network interface can be disabled or outbound traffic blocked prior to installation (`Get-NetAdapter | Disable-NetAdapter` or VM network disconnect).
+   - Requirement: Strict offline installation capability.
+3. **Graphics Hardware & Direct3D 12 Feature Level Probe**:
+   - Run `dxdiag /t %TEMP%\dxdiag_out.txt` or `Get-CimInstance Win32_VideoController | Select-Object Name, DriverVersion`.
+   - Check Direct3D 12 Feature Level 11_0+ support and GPU availability.
+4. **Environment Classification Verdict**:
+   - **Environment A (DirectML-capable)**: Windows 11 x64, network-isolated, discrete/virtual GPU present with Direct3D 12 Feature Level 11_0+ capability.
+   - **Environment B (CPU Fallback target)**: Windows 11 x64, network-isolated, GPU absent or explicitly disabled in Device Manager / VM settings, exercising pure CPU execution path.
+   - **Ineligible**: OS version < Build 22000, corrupted C++ runtime, or inability to enforce network isolation.
+
+Record the classification verdict in `build_artifacts/phase_d/d0_preflight/vm_qualification.json` and `relay_state.json`.
 
 > [!IMPORTANT]
 > Evidence from different VM states, snapshots, or machines must **never** be silently combined as though it came from one continuous test environment. If environment continuity cannot be proven, the relevant module must be marked `NEEDS_REVIEW` — not `PASS`.
@@ -62,11 +87,11 @@ Before any Phase D installation, the executing agent **must** independently veri
 
 | Module | Name | Scope |
 |---|---|---|
-| **D0** | Execution Preflight & Relay Scaffold | Relay infrastructure, installer selection, environment role freeze, dynamic HEAD contract. No installation. ✅ COMPLETE |
-| **D1** | Environment A — Clean Offline Install, First Launch & Relaunch | Install canonical installer on network-blocked Environment A, verify installer integrity, execute first launch, reboot system, and verify successful relaunch post-reboot. |
+| **D0** | Execution Preflight, Relay Scaffold & VM Qualification Gate | Relay infrastructure, installer selection, environment role freeze, dynamic HEAD contract, Owner VM Qualification Gate. No installation. ✅ COMPLETE |
+| **D1** | Environment A — Clean Offline Install, First Launch & Relaunch | Owner installs canonical installer on network-blocked Environment A, verifies installer integrity, executes first launch, reboots system, and verifies successful relaunch post-reboot. |
 | **D2** | Environment A — DirectML Runtime Fidelity | On post-D1 Environment A: verify model SHA-256 identities and runtime/DLL integrity; verify `DmlExecutionProvider` is active on detector and recognizer ONNX sessions with explicit proof of no silent CPU fallback; run bounded runtime-functional OCR smoke on approved deterministic fixture (successful end-to-end execution, non-empty output). |
 | **D3** | Environment B — CPU Fallback Validation | On Environment B: verify DirectML is absent/unavailable by design; verify identical model/runtime DLL integrity intact; verify `CPUExecutionProvider` active on detector and recognizer sessions; prove fallback is intentional rather than caused by corruption/missing DLLs; run bounded runtime-functional OCR smoke on CPU path. |
-| **D4** | Evidence Reconciliation & Phase D Verdict | Collect evidence from D1–D3; compare against #26 charter acceptance criteria; produce final Phase D verdict. Per Issue #27, a Phase D PASS permits progression to Phase E only — it does NOT make GlyphCue Release Ready. |
+| **D4** | Evidence Reconciliation & Phase D Verdict | Owner & agents collect evidence from D1–D3; compare against #26 charter acceptance criteria; produce final Phase D verdict. Per Issue #27, a Phase D PASS permits progression to Phase E only — it does NOT make GlyphCue Release Ready. |
 
 > [!IMPORTANT]
 > Scope Boundary Enforcement:
@@ -76,9 +101,29 @@ Before any Phase D installation, the executing agent **must** independently veri
 
 ---
 
-## 5. Mandatory Relay Contract
+## 5. High-Level Operating Model across Remaining M13 Phases
 
-Every agent stopping normally, hitting quota exhaustion, encountering a failure, or leaving a healthy background task must record the following in `build_artifacts/phase_d/relay_state.json` **before stopping**:
+The owner-executed, agent-instrumented operating model extends through the remaining Milestone 13 release roadmap without weakening any acceptance gate:
+
+- **Phase D (Target-Machine Offline Runtime & DirectML Validation)**:
+  - *Owner:* Performs VM qualification, offline installation, first launch, post-reboot relaunch, execution of provider verification scripts, and bounded OCR smoke runs.
+  - *Agents:* Provide deterministic verification command strings, inspect/reconcile output logs and screenshots, audit evidence against charter #26, and maintain relay state.
+- **Phase E (Representative Performance & Quality Benchmarking)**:
+  - *Owner:* Executes frozen benchmark procedures (realtime ratio, CER, Cue quality) on qualified Environment A and B targets using canonical video corpus fixtures.
+  - *Agents:* Analyze benchmark telemetry, verify non-regression contracts, compute CER metrics, and render performance evaluation verdicts.
+- **Phase F (Installer Lifecycle & Maintenance Validation)**:
+  - *Owner:* Performs observable installer lifecycle actions (over-install upgrade, repair mode, clean uninstall, residual registry/folder cleanup inspection).
+  - *Agents:* Supply lifecycle test fixtures/scripts, inspect post-uninstall filesystem and registry state logs, and audit lifecycle evidence.
+- **Cross-Phase Division of Responsibilities**:
+  - *Redistribution Compliance Gate*: Research & agent audit (ONNX model licensing resolution).
+  - *Release Code Changes & Test Automation*: Agent responsibility under TDD.
+  - *Release Signing & Final Release Governance*: Joint Owner / Agent gate check before release.
+
+---
+
+## 6. Mandatory Relay Contract
+
+Every agent or owner stopping normally, hitting quota exhaustion, encountering a failure, or pausing execution must record the following in `build_artifacts/phase_d/relay_state.json` **before stopping**:
 
 ```json
 {
@@ -98,22 +143,22 @@ Every agent stopping normally, hitting quota exhaustion, encountering a failure,
     "expected_completion_artifact": "<path or description>"
   },
   "last_known_result": "<brief description or 'none'>",
-  "exact_next_action": "<precise instruction for the next agent>",
+  "exact_next_action": "<precise instruction for the next agent/owner step>",
   "next_agent_directive": "<continue|observe|diagnose|stop>"
 }
 ```
 
 > [!CAUTION]
-> A healthy long-running process **must not be killed** merely because the owner asks for progress or agent quota is low.  
-> The next agent **must inspect/attach/observe** the existing task before deciding to rerun it.  
+> A healthy long-running task or owner testing session must be recorded with exact completed checks and evidence locations so that any interrupted testing can be resumed from an exact checkpoint without restarting blindly.  
 > A module may only be marked `PASS` when its own evidence contract is complete.  
 > Absolute machine paths, VM/snapshot IDs, private credentials, or local process details belong in `relay_state.json` only — **never** in this document or `phase_d_state.json`.
 
 ---
 
-## 6. Strengthened Fail-Closed Evidence Contracts per Module
+## 7. Strengthened Fail-Closed Evidence Contracts per Module
 
 ### D1 Evidence Contract (Environment A — Offline Install, First Launch & Post-Reboot Relaunch)
+- [ ] Owner VM Qualification Gate passed and recorded (`vm_qualification.json`)
 - [ ] Canonical installer SHA-256 verified pre-install (`3ea8720033d7d23a5c55296bb2ee08fffb3bc43e2f6a4d9ad0387c63951355a3`)
 - [ ] Target machine network adapter disabled / outbound network traffic blocked (strict offline environment)
 - [ ] Signed installer ran to completion without error
@@ -153,7 +198,7 @@ Every agent stopping normally, hitting quota exhaustion, encountering a failure,
 
 ---
 
-## 7. Local Evidence Root
+## 8. Local Evidence Root
 
 The local gitignored evidence root for all Phase D artifacts, logs, screenshots, relay state, and machine-specific context is:
 
@@ -165,7 +210,7 @@ This directory and all its contents are gitignored and must never be committed o
 
 ---
 
-## 8. Release Gate Sequencing & Release Readiness Boundary
+## 9. Release Gate Sequencing & Release Readiness Boundary
 
 > [!IMPORTANT]
 > **Phase D D4 PASS does NOT make GlyphCue Release Ready.**  

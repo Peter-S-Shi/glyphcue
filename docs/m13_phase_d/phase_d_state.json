@@ -3,6 +3,7 @@
   "document_type": "phase_d_public_state",
   "note": "Machine-local evidence and process state lives in build_artifacts/phase_d/relay_state.json (gitignored). Tracked docs do not store dynamic HEAD to avoid commit churn.",
   "branch": "milestone/13-release-candidate",
+  "operating_model": "owner_executed_agent_instrumented",
   "phase_c_closure_commit": "00a3c65ccd7fca5180e94f242947c2438a0f9651",
   "d0_scaffold_baseline_commit": "182bc46788df66c95b272aa64193937ebed0fb4f",
   "dynamic_head_rule": "Every relay agent MUST dynamically resolve git rev-parse HEAD at module start and record source_head in build_artifacts/phase_d/relay_state.json",
@@ -11,9 +12,10 @@
     "verdict": "FINAL_ACCEPTED",
     "closure_commit": "00a3c65ccd7fca5180e94f242947c2438a0f9651"
   },
+  "owner_vm_qualification_gate": "NOT_STARTED",
   "phase_d_modules": {
     "D0": {
-      "name": "Execution Preflight & Relay Scaffold",
+      "name": "Execution Preflight, Relay Scaffold & Owner VM Qualification Gate",
       "status": "COMPLETE",
       "completed_at": "2026-09-05"
     },
