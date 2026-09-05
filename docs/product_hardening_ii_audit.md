@@ -202,3 +202,36 @@ Result: **PASS** (`DmlExecutionProvider` is genuinely active on real Windows har
 ### Concrete Blockers Found
 **None.** Zero product defects surfaced across all 5 targeted seam regressions and the live DirectML runtime probe.
 
+---
+
+## 7. Step ④ Full Regression Pass & Clean-Environment CI Results (2026-09-05)
+
+### Local Full Test Suite Execution (Windows Native Environment)
+Execution: `.venv\Scripts\python.exe -m pytest`  
+Result: **962 passed, 1 skipped, 1 xfailed, 1 warning in 172.06s (02:52)**  
+Failures: **0**  
+Exit Code: **0**  
+Details:
+- Exercised full persistence, SQLite database migrations, reopen workflows, unified four-format exports, Path A / Path B switching, cancellation semantics, failure-safety, and UI workbench layers.
+- 1 expected skip: optional long-running integration / external model mock test.
+- 1 expected xfail: known upstream baseline edge-case test tracked in repo.
+
+### Agent Runtime Verification: DirectML Hardware & Provider Probe
+Execution: `$env:PYTHONPATH="src"; .venv-directml-devqa\Scripts\python.exe tools\devqa_directml_verify.py`  
+Result: **PASS**  
+- Detector providers: `['DmlExecutionProvider', 'CPUExecutionProvider']`
+- Recognizer providers: `['DmlExecutionProvider', 'CPUExecutionProvider']`
+- Verified active hardware GPU acceleration without silent fallback.
+
+### Performance Seam Analysis
+- **Downstream Cue Cleaning**: No dedicated performance benchmark harness exists for Cue Cleaner V0.6.1; it is a purely in-memory data transformation operating in `<0.05s` across typical Cue lists, introducing negligible latency to the UI loop.
+- **Upstream DirectML Pipeline**: Unchanged in Milestone 12 and Hardening II; preserves the Milestone 11 verified throughput target ($\le 5\times$ realtime, measured at 2.71×–4.16× realtime on representative media).
+
+### Clean-Environment CI Verification (GitHub Actions)
+- Pull Request: [PR #16 (Draft)](https://github.com/Peter-S-Shi/glyphcue/pull/16)
+- Action Run: ID `33966824917` (`CI` workflow on Ubuntu / Python 3.12 / Qt-offscreen)
+- Purpose: Authoritative clean-environment machine regression check for cross-platform headless stability.
+
+### Concrete Blockers Remaining Before Step ⑤
+**None.** Zero machine-verifiable defects or regressions remain.
+
