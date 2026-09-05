@@ -1,0 +1,120 @@
+{
+  "trusted_source_commit": "5905df07beaa6ce036eb5ec047bfdb184c13a07a",
+  "python_environment": {
+    "default_dev_venv": {
+      "python_version": "3.11.9",
+      "key_packages": {
+        "PySide6": "6.11.2",
+        "av": "18.1.0",
+        "numpy": "2.3.5",
+        "onnxruntime": "1.29.0",
+        "paddleocr": "3.7.0",
+        "paddlepaddle": "3.3.1",
+        "paddlex": "3.7.2",
+        "rapidocr-onnxruntime": "1.4.4"
+      }
+    },
+    "directml_devqa_venv": {
+      "python_version": "3.12.10",
+      "key_packages": {
+        "PySide6": "6.11.2",
+        "av": "18.1.0",
+        "numpy": "2.3.5",
+        "onnxruntime-directml": "1.24.4",
+        "rapidocr": "3.9.2",
+        "paddleocr": "3.7.0",
+        "paddlepaddle": "3.3.1",
+        "paddlex": "3.7.2",
+        "opencv-contrib-python": "4.10.0.84",
+        "pyclipper": "1.4.0",
+        "pypdfium2": "5.13.0",
+        "shapely": "2.1.2"
+      }
+    }
+  },
+  "model_inventory": [
+    {
+      "filename": "PP-OCRv6_det_small.onnx",
+      "normalized_path": "<repo>/PP-OCRv6_det_small.onnx",
+      "size_bytes": 9929594,
+      "sha256": "090f04abcd9d9a7498bc4ebf677e4cb9bdce1fe4197ddb7e529f1ef44e1ff94f",
+      "role": "ONNX Text Detector (Small profile)"
+    },
+    {
+      "filename": "PP-OCRv6_rec_small.onnx",
+      "normalized_path": "<repo>/PP-OCRv6_rec_small.onnx",
+      "size_bytes": 21234383,
+      "sha256": "6f327246b50388f3c176ae304bd95767ea6dc0c9ae92153ef8cbe210b3c14884",
+      "role": "ONNX Text Recognizer (Small profile)"
+    },
+    {
+      "filename": "ch_ppocr_mobile_v2.0_cls_mobile.onnx",
+      "normalized_path": "<repo>/ch_ppocr_mobile_v2.0_cls_mobile.onnx",
+      "size_bytes": 585532,
+      "sha256": "e47acedf663230f8863ff1ab0e64dd2d82b838fceb5957146dab185a89d6215c",
+      "role": "ONNX Text Classifier (Mobile profile)"
+    }
+  ],
+  "native_dlls": [
+    {
+      "filename": "DirectML.dll",
+      "normalized_path": "<runtime>/site-packages/onnxruntime/capi/DirectML.dll",
+      "size_bytes": 18527776,
+      "sha256": "b73972115320e906a49602f2027a3266622881b0d325ba685e0f165a9482a8d7",
+      "role": "Direct3D 12 Hardware Acceleration Subsystem"
+    },
+    {
+      "filename": "onnxruntime.dll",
+      "normalized_path": "<runtime>/site-packages/onnxruntime/capi/onnxruntime.dll",
+      "size_bytes": 21111832,
+      "sha256": "302c69f9779d63ef4ab90316e59444c4acbaca7fe3455020d79d10bcfcb00715",
+      "role": "ONNX Runtime C++ Engine Binding"
+    }
+  ],
+  "database_migrations": [
+    {
+      "filename": "0001_create_cues.sql",
+      "normalized_path": "<repo>/src/glyphcue/persistence/migrations_sql/0001_create_cues.sql",
+      "size_bytes": 137,
+      "sha256": "823d7aa7551f3c3fc3e61683f4e23699eef6438efd09a564f8b7e3b1ab2d05ff"
+    },
+    {
+      "filename": "0002_create_language_layers.sql",
+      "normalized_path": "<repo>/src/glyphcue/persistence/migrations_sql/0002_create_language_layers.sql",
+      "size_bytes": 250,
+      "sha256": "be845d70da4be9c960b879ceb5e41192c1ec585940ab4f7c0f8c4626fd5f974a"
+    },
+    {
+      "filename": "0003_create_track_groups.sql",
+      "normalized_path": "<repo>/src/glyphcue/persistence/migrations_sql/0003_create_track_groups.sql",
+      "size_bytes": 193,
+      "sha256": "4c2d162d65b48ef558552849cf04fa2c5c69d377a408ca7d85e00eb6bb9a3118"
+    },
+    {
+      "filename": "0004_create_observations.sql",
+      "normalized_path": "<repo>/src/glyphcue/persistence/migrations_sql/0004_create_observations.sql",
+      "size_bytes": 531,
+      "sha256": "8c578d6bc72ac86ee8fd1e1015875e3b77e98578692d97b23df6b278ec4f1de0"
+    },
+    {
+      "filename": "0005_add_source_id_to_cues_and_observations.sql",
+      "normalized_path": "<repo>/src/glyphcue/persistence/migrations_sql/0005_add_source_id_to_cues_and_observations.sql",
+      "size_bytes": 284,
+      "sha256": "7c821706ab1c45dc7b30823e1e874bcb0f265d51e14702bed9c75039dfef7ed7"
+    }
+  ],
+  "active_onnxruntime_providers": [
+    "DmlExecutionProvider",
+    "CPUExecutionProvider"
+  ],
+  "critical_runtime_fidelity_seams": [
+    "Python/Runtime Isolation",
+    "Qt Widget Shell & Plugin Discovery (platforms/qwindows.dll, multimedia/ffmpegmediaplugin.dll)",
+    "PyAV / FFmpeg Native Media Decoding DLLs (avcodec-62, swscale-9, etc.)",
+    "ONNX Runtime DirectML Hardware Acceleration (DmlExecutionProvider active without silent fallback)",
+    "Paddle MKL Native DLL Runtime Bundling (mklml.dll, mkldnn.dll)",
+    "Model Identity Preservation (Exact matching PP-OCRv6 ONNX files)",
+    "Application Resource Discovery (migrations_sql/*.sql)",
+    "User Data Isolation (<profile>/.glyphcue/glyphcue.sqlite3)"
+  ]
+}
