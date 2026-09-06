@@ -69,13 +69,39 @@
     "release_ready": false,
     "redistribution_compliance": "OPEN",
     "phase_d_verdict": "PASS",
-    "phase_e_required": true,
+    "phase_e_verdict": "PASS",
+    "phase_e_required": false,
     "phase_f_required": true
   },
   "phase_d_evidence_summary": {
     "D1": "PASS: owner confirmed clean offline install, first launch, reboot, and relaunch on qualified Environment B.",
     "D2": "PASS: owner confirmed DirectMlOcrEngine and DirectMlTextDetector on real RTX 3060 host; recognizer and detector ONNX sessions reported ['DmlExecutionProvider', 'CPUExecutionProvider'] with DirectML first; bounded OCR smoke returned GLYPHCUE DIRECTML 123.",
     "D3": "PASS: owner confirmed PaddleOcrEngine and PaddleOcrTextDetector on qualified offline Environment B; offline initialization succeeded; bounded CPU OCR smoke returned GLYPHCUE TEST 123."
+  },
+  "phase_e_modules": {
+    "E1": {
+      "name": "Packaged DirectML Performance",
+      "status": "PASS",
+      "fixture_sha256": "72a7621639730b62b5a06a266499ea66768df277cad15553cab6d2487b972465",
+      "runtime": "Packaged DirectML runtime",
+      "warmup_discarded": true,
+      "timed_realtime_ratios": [1.153, 1.387, 1.392],
+      "median_realtime_ratio": 1.387,
+      "repeat_required": false,
+      "fixture_governance": "Canonical fixture bytes/hash are frozen inputs generated under the frozen DevQA generation environment; downstream candidate validation consumes the frozen artifact rather than regenerating MP4 bytes."
+    },
+    "E2": {
+      "name": "Output Quality / Parity",
+      "status": "PASS",
+      "synthetic_golden": "PASS: exact match on canonical synthetic golden fixture.",
+      "real_spotcheck": "PASS: private sample_h 900-930s packaged-vs-trusted-DevQA DirectML parity spot check produced 225 observations, 29 cues, 6 adjacent exact duplicate raw cues, and 2 missing-language cues in both lanes with identical cue timing and structure. Four cue text differences were limited to one OCR character in the known fixed-footer/noise line while main subtitle text remained identical; classified as bounded real-OCR nondeterminism, not a packaging regression.",
+      "privacy_boundary": "Raw private sample text, local paths, and machine-specific evidence remain in gitignored local evidence and are not published in tracked governance docs."
+    },
+    "E3": {
+      "name": "Evidence Reconciliation & Phase E Verdict",
+      "status": "PASS",
+      "completed_at": "2026-09-06"
+    }
   },
   "phase_f_open_findings": [
     {
@@ -85,6 +111,6 @@
       "summary": "After normal Inno uninstall on the owner host, substantial owned installation payload remained under the GlyphCue install directory, including app/ and lib/ trees. Owner manually removed only the install directory afterward and confirmed it no longer existed."
     }
   ],
-  "next_phase": "Phase E — Representative Performance & Output Quality Benchmarking",
+  "next_phase": "Phase F — Installer Lifecycle, Upgrade, Repair & Uninstall Testing",
   "relay_document": "docs/m13_phase_d/PHASE_D_RELAY.md"
 }

@@ -1,7 +1,7 @@
 # GlyphCue — Phase D Relay Authority
 
 **Document type:** Public Canonical Phase D Relay Document  
-**Status:** Phase D COMPLETE / PASS. Phase E is next. M13 remains in progress. Release Ready = NO.
+**Status:** Phase D COMPLETE / PASS. Phase E COMPLETE / PASS. Phase F is next. M13 remains in progress. Release Ready = NO.
 **Branch:** `milestone/13-release-candidate`  
 **Operating Model:** Risk-separated, Owner-executed, Agent-instrumented Validation
 **Phase C Closure Commit:** `00a3c65ccd7fca5180e94f242947c2438a0f9651`  
@@ -108,7 +108,7 @@ The previous Phase C accepted installer is superseded for further Phase D testin
 - **Final D1 Result:** **PASS**. Owner validation confirmed clean offline install, first launch, reboot, and relaunch on qualified Environment B.
 - **Final D2 Result:** **PASS**. Owner validation on the real RTX 3060 Windows host confirmed `DirectMlOcrEngine`, `DirectMlTextDetector`, ONNX Runtime sessions reporting `['DmlExecutionProvider', 'CPUExecutionProvider']` with DirectML first, and bounded OCR smoke returning `GLYPHCUE DIRECTML 123`.
 - **Final D3 Result:** **PASS**. Owner validation on qualified offline Environment B confirmed `PaddleOcrEngine`, `PaddleOcrTextDetector`, offline initialization from packaged artifacts, one detected polygon, and bounded CPU OCR smoke returning `GLYPHCUE TEST 123`.
-- **Current Status:** Phase D D4 reconciliation is **COMPLETE / PASS**. Phase E is next. M13 remains in progress and `Release Ready = NO`.
+- **Current Status:** Phase D D4 reconciliation and Phase E owner-led validation are **COMPLETE / PASS**. Phase F is next. M13 remains in progress and `Release Ready = NO`.
 
 Before any Phase D retest installation, the owner/agent **must** independently verify the installer SHA-256 (`Get-FileHash GlyphCue-Setup.exe -Algorithm SHA256`).
 
@@ -138,7 +138,7 @@ Target environments are risk-separated into two distinct target roles:
 | **D1** | Clean Offline Install, First Launch & Relaunch | Qualified Clean VMware Environment B | Owner installs corrected installer on network-blocked clean VMware VM, verifies installer integrity, executes first launch, reboots VM, and verifies successful relaunch post-reboot. | ✅ PASS (owner-validated) |
 | **D2** | DirectML Hardware Runtime Fidelity | Owner Real RTX 3060 Windows Host | On real RTX 3060 host: verify model SHA-256 identities and runtime/DLL integrity; verify `DmlExecutionProvider` is active on detector and recognizer ONNX sessions with explicit proof of no silent CPU fallback; run bounded OCR smoke on approved deterministic fixture. (Clean OS not required). | ✅ PASS (owner-validated) |
 | **D3** | Production Path Offline CPU Fallback Validation | Qualified Clean VMware Environment B | On clean VMware VM: verify real production path `PaddleOcrEngine` and `PaddleOcrTextDetector` initialize fully offline from bundled frozen model assets without external network retrieval; run bounded OCR smoke. (Note: does not require ONNX Runtime `CPUExecutionProvider`). | ✅ PASS (owner-validated; old-installer failure preserved historically) |
-| **D4** | Evidence Reconciliation & Phase D Verdict | Repository Workspace | Owner & agents collect evidence from D1–D3; compare against #26 charter acceptance criteria; produce final Phase D verdict. Per Issue #27, a Phase D PASS permits progression to Phase E only — it does NOT make GlyphCue Release Ready. | ✅ COMPLETE / PASS |
+| **D4** | Evidence Reconciliation & Phase D Verdict | Repository Workspace | Owner & agents collect evidence from D1–D3; compare against #26 charter acceptance criteria; produce final Phase D verdict. Per Issue #27, Phase D PASS permitted progression to Phase E only and did not make GlyphCue Release Ready. | ✅ COMPLETE / PASS |
 
 > [!IMPORTANT]
 > Scope Boundary Enforcement:
@@ -227,7 +227,7 @@ Every agent or owner stopping normally, hitting quota exhaustion, encountering a
 - [x] All D1–D3 evidence collected, verified fail-closed, and reconciled
 - [x] Charter #26 acceptance criteria evaluated against D1–D3 evidence
 - [x] Phase D verdict rendered: **PASS**
-- [x] Progression permitted to Phase E. Release Ready remains `NO`; Phase E, Phase F, and Release Redistribution Compliance Gate remain required.
+- [x] Progression permitted to Phase E at D4 closure. Phase E has since completed; Release Ready remains `NO`, and Phase F plus Release Redistribution Compliance Gate remain required.
 - [x] Evidence recorded in `build_artifacts/phase_d/d4_verdict/`
 
 ### Phase F Lifecycle Finding (Not A Phase D Failure)
@@ -241,21 +241,72 @@ D2, or D3 failure, and Phase F is not complete.
 
 ---
 
-## 8. Local Evidence Root
+## 8. Phase E Closure — Representative Performance & Output Quality
 
-The local gitignored evidence root for all Phase D artifacts, logs, screenshots, relay state, and machine-specific context is `build_artifacts/phase_d/`.
+Phase E owner-led validation is **COMPLETE / PASS**. The expensive OCR tests
+were not rerun during this reconciliation; agents inspected the local evidence
+under `build_artifacts/phase_e/` and recorded only sanitized metrics and
+structure.
+
+### E1 Performance Verdict
+
+- **E1 Result:** PASS.
+- **Fixture Governance:** The canonical frozen fixture is identified by
+  SHA-256 `72a7621639730b62b5a06a266499ea66768df277cad15553cab6d2487b972465`.
+  Its bytes/hash are frozen inputs generated under the frozen DevQA generation
+  environment. Downstream candidate validation must consume that frozen artifact
+  rather than assume candidate runtimes will regenerate byte-identical MP4
+  encoding.
+- **Runtime:** Packaged DirectML runtime using `DirectMlOcrEngine` and
+  `DirectMlTextDetector`.
+- **Timing:** Warm-up was discarded. Three timed runs measured `1.153x`,
+  `1.387x`, and `1.392x` realtime; median `1.387x` realtime.
+- **Repeat Policy:** No repeat required.
+
+### E2 Output-Quality Verdict
+
+- **E2 Result:** PASS.
+- **Synthetic Golden:** Canonical synthetic golden comparison was an exact
+  match under the packaged DirectML runtime.
+- **Bounded Real-OCR Spot Check:** The owner compared packaged DirectML against
+  trusted DevQA DirectML on the private `sample_h` 900-930s window. Both lanes
+  produced 225 observations, 29 cues, 6 adjacent exact duplicate raw cues, and
+  2 missing-language cues, with identical cue timing and structure.
+- **Nondeterminism Classification:** Owner evidence recorded four cue text
+  differences limited to one OCR character in the known fixed-footer/noise
+  line; the main subtitle text remained identical. This is bounded real-OCR
+  nondeterminism, not a packaging regression.
+- **Privacy Boundary:** Raw private sample text, local host paths, and
+  machine-specific evidence remain in gitignored local evidence only and are not
+  published in tracked governance docs.
+
+### E3 Reconciliation Verdict
+
+- Phase E is **COMPLETE / PASS**.
+- Phase F is next.
+- M13 remains in progress.
+- `Release Ready = NO`.
+- Issue #27 remains open because it governs Phases A-F and final release
+  closure.
 
 ---
 
-## 9. Release Gate Sequencing & Release Readiness Boundary
+## 9. Local Evidence Root
+
+The local gitignored evidence roots for Phase D and Phase E artifacts, logs,
+screenshots, relay state, and machine-specific context are
+`build_artifacts/phase_d/` and `build_artifacts/phase_e/`.
+
+---
+
+## 10. Release Gate Sequencing & Release Readiness Boundary
 
 > [!IMPORTANT]
-> **Phase D D4 PASS does NOT make GlyphCue Release Ready.**  
-> Per Issue #27, a Phase D PASS permits progression to Phase E only. The following subsequent phases and compliance gates remain strictly required before any public release:
+> **Phase E PASS does NOT make GlyphCue Release Ready.**
+> Per Issue #27, Phase D and Phase E PASS permit progression to Phase F only. The following subsequent phase and compliance gates remain strictly required before any public release:
 > 
-> 1. **Phase E** — Representative Performance & Output Quality Benchmarking (realtime ratio, CER, Cue quality)
-> 2. **Phase F** — Installer Lifecycle, Upgrade, Repair & Uninstall Testing
-> 3. **Release Redistribution Compliance Gate**: OPEN. Must be resolved for all three ONNX model licenses before public release.
-> 4. **Final Release Signing & Release Governance Verification**
+> 1. **Phase F** — Installer Lifecycle, Upgrade, Repair & Uninstall Testing
+> 2. **Release Redistribution Compliance Gate**: OPEN. Must be resolved for all three ONNX model licenses before public release.
+> 3. **Final Release Signing & Release Governance Verification**
 > 
 > **Current Release Status:** `Release Ready = NO`.

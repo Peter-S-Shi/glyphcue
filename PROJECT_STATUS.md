@@ -4,7 +4,7 @@
 
 ## Current milestone
 
-**Milestone 13 — Release Candidate & Signed Release / Minimum Runtime-Fidelity Packaging Experiment (Issue #27): Phase D COMPLETE / PASS; Phase E is next; M13 remains in progress; Release Ready = NO.**
+**Milestone 13 — Release Candidate & Signed Release / Minimum Runtime-Fidelity Packaging Experiment (Issue #27): Phase D COMPLETE / PASS; Phase E COMPLETE / PASS; Phase F is next; M13 remains in progress; Release Ready = NO.**
 
 Milestone 13 Minimum Runtime-Fidelity Packaging Experiment is executing on dedicated branch `milestone/13-release-candidate` governed by Wayfinder charter packages #17–#26 and execution issue #27:
 - **Phase A — Frozen Inputs & Experiment Scaffold: ACCEPTED (2026-09-05)**:
@@ -46,9 +46,14 @@ Milestone 13 Minimum Runtime-Fidelity Packaging Experiment is executing on dedic
     - Narrow fix rebuilt installer: `build_artifacts/d3_recognizer_fallback_fix/installer/GlyphCue-Setup.exe`, 544,118,632 bytes, SHA-256 `cf76cb5632befccccb3b63bcd884e5f1e6f515d68fba8fdf0490845100d9b870`, Authenticode Valid under local development test certificate `DEDF7D0881E3A172CC018B63CCCF69FC51333AFC`.
     - Owner final CPU OCR smoke confirmed `PaddleOcrEngine`, `PaddleOcrTextDetector`, offline initialization, one polygon, and text `GLYPHCUE TEST 123`.
   - **D4 — Evidence Reconciliation & Phase D Verdict: COMPLETE / PASS (2026-09-06)**:
-    - D1/D2/D3 owner-executed evidence reconciled against the Phase D contract. Phase D PASS permits progression to Phase E only.
+    - D1/D2/D3 owner-executed evidence reconciled against the Phase D contract. Phase D PASS permitted progression to Phase E only and did not make GlyphCue Release Ready.
     - Newly discovered uninstall residual payload is recorded as a Phase F lifecycle hardening defect, not a Phase D failure.
-- **Release Status**: **Release Ready = NO** (Phase D PASS permits progression to Phase E only; Phase E, Phase F, Release Redistribution Compliance Gate, and Release Signing remain required).
+- **Phase E — Representative Performance & Output Quality Benchmarking: COMPLETE / PASS (2026-09-06)**:
+  - **E1 — Packaged DirectML Performance: PASS**. Owner-led evidence used the canonical frozen fixture SHA-256 `72a7621639730b62b5a06a266499ea66768df277cad15553cab6d2487b972465`, packaged DirectML runtime, and discarded warm-up. Three timed runs measured `1.153x`, `1.387x`, and `1.392x` realtime; median `1.387x` realtime. No repeat required.
+  - **E1 Fixture Governance Clarification**: The canonical fixture bytes/hash are frozen inputs generated under the frozen DevQA generation environment. Downstream candidate validation consumes that frozen artifact rather than assuming candidate runtimes will regenerate byte-identical MP4 encoding.
+  - **E2 — Output Quality / Parity: PASS**. Canonical synthetic golden comparison was an exact match. The 30-second private `sample_h` 900-930s packaged-vs-trusted-DevQA DirectML parity spot check produced 225 observations, 29 cues, 6 adjacent exact duplicate raw cues, and 2 missing-language cues in both lanes, with identical cue timing and structure. Owner evidence recorded four cue text differences limited to one OCR character in the known fixed-footer/noise line while main subtitle text remained identical; this is bounded real-OCR nondeterminism, not a packaging regression.
+  - **E3 — Reconciliation Verdict: PASS**. Phase E is COMPLETE / PASS; Phase F is next; M13 remains in progress; Release Ready = NO; Issue #27 remains open.
+- **Release Status**: **Release Ready = NO** (Phase D and Phase E PASS permit progression to Phase F only; Phase F, Release Redistribution Compliance Gate, and Release Signing remain required).
 - **Release Redistribution Compliance Gate**: **OPEN**.
 - **Phase F Open Finding**: Normal Inno uninstall left substantial owned installation payload under the GlyphCue install directory, including `app/` and `lib/` trees. Owner manually removed only the install directory afterward and confirmed it no longer existed. This remains a Phase F uninstall hygiene defect; Phase F is not complete.
 
@@ -63,7 +68,10 @@ Milestone 13 Minimum Runtime-Fidelity Packaging Experiment is executing on dedic
 - Phase D D1 Owner Validation: **PASS** (clean offline install, first launch, reboot, and relaunch).
 - Phase D D2 Owner Validation: **PASS** (`DirectMlOcrEngine`, `DirectMlTextDetector`, DirectML-first ONNX Runtime providers, bounded OCR smoke returned `GLYPHCUE DIRECTML 123`).
 - Phase D D3 Owner Validation: **PASS** (`PaddleOcrEngine`, `PaddleOcrTextDetector`, offline initialization, bounded CPU OCR smoke returned `GLYPHCUE TEST 123`).
-- Phase D D4 Reconciliation: **PASS** (D1/D2/D3 reconciled; Phase E next; Release Ready remains NO).
+- Phase D D4 Reconciliation: **PASS** (D1/D2/D3 reconciled; Phase E progression opened; Release Ready remained NO).
+- Phase E E1 Owner Validation: **PASS** (packaged DirectML performance on canonical frozen fixture; warm-up discarded; timed runs `1.153x` / `1.387x` / `1.392x`; median `1.387x`; no repeat required).
+- Phase E E2 Owner Validation: **PASS** (synthetic golden exact match; bounded private `sample_h` packaged-vs-trusted-DevQA DirectML parity spot-check accepted with only bounded fixed-footer/noise-line OCR nondeterminism).
+- Phase E E3 Reconciliation: **PASS** (E1/E2 reconciled; Phase F next; M13 remains in progress; Release Ready remains NO).
 - Private Runtime Local Import Sanity Checks: **PASS** (imports and migrations verified on disposable scratch copies; DirectML hardware acceptance reserved for Phase D).
 - Product Hardening II Targeted Suite (`tests/ui/test_product_hardening_ii_seams.py`): **5 passed** in 1.03s.
 - Product Hardening II Affected Suites: **53 passed** in 3.95s.
@@ -868,5 +876,5 @@ appears anywhere in the repository.
 
 ## Next action
 
-1. Advance into Milestone 13 (Release Candidate & Signed Release, ROADMAP §20).
-2. Packaging work may resume strictly within scoped Milestone 13 release/packaging deliverables.
+1. Begin Milestone 13 Phase F installer lifecycle validation: upgrade, repair, clean uninstall, and residual filesystem/registry hygiene.
+2. Keep the known uninstall residual payload defect open as a Phase F lifecycle hardening item until Phase F evidence or fixes close it.
