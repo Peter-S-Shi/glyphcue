@@ -110,7 +110,14 @@ def build_source_artifact_sha_map(frozen_inventory: dict[str, Any]) -> dict[str,
     # 5. First-party source commit
     commit_sha = frozen_inventory.get("trusted_source_commit", "5905df09d012cb63a34b98c484b43958477e52e8")
     sha_map[f"glyphcue-source-commit:{commit_sha}"] = commit_sha
-    sha_map["glyphcue_first_party_launcher"] = "dea596e97c1648d9480494f2923e9d0aeee6a2f02ab91fd4455e10592c82400a"
+    # No entry for "glyphcue_first_party_launcher": the launcher is compiled
+    # from LAUNCHER_CS_SOURCE at build time, not a frozen downloaded artifact,
+    # so there is no single authoritative hash to hardcode here. Real
+    # provenance is supplied per-build via extraction_provenance_map by
+    # whichever launcher-compilation path (execute_phase_b.py /
+    # execute_phase_c.py) actually compiled it; classify_payload_file() must
+    # fail closed (leave source_artifact_sha256 unresolved) rather than
+    # fabricate a value when no such entry is supplied.
 
     return sha_map
 
@@ -238,10 +245,15 @@ def classify_payload_file(
         }
     elif norm in ("GlyphCue.exe", "unins000.exe"):
         src_art = "glyphcue_first_party_launcher"
+        # Fail closed: no hardcoded fallback hash. The launcher is compiled
+        # from LAUNCHER_CS_SOURCE at build time; real provenance must come
+        # from the extraction_map entry the compiling build path supplies
+        # (see execute_phase_b.py / execute_phase_c.py). Absent that, leave
+        # source_artifact_sha256 unresolved rather than fabricate a value.
         return {
             "role": "first_party_launcher_pe",
             "source_artifact": src_art,
-            "source_artifact_sha256": sha_lookup.get(src_art, "dea596e97c1648d9480494f2923e9d0aeee6a2f02ab91fd4455e10592c82400a"),
+            "source_artifact_sha256": sha_lookup.get(src_art),
             "license": "UNRESOLVED — Product License Gate",
             "verification_status": "unresolved",
         }

@@ -128,12 +128,25 @@
       "status": "PASS",
       "corrective_history": "First F4 attempt failed at uninstall runtime with 'Internal error: Unknown constant \"userprofile\"' -- {userprofile} is not a valid Inno Setup constant. Failure was narrowly scoped: app_root was already fully removed, the synthetic %USERPROFILE%\\.glyphcue stayed intact, real user-data backups/hashes were unaffected. Fixed by resolving the purge path via GetEnv('USERPROFILE') with a fail-closed blank check before any deletion (PR #28). Final retest PASS: app_root removed, synthetic %USERPROFILE%\\.glyphcue removed, real user-data backup unaffected; owner subsequently restored real user data and confirmed the restored DB hash matches the pre-Phase-F baseline."
     },
-    "provenance_corrective_note": "Narrow provenance truth audit (PR #28) found generate_payload_manifest.py recorded a hardcoded, never-accurate source_artifact_sha256 constant for GlyphCue.exe regardless of which LAUNCHER_CS_SOURCE revision was actually compiled. Corrected to compute this value dynamically from the actual compiled launcher source in both authoritative build paths (execute_phase_b.py, execute_phase_c.py). Metadata/manifest-generation-code-only correction: no runtime, launcher behavior, or uninstall logic changed, so it does not invalidate the already-owner-validated F1/F2/Runtime-Write/F3/F4 evidence below, which predates this manifest-code fix and is inherited unchanged under the existing risk-scoped corrective policy.",
-    "final_validated_installer": {
-      "sha256_signed": "85B683221BFCA6DAC53E297449DABBE25925E7CAB4E0839847744C2897750BB7",
+    "provenance_corrective_note": "Narrow provenance truth audit (PR #28) found generate_payload_manifest.py recorded a hardcoded, never-accurate source_artifact_sha256 constant for GlyphCue.exe regardless of which LAUNCHER_CS_SOURCE revision was actually compiled. Pre-Merge Governance Gate review found the Phase B/C caller-side fix alone insufficient: the stale constant still existed as an executable fallback inside generate_payload_manifest.py itself. Removed entirely (source-of-truth fix): with no extraction-map provenance supplied, source_artifact_sha256 for GlyphCue.exe is now left unresolved (None), fail-closed, never fabricated. Both authoritative build paths (execute_phase_b.py, execute_phase_c.py) supply real provenance dynamically from the actual compiled launcher source. Metadata/manifest-generation-code-only correction: no runtime, launcher behavior, or uninstall logic changed, so it does not invalidate the already-owner-validated F1/F2/Runtime-Write/F3/F4 evidence below, which predates this manifest-code fix and is inherited unchanged under the existing risk-scoped corrective policy.",
+    "provenance_reconciliation": {
+      "app_root_reconciled": "build_artifacts/phase_f/f3_corrective/app_root",
+      "launcher_source_sha256": "0656b07fd2384b3065b7ba9b3ba41d1b5d4106c3e0406fcd61b4a8d75207823f",
+      "manifest_to_disk_check": "21,718 manifest entries = 21,718 on-disk files; 0 unindexed; 0 missing; 0 integrity mismatches",
+      "inner_launcher_sha256_unchanged": "e2d2230f3f8839036b1a1f6103e38848217495f624e45801dcb3c49f3d68e829",
+      "note": "Manifest/SBOM regenerated and outer installer rebuilt/re-signed because packaged metadata bytes changed; the inner GlyphCue.exe launcher binary itself was not recompiled or re-signed (byte-identical before and after)."
+    },
+    "final_metadata_reconciled_installer": {
+      "sha256_signed": "DBC855FB710A8B4BDB9B9F181942E61F2FEE404DD3B1ABDDE20CAC8E8A85A9F0",
+      "size_bytes": 544293224,
       "authenticode_status": "Valid",
       "signer_thumbprint": "DEDF7D0881E3A172CC018B63CCCF69FC51333AFC",
-      "signer_scope": "Local self-signed development test certificate only; not a production signing identity."
+      "signer_scope": "Local self-signed development test certificate only; not a production signing identity.",
+      "built_with": "Inno Setup 6.3.3 (portable, already-restored copy)"
+    },
+    "historical_owner_tested_candidate_pre_provenance_reconciliation": {
+      "sha256_signed": "85B683221BFCA6DAC53E297449DABBE25925E7CAB4E0839847744C2897750BB7",
+      "status": "Exact installer identity Runtime-Write Prohibition, F3, and F4 were actually Owner-validated against. Superseded only by the metadata-only provenance correction; inner GlyphCue.exe is byte-identical to the reconciled candidate, so that owner evidence is inherited unchanged."
     }
   },
   "milestone_13_status": "COMPLETE",

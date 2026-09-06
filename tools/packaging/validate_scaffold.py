@@ -525,6 +525,37 @@ def test_launcher_provenance_reflects_actual_compiled_source_not_stale_constant(
     c_hash = hashlib.sha256(_extract_launcher_cs_source(c_source).encode("utf-8")).hexdigest()
     assert b_hash == c_hash, "Both authoritative launcher sources must currently match for provenance to reconcile"
     assert b_hash != stale_constant
+
+    # The stale constant must not exist anywhere in generate_payload_manifest.py
+    # -- not merely be overridden by Phase B/C's extraction-map injection.
+    from tools.packaging.generate_payload_manifest import (
+        build_source_artifact_sha_map,
+        classify_payload_file,
+        load_frozen_inventory,
+    )
+
+    manifest_gen_path = REPO_ROOT / "tools" / "packaging" / "generate_payload_manifest.py"
+    manifest_gen_source = manifest_gen_path.read_text(encoding="utf-8")
+    assert stale_constant not in manifest_gen_source, (
+        "generate_payload_manifest.py must not retain the stale constant anywhere in its "
+        "source -- it was never a real provenance hash for any LAUNCHER_CS_SOURCE revision"
+    )
+
+    frozen_inv = load_frozen_inventory()
+    sha_map = build_source_artifact_sha_map(frozen_inv)
+    assert sha_map.get("glyphcue_first_party_launcher") is None, (
+        "build_source_artifact_sha_map() must not hardcode any launcher source SHA -- the "
+        "launcher is compiled at build time, not a frozen downloaded artifact"
+    )
+
+    # Fail closed at the real classification seam: with no extraction-map
+    # provenance supplied (e.g. a caller that never compiled a launcher),
+    # source_artifact_sha256 must be left unresolved, never fabricated.
+    meta = classify_payload_file("GlyphCue.exe", wheel_map={}, source_sha_map=sha_map, extraction_map=None)
+    assert meta["source_artifact_sha256"] is None, (
+        "classify_payload_file() must fail closed (leave source_artifact_sha256 unresolved) "
+        "for GlyphCue.exe when no extraction-map provenance is supplied, not fabricate a hash"
+    )
     print("[OK] test_launcher_provenance_reflects_actual_compiled_source_not_stale_constant passed")
 
 

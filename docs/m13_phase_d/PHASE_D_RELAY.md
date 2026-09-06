@@ -378,25 +378,55 @@ A narrow provenance audit found that `generate_payload_manifest.py`'s
 `GlyphCue.exe`'s `source_artifact_sha256` regardless of which
 `LAUNCHER_CS_SOURCE` revision was actually compiled — that constant matches
 neither the pre-fix nor post-fix launcher source hash, so it was never real
-provenance for any build. **Correction:** both authoritative launcher
-build paths (`execute_phase_b.py`, `execute_phase_c.py`) now compute
-`source_artifact_sha256` dynamically from the actual `LAUNCHER_CS_SOURCE`
-compiled into that build, via each path's existing `extraction_map`/
-`extraction_provenance_map`, which `classify_payload_file()` already
-prefers over the hardcoded fallback. This is a manifest-generation-code-only
-change — it does not alter runtime, launcher behavior, or uninstall logic —
-so per the Corrective Iteration Policy (Section 1) it does not invalidate
-and does not require rerunning the F1/F2/Runtime-Write/F3/F4 owner evidence
-above, which predates this manifest-code fix.
+provenance for any build. Pre-Merge Governance Gate review found the
+Phase B/C caller-side fix alone was insufficient: the stale constant still
+existed as an executable fallback inside `generate_payload_manifest.py`
+itself (`build_source_artifact_sha_map()` and `classify_payload_file()`).
 
-### Final Validated Installer
+**Correction (source-of-truth):** the hardcoded fallback was removed
+entirely from `generate_payload_manifest.py`. With no extraction-map
+provenance supplied, `source_artifact_sha256` for `GlyphCue.exe` is now left
+unresolved (`None`) — fail-closed, never fabricated. Both authoritative
+launcher build paths (`execute_phase_b.py`, `execute_phase_c.py`) supply the
+real provenance by computing `source_artifact_sha256` dynamically from the
+actual `LAUNCHER_CS_SOURCE` compiled into that build, via each path's
+existing `extraction_map`/`extraction_provenance_map`, which
+`classify_payload_file()` already prefers. This is a manifest-generation-
+code-only change — it does not alter runtime, launcher behavior, or
+uninstall logic — so per the Corrective Iteration Policy (Section 1) it
+does not invalidate and does not require rerunning the F1/F2/Runtime-Write/
+F3/F4 owner evidence above, which predates this manifest-code fix.
+
+**Reconciliation of the already-built corrective `app_root`:** the manifest
+and SBOM under `build_artifacts/phase_f/f3_corrective/app_root/legal/manifest/`
+(the exact `app_root` Owner Runtime-Write/F3/F4 evidence was collected
+against) were regenerated with the real launcher source hash
+(`0656b07fd2384b3065b7ba9b3ba41d1b5d4106c3e0406fcd61b4a8d75207823f`).
+Manifest-to-disk reconciliation confirmed **21,718 manifest entries = 21,718
+on-disk files, 0 unindexed, 0 missing, 0 integrity mismatches**. The inner
+`GlyphCue.exe` launcher binary itself is confirmed byte-identical before and
+after (`e2d2230f3f8839036b1a1f6103e38848217495f624e45801dcb3c49f3d68e829`) —
+only its manifest metadata changed. Because the payload manifest/SBOM bytes
+changed, the outer installer was rebuilt (Inno Setup 6.3.3 portable, the
+already-restored compiler) and re-signed with the existing M13 development
+test certificate; the inner launcher was not recompiled or re-signed.
+
+### Final Metadata-Reconciled Installer
+
+| Property | Value |
+|---|---|
+| **SHA-256 (Signed)** | `DBC855FB710A8B4BDB9B9F181942E61F2FEE404DD3B1ABDDE20CAC8E8A85A9F0` |
+| **Size (Bytes)** | `544,293,224` |
+| **Authenticode Status** | `Valid` |
+| **Signer Thumbprint** | `DEDF7D0881E3A172CC018B63CCCF69FC51333AFC` |
+| **Signer Scope** | Local self-signed development test certificate only; not a production signing identity. |
+
+### Historical Owner-Tested Candidate (Pre-Provenance-Reconciliation)
 
 | Property | Value |
 |---|---|
 | **SHA-256 (Signed)** | `85B683221BFCA6DAC53E297449DABBE25925E7CAB4E0839847744C2897750BB7` |
-| **Authenticode Status** | `Valid` |
-| **Signer Thumbprint** | `DEDF7D0881E3A172CC018B63CCCF69FC51333AFC` |
-| **Signer Scope** | Local self-signed development test certificate only; not a production signing identity. |
+| **Status** | This is the exact installer identity Runtime-Write Prohibition, F3, and F4 above were actually Owner-validated against. Superseded only by the metadata-only provenance correction above; no runtime, launcher, or uninstall behavior differs between the two candidates (the inner `GlyphCue.exe` is byte-identical), so that owner evidence is inherited unchanged. |
 
 ### Phase F Verdict
 
