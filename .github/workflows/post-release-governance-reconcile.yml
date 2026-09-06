@@ -21,11 +21,13 @@ jobs:
       - name: Apply post-release governance reconciliation
         run: python tools/post_release_governance_reconcile.py
 
-      - name: Validate JSON and whitespace
+      - name: Validate JSON and changed-file whitespace
         run: |
           python -m json.tool docs/m13_phase_d/phase_d_state.json >/dev/null
           python -m json.tool docs/v1_public_release_dependency_provenance.json >/dev/null
-          git diff --check
+          # DESIGN.md, GLYPHCUE_PRODUCT_ARCHITECTURE.md, and ROADMAP.md intentionally
+          # use Markdown two-space hard breaks in their lifecycle header lines.
+          git diff --check -- PROJECT_STATUS.md docs/m13_phase_d/PHASE_D_RELAY.md docs/m13_phase_d/phase_d_state.json docs/v1_public_distribution_gate_a_compliance_audit.md docs/v1_public_release_dependency_provenance.json
 
       - name: Commit reconciled governance state
         shell: bash
