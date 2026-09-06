@@ -52,6 +52,38 @@ def test_prefer_directml_falls_back_to_paddle_when_provider_init_fails(monkeypat
     assert isinstance(engine, PaddleOcrEngine)
 
 
+def test_prefer_directml_falls_back_to_paddle_when_probe_uses_cpu_provider(monkeypatch):
+    class FakeSession:
+        def get_providers(self):
+            return ["CPUExecutionProvider"]
+
+    class FakeRecognizer:
+        session = type("OrtWrapper", (), {"session": FakeSession()})()
+
+    class FakeRapidOcr:
+        text_rec = FakeRecognizer()
+
+    class FakeDirectMlOcrEngine:
+        def __init__(self, language):
+            self._engine = None
+
+        def initialize(self):
+            self._engine = FakeRapidOcr()
+
+        def uses_directml_provider(self):
+            return "DmlExecutionProvider" in self._engine.text_rec.session.session.get_providers()
+
+        def shutdown(self):
+            self._engine = None
+
+    monkeypatch.setattr(module, "directml_platform_supported", lambda: True)
+    monkeypatch.setattr(module, "DirectMlOcrEngine", FakeDirectMlOcrEngine)
+
+    engine = create_ocr_engine("en", prefer_directml=True)
+
+    assert isinstance(engine, PaddleOcrEngine)
+
+
 def test_prefer_directml_returns_directml_when_platform_and_provider_succeed(monkeypatch):
     monkeypatch.setattr(module, "directml_platform_supported", lambda: True)
     monkeypatch.setattr(module, "_directml_probe_succeeds", lambda *a, **k: True)

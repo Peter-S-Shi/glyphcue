@@ -3,9 +3,9 @@
 **Document type:** Production-facing UI / UX design authority  
 **Project:** GlyphCue  
 **Repository:** `Peter-S-Shi/glyphcue`  
-**Lifecycle phase:** Production Development → Milestone 10 complete; Milestone 11 (Product Hardening & Full Regression) CLOSED (2026-09-04), Release Acceptance REJECTED BY HUMAN ADJUDICATION — Release Ready = NO; Milestone 12 (Product Rework & Cue Quality Recovery) Stages ① and ② COMPLETED & ACCEPTED (2026-09-05); Product Hardening II & Full Regression CLOSED & ACCEPTED (2026-09-05) via PR #16; Feature Freeze remains ACTIVE; packaging suspension lifted for scoped M13 release work; approved to advance into Milestone 13 (Release Candidate & Signed Release). See `ROADMAP.md` §18/§19/§20/§31 and `PROJECT_STATUS.md`.  
+**Lifecycle phase:** Production Development → Milestone 10 complete; Milestone 11 (Product Hardening & Full Regression) CLOSED (2026-09-04), Release Acceptance REJECTED BY HUMAN ADJUDICATION — Release Ready = NO; Milestone 12 (Product Rework & Cue Quality Recovery) Stages ① and ② COMPLETED & ACCEPTED (2026-09-05); Product Hardening II & Full Regression CLOSED & ACCEPTED (2026-09-05) via PR #16; **Milestone 13 (Minimum Runtime-Fidelity Packaging Experiment, Phases A-F) is COMPLETE (2026-09-06) — all phases PASS**; Feature Freeze remains ACTIVE; **Release Ready remains NO** (Release Redistribution Compliance Gate and formal production/public-trust release signing/governance remain open, post-M13 gates). **Next target: Milestone 14 (Portfolio Packaging & Stop-Building Closure)** — starting it does not itself make the product publicly shipped or release-ready. See `ROADMAP.md` §18/§19/§20/§21/§31 and `PROJECT_STATUS.md`.  
 **Status:** Authoritative V1 design specification  
-**Last updated:** 2026-09-05
+**Last updated:** 2026-09-06
 
 ---
 

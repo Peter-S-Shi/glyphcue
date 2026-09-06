@@ -19,6 +19,8 @@ from typing import Any
 
 import numpy as np
 
+from glyphcue.adapters.runtime_models import require_packaged_onnx_model
+
 _DEFAULT_PACKAGES_DIR = Path(os.environ.get("GLYPHCUE_DIRECTML_PACKAGES_DIR", ""))
 _DEFAULT_MODELS_DIR = Path(os.environ.get("GLYPHCUE_DIRECTML_MODELS_DIR", ""))
 DETECTOR_LIMIT_SIDE_LEN = 640
@@ -41,7 +43,7 @@ def _order_box_points(box_points: np.ndarray) -> list[list[float]]:
 
 
 def _resolve_medium_detector_model_path(explicit_path: str | None = None) -> Path:
-    """Finds the PP-OCRv6_det_medium.onnx weights file across configured and standard locations."""
+    """Resolve the frozen packaged PP-OCRv6 medium detector model."""
     if explicit_path:
         p = Path(explicit_path)
         if p.exists():
@@ -50,17 +52,12 @@ def _resolve_medium_detector_model_path(explicit_path: str | None = None) -> Pat
     candidates: list[Path] = []
     if _DEFAULT_MODELS_DIR.exists():
         candidates.append(_DEFAULT_MODELS_DIR / "PP-OCRv6_det_medium.onnx")
-    candidates.append(Path.home() / ".cache" / "glyphcue" / "models" / "PP-OCRv6_det_medium.onnx")
-    candidates.append(Path.home() / ".rapidocr" / "models" / "PP-OCRv6_det_medium.onnx")
 
     for c in candidates:
         if c.exists():
             return c
 
-    raise RuntimeError(
-        f"PP-OCRv6_det_medium.onnx not found in candidate locations: {[str(c) for c in candidates]}. "
-        "DirectML text detector requires the exact medium detector weights; cannot fall back to a smaller model."
-    )
+    return require_packaged_onnx_model("det_medium")
 
 
 class _ExactPaddleDirectMlDetectorBackend:

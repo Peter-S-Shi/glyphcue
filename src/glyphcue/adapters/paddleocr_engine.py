@@ -9,6 +9,7 @@ from glyphcue.adapters.ocr_types import (
     OcrRuntimeInfo,
     OcrTextRegion,
 )
+from glyphcue.adapters.runtime_models import resolve_packaged_paddle_model_dir
 
 # GlyphCue-owned canonical language codes. PaddleOCR's own `lang=` codes
 # ("ch", "japan") are a vendor detail and must never leak past this
@@ -27,6 +28,15 @@ def _construct_paddleocr(*, language: str):
     to be installed -- only calling initialize() does."""
     from paddleocr import PaddleOCR
 
+    det_model_dir = resolve_packaged_paddle_model_dir("det_medium")
+    rec_model_dir = resolve_packaged_paddle_model_dir("rec_medium")
+    model_kwargs = {}
+    if det_model_dir is not None and rec_model_dir is not None:
+        model_kwargs = {
+            "text_detection_model_dir": str(det_model_dir),
+            "text_recognition_model_dir": str(rec_model_dir),
+        }
+
     # enable_mkldnn=False works around a real crash observed with the
     # paddleocr==3.7.0 / paddlepaddle==3.3.1 pairing used for the V1
     # benchmark: NotImplementedError: (Unimplemented)
@@ -39,6 +49,7 @@ def _construct_paddleocr(*, language: str):
         use_doc_unwarping=False,
         use_textline_orientation=False,
         enable_mkldnn=False,
+        **model_kwargs,
     )
 
 
@@ -48,9 +59,12 @@ def _construct_text_recognition(*, model_name: str = "PP-OCRv6_medium_rec"):
     public standalone API is called."""
     from paddleocr import TextRecognition
 
+    rec_model_dir = resolve_packaged_paddle_model_dir("rec_medium")
+    kwargs = {"model_dir": str(rec_model_dir)} if rec_model_dir is not None else {}
     return TextRecognition(
         model_name=model_name,
         enable_mkldnn=False,
+        **kwargs,
     )
 
 
@@ -296,4 +310,3 @@ class PaddleOcrEngine:
                     pass
             self._recognizer = None
         self._engine = None
-

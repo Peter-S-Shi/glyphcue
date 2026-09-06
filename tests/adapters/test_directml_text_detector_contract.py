@@ -41,7 +41,7 @@ def test_resolve_medium_detector_model_path_raises_when_not_found(monkeypatch, t
     monkeypatch.setattr(detector_module, "_DEFAULT_MODELS_DIR", tmp_path / "nonexistent")
     monkeypatch.setattr(detector_module.Path, "home", lambda: tmp_path)
 
-    with pytest.raises(RuntimeError, match="PP-OCRv6_det_medium.onnx not found"):
+    with pytest.raises(FileNotFoundError, match="Required frozen ONNX model is missing"):
         _resolve_medium_detector_model_path()
 
 

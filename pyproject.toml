@@ -66,13 +66,13 @@ ocr = [
 #
 # Pinned exactly, matching the pair actually re-verified for the P3/P4B gates
 # (RapidOCR 3.9.2 / onnxruntime-directml 1.24.4 on Windows). The rec and det
-# models loaded (PP-OCRv6_rec_small.onnx, ~21.2MB; PP-OCRv6_det_medium.onnx,
-# ~62.1MB) are not bundled or versioned by GlyphCue in git: RapidOCR/DirectML
-# manages model caching on first use, exactly as paddleocr/paddlepaddle already
-# do for the Paddle path above. GLYPHCUE_DIRECTML_MODELS_DIR /
-# GLYPHCUE_DIRECTML_PACKAGES_DIR (glyphcue/adapters/directml_ocr_engine.py,
-# glyphcue/adapters/directml_text_detector.py) are optional local overrides
-# for offline/pinned-artifact test environments only, not required for a normal install.
+# D3 corrective packaging freezes the runtime model artifacts into the
+# installer instead of relying on first-use model-host retrieval. RapidOCR
+# consumes the frozen ONNX files from the packaged `models/` directory;
+# Paddle CPU fallback consumes frozen Paddle inference archives unpacked
+# under `models/paddle/`. The source tree still does not commit model
+# binaries; `docs/m13_build_base_identity.json` records their provenance,
+# sizes, and SHA-256 identities for packaging.
 directml = [
     "rapidocr==3.9.2; sys_platform == 'win32'",
     "onnxruntime-directml==1.24.4; sys_platform == 'win32'",

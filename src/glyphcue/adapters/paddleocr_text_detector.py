@@ -30,6 +30,8 @@ from typing import Any
 
 import numpy as np
 
+from glyphcue.adapters.runtime_models import resolve_packaged_paddle_model_dir
+
 DETECTOR_LIMIT_SIDE_LEN = 640
 
 
@@ -43,8 +45,10 @@ class PaddleOcrTextDetector:
     def initialize(self) -> None:
         from paddleocr import TextDetection
 
+        det_model_dir = resolve_packaged_paddle_model_dir("det_medium")
+        kwargs = {"model_dir": str(det_model_dir)} if det_model_dir is not None else {}
         self._detector = TextDetection(
-            enable_mkldnn=False, limit_side_len=self._limit_side_len
+            enable_mkldnn=False, limit_side_len=self._limit_side_len, **kwargs
         )
 
     def __call__(self, roi_frame: np.ndarray):

@@ -1,45 +1,86 @@
 # GlyphCue — PROJECT_STATUS.md
 
-**Last updated:** 2026-09-05
+**Last updated:** 2026-09-06
 
 ## Current milestone
 
-**Product Hardening II & Full Regression: CLOSED & ACCEPTED (2026-09-05). Next: Milestone 13 — Release Candidate & Signed Release.**
+**Milestone 13 — Release Candidate & Signed Release / Minimum Runtime-Fidelity Packaging Experiment (Issue #27): Phase D COMPLETE / PASS; Phase E COMPLETE / PASS; Phase F COMPLETE / PASS; Milestone 13 COMPLETE; Release Ready = NO.**
 
-Milestone 11 Product Hardening & Full Regression is CLOSED; Release Acceptance was REJECTED BY HUMAN ADJUDICATION due to Cue quality, review UX, and packaging maturity. Milestone 12 lifted feature freeze strictly for targeted recovery across two problems, both of which were COMPLETED & ACCEPTED (2026-09-05). Product Hardening II & Full Regression was then executed, verified, and accepted (2026-09-05) via PR #16:
-- **Product Hardening II & Full Regression — COMPLETED & ACCEPTED (2026-09-05, PR #16):**
-  1. *Step ② Targeted Regressions*: 5 high-ROI seam regressions implemented in `tests/ui/test_product_hardening_ii_seams.py` (A3/A4 post-clean manual merge/split & cleaner protection; A6 unified 4-format export conformance; C1 uncommitted edit across mode-switching; E1 reopen & total-order queue reconstruction; E2 multi-cycle incremental OCR clean lifecycle). All 5 passed in 1.03s; 53 affected suite tests passed in 3.95s.
-  2. *Step ④ Machine-Verifiable Full Regression*: Whole-repository pytest suite executed on native Windows dev environment achieving **962 passed, 1 skipped, 1 xfailed in 172.06s (0 failures)**.
-  3. *Step ④ DirectML Hardware & Provider Probe*: Hardware probe (`tools/devqa_directml_verify.py`) verified genuine `DmlExecutionProvider` activation on both detector and recognizer ONNX Runtime sessions with zero silent fallback.
-  4. *Step ④ Clean-Environment CI*: GitHub Actions CI (#152, Run ID `33966863334`) completed with SUCCESS on Ubuntu / Python 3.12 / Qt-offscreen.
-  5. *Step ⑤ Final Human Acceptance*: Repository owner completed interactive real-product smoke check and confirmed PASS (2026-09-05).
-  6. *Accepted V1 Known Limitation Preserved*: Cue Cleaner V0.6.1 conservative contract preserved as a non-blocking V1 product trade-off; remaining cases resolved via manual Merge workflow.
-- **Problem 2 (QA Review UX & Workflow) — Stage ① COMPLETED & ACCEPTED (2026-09-04, PR #14 merged at `a27ba23`):**
-  1. *Left Cue Workbench Multi-select & Batch Purge*: Multi-select already Discarded Cues (`ExtendedSelection`) and batch purge them via `Purge Discarded` button (`#subtleDangerBtn`); cues disappear from visible queue; data safety ensures non-rejected cues are never purged.
-  2. *Strict Chronological Ordering*: Queue sorting strictly follows `(cue.start_time, cue.end_time, cue.id)`; status badges (`[0.00s] [Level] [Badge]`) display state without breaking linear time.
-  3. *Continuous Timeline OCR Seam & Resume*: `CompactTimeline` renders a distinct endpoint marker (cyan vertical line + top indicator cap) at `last_processed_end`; supports click-to-seek playback navigation via `seek_requested` signal; "Resume from Last End" button pre-fills range start and seeks video; successful OCR runs auto-prefill next range start for seamless editing.
-  4. *Clear Current Video Cue History*: "Clear Video Cues…" (`#subtleDangerBtn`) with confirmation dialog (`QMessageBox` with impact warning) deletes cues specifically for `self._source_id` via `_cue_repository.delete_for_source`, safely preserving observations and other videos.
-  5. *OCR Completion Audio Chime*: Short, low-disturbance synthesized hotel desk bell "ding" (~250ms, G6 1568Hz harmonic decay in pure Python wave format) played via `winsound` / `QApplication.beep()` on `JobState.SUCCEEDED` with zero external dependencies and fail-soft exception handling.
-  6. *Visual Consistency*: Follows `DESIGN.md` tokens (`Color`, `Spacing`, `Radius`, `#subtleDangerBtn`, `#secondaryBtn`), avoiding arbitrary redesign.
-  7. *Card Border Semantics*: Replaced whole-line text coloring with distinct card border semantics: `Color.SUCCESS` green for Approved, `Color.BORDER_NEUTRAL_LIGHT` (`#cbd5e1`) white/neutral for Pending, `Color.WARNING` yellow for Needs Review, and `Color.DANGER` red for Discarded. User selection has highest visual priority with a blue border (`Color.ACCENT`) + selection background override. Text stays clear and readable in primary text color.
-  8. *Global Horizontal Overflow Support*: Outermost workbench shell wraps the 3-pane workspace stack in an outer `QScrollArea` (`_WORKBENCH_MIN_WIDTH = 1160px`). Under normal width (>=1160px), the horizontal scrollbar is hidden (`ScrollBarAsNeeded`); under constrained window width (<1160px), a global horizontal scrollbar appears at the bottom without adding per-pane horizontal scrollbars, preserving internal vertical scrolling, splitter resizing, and window maximization.
-- **Problem 1 (Cue Production Quality Recovery) — Stage ② COMPLETED & ACCEPTED (2026-09-05, PR #15):**
-  1. *Downstream Cue Cleaner Integration*: Integrated externally frozen Cue Cleaner V0.6.1 as a manual "Clean Cues" button in Path A Center Pane post-reconstruction review workspace, leaving the upstream DirectML OCR pipeline and ≤5× realtime throughput completely untouched.
-  2. *Eligibility & State Preservation*: Operates strictly on untouched machine results (`ReviewState.PENDING` only). Human-reviewed work (`APPROVED`, `REJECTED`, `NEEDS_REVIEW`) passes through 100% untouched with original object identities and review states preserved.
-  3. *Language-Signature Partitioning & Fail-Closed Attribution*: Eligible cues are partitioned by ordered language signatures (e.g. `("en",)`, `("zh",)`, `("en", "zh")`). Multi-language cues join lines in layer order, and cleaner output lines are attributed back via exact, order-preserving donor subsequence matching. Non-verbatim or ambiguous lines fail closed, leaving contributing cues untouched.
-  4. *Single-Language Edge-Strip Acceptance*: Single-language cues accept cleaner deduplications and edge-strip cleanups directly into their single layer.
-  5. *Uncertainty Surfacing*: Outputs from `preserve_complementary_evidence_cluster` are mapped to `ReviewState.NEEDS_REVIEW` to surface genuine complementary evidence for human verification rather than silently synthesizing cues.
-  6. *Deterministic Total Ordering*: Database queries (`list_for_source`, `list_all`) and queue reconstruction strictly enforce `(start_time, end_time, id)` tie-breakers.
-  7. *Accepted V1 Known Limitation*: Per Human Adjudication (2026-09-05), Cue Cleaner V0.6.1 is accepted for V1 with the explicit known limitation that Clean Cues is conservative and not required to eliminate every residual duplicate or fragment. Remaining cases stay visible in the 3-pane workbench and are resolved via the existing manual Merge workflow (`M` shortcut / Merge button). Residual duplicates are explicitly not release blockers.
-- **Lifecycle & Governance Status:**
-  - Corrective Product Rework (Milestone 12): **CLOSED / ACCEPTED (2026-09-05)**.
-  - Product Hardening II & Full Regression: **CLOSED / ACCEPTED (2026-09-05, PR #16)**.
-  - Feature Freeze: **ACTIVE**.
-  - Packaging / Installer Work: **Suspension lifted**; may resume strictly within scoped Milestone 13 release/packaging activities.
-  - Release Ready: **NO** (remains NO until the Milestone 13 release gate itself succeeds).
-  - Next Milestone: **Milestone 13 — Release Candidate & Signed Release** (not started).
+Milestone 13 Minimum Runtime-Fidelity Packaging Experiment was executed on dedicated branch `milestone/13-release-candidate` governed by Wayfinder charter packages #17–#26 and execution issue #27:
+- **Phase A — Frozen Inputs & Experiment Scaffold: ACCEPTED (2026-09-05)**:
+  - Authoritative build-base identity frozen in `docs/m13_build_base_identity.json` and `.md` across 85 wheels/sdists, CPython 3.12.10 embeddable archive, and 3 authoritative ONNX models.
+  - Fail-closed scaffold test suite in `tools/packaging/validate_scaffold.py` with 13 passing tests.
+- **Phase B — Primary Runtime Assembly & First Installer Build: ACCEPTED (2026-09-05)**:
+  - First-party launcher `GlyphCue.exe` compiled and inner-signed with test certificate `A3E4E5320779C9F63E513D870E209C26B819C61E`.
+  - Authoritative models (`PP-OCRv6_det_medium.onnx`, `PP-OCRv6_rec_small.onnx`, `ch_ppocr_mobile_v2.0_cls_mobile.onnx`) and migrations assembled.
+  - CycloneDX 1.6 JSON SBOM and Payload Manifest generated; Inno Setup offline installer built.
+- **Phase C — Clean Reconstruction & Drift Verification: FINAL ACCEPTED (2026-09-05)**:
+  - Two independent clean reconstructions (Clean Reconstruction A and Clean Reconstruction B) produced from trusted source commit `5905df09d012cb63a34b98c484b43958477e52e8`. The earlier same-session AG baseline was contaminated by local checkout bytecode and is superseded.
+  - Strict payload drift verification across 21,712 total files: 21,711 unsigned payload files compared with 0 mismatches (100% byte-for-byte SHA-256 equality); 0 missing/additional files.
+  - First-party launcher `GlyphCue.exe`: pre-sign SHA-256 identical (`0a1612e3f5897f4147a758c045723aafacaeba206218327d5296f72202569102`), post-sign SHA-256 identical (`187ee188700d0ec599cbbe0854931967e35bab90fd5e09409fb7d18320516e17`), Authenticode signature valid under approved test certificate `A3E4E5320779C9F63E513D870E209C26B819C61E`.
+  - Inno Setup installer envelope comparison: size delta 496 bytes within allowed Inno Setup header/timestamp and PKCS#7 envelope delta; signatures valid on both. Envelope verdict: **PASS**.
+  - Manifest-to-disk reconciliation: 100% path and file count match (21,711 files) on both reconstructions with 0 unindexed and 0 missing files.
+  - Gate verdicts: Integrity Gate: PASS, Untracked File Gate: PASS, Provenance Gate: PASS, Release Redistribution Compliance Gate: OPEN (recorded). Overall Phase C verdict: **FINAL PASS / ACCEPTED**.
+  - **Superseded for further Phase D testing** after D3 proved the accepted installer was not self-contained for offline OCR runtime initialization.
+- **Corrected Phase B/C Reseal for D3 Runtime Fix: PASS (2026-09-05)**:
+  - Previous development test certificate private key was unavailable, so a new local self-signed GlyphCue development test certificate was created for M13 local test signing only: subject `CN=GlyphCue Development Test Certificate, O=GlyphCue Local Test Root`, thumbprint `DEDF7D0881E3A172CC018B63CCCF69FC51333AFC`.
+  - The certificate is not a V1 production signing identity. Current local scope: `CurrentUser\My` with private key; public certificate trusted in `CurrentUser\Root` and `CurrentUser\TrustedPublisher` for corrected Phase B/C reseal and M13 local testing.
+  - Corrected Phase C reseal2 ran two clean reconstructions from 91 frozen artifacts, including the two Paddle CPU model archives. Both reconstructions produced 21,718-file payloads with identical unsigned payloads, identical launcher pre-sign and post-sign hashes, source identity PASS, model/DLL identity PASS, manifest/SBOM gates PASS, untracked/provenance gates PASS, signature gates PASS, and installer envelope drift PASS.
+  - Corrected reseal baseline installer: `build_artifacts/d3_c_reseal2/recon1/installer/GlyphCue-Setup.exe`, 544,136,408 bytes, SHA-256 `47c9fbe10db5481570cd4ee43606b818768707018987b294cebbd78a00d9b7a7`, Authenticode `Valid` under local test certificate `DEDF7D0881E3A172CC018B63CCCF69FC51333AFC`. The current selected Phase D installer is the later narrow recognizer fallback fix rebuild recorded under Phase D.
+- **Phase D — Target-Machine Offline Runtime & DirectML Validation**:
+  - **D0 — Execution Preflight, Scaffold & Risk-Separated Qualification: COMPLETE (2026-09-05)**:
+    - Operating Model: Risk-separated, Owner-executed, Agent-instrumented validation. Owner operates target environments (clean VMware Environment B for installation/CPU fallback; real RTX 3060 Windows host for DirectML hardware fidelity); AI assistants provide step-by-step guidance; agents reconcile evidence logs in `build_artifacts/phase_d/`.
+    - Corrective Iteration Policy: ordinary runtime/model/manifest/SBOM/offline-resolution/signer fixes require corrected build/signature/integrity checks plus targeted retest of affected gates. Full Phase B/C dual-reconstruction reproducibility reseal is not automatic; reserve it for final Release Candidate closure or for specific changes that genuinely invalidate the reproducibility baseline.
+    - Baselines: `phase_c_closure_commit` = `00a3c65ccd7fca5180e94f242947c2438a0f9651`; `d0_scaffold_baseline_commit` = `182bc46788df66c95b272aa64193937ebed0fb4f`. Live branch HEAD dynamically resolved into `build_artifacts/phase_d/relay_state.json`.
+    - Previous selected installer `3ea8720033d7d23a5c55296bb2ee08fffb3bc43e2f6a4d9ad0387c63951355a3` is superseded due D3 offline-runtime failure. Current selected Phase D installer is the narrow recognizer fallback fix rebuild `GlyphCue-Setup.exe`, 544,118,632 bytes, SHA-256 `cf76cb5632befccccb3b63bcd884e5f1e6f515d68fba8fdf0490845100d9b870`, Authenticode Valid under local development test certificate `DEDF7D0881E3A172CC018B63CCCF69FC51333AFC`.
+    - Scope boundary: formal performance/quality benchmarking reserved for Phase E; lifecycle/upgrade/repair/uninstall reserved for Phase F. Release Ready = NO.
+  - **D1 — Clean Offline Install, First Launch & Relaunch (Clean VMware Env B): PASS (owner-validated on corrected installer)**.
+  - **D2 — DirectML Hardware Runtime Fidelity (Owner Real RTX 3060 Host): PASS (owner-validated on corrected installer)**:
+    - Owner validation confirmed `DirectMlOcrEngine` and `DirectMlTextDetector` on the real RTX 3060 Windows host.
+    - Actual recognizer and detector ONNX sessions reported `['DmlExecutionProvider', 'CPUExecutionProvider']` with DirectML first, proving no silent CPU-only fallback.
+    - Bounded DirectML OCR smoke returned `GLYPHCUE DIRECTML 123`.
+  - **D3 — Production Path Offline CPU Fallback Validation (Clean VMware Env B): PASS (owner-validated on corrected installer)**:
+    - Initial canonical installer (`3ea87200...`) FAILED during D3 offline CPU fallback testing (historical fact: external retrieval attempted while offline) and is superseded.
+    - Corrective fix binds DirectML/RapidOCR to frozen packaged ONNX models and packages Paddle CPU detection/recognition artifacts under `models/paddle/`.
+    - Owner D3 evidence found one narrow remaining blocker: RapidOCR/ONNX Runtime fell back internally to `CPUExecutionProvider`, while `create_ocr_engine(..., prefer_directml=True)` still selected `DirectMlOcrEngine` and reported `backend='directml'`.
+    - Narrow fix rebuilt installer: `build_artifacts/d3_recognizer_fallback_fix/installer/GlyphCue-Setup.exe`, 544,118,632 bytes, SHA-256 `cf76cb5632befccccb3b63bcd884e5f1e6f515d68fba8fdf0490845100d9b870`, Authenticode Valid under local development test certificate `DEDF7D0881E3A172CC018B63CCCF69FC51333AFC`.
+    - Owner final CPU OCR smoke confirmed `PaddleOcrEngine`, `PaddleOcrTextDetector`, offline initialization, one polygon, and text `GLYPHCUE TEST 123`.
+  - **D4 — Evidence Reconciliation & Phase D Verdict: COMPLETE / PASS (2026-09-06)**:
+    - D1/D2/D3 owner-executed evidence reconciled against the Phase D contract. Phase D PASS permitted progression to Phase E only and did not make GlyphCue Release Ready.
+    - Newly discovered uninstall residual payload is recorded as a Phase F lifecycle hardening defect, not a Phase D failure.
+- **Phase E — Representative Performance & Output Quality Benchmarking: COMPLETE / PASS (2026-09-06)**:
+  - **E1 — Packaged DirectML Performance: PASS**. Owner-led evidence used the canonical frozen fixture SHA-256 `72a7621639730b62b5a06a266499ea66768df277cad15553cab6d2487b972465`, packaged DirectML runtime, and discarded warm-up. Three timed runs measured `1.153x`, `1.387x`, and `1.392x` realtime; median `1.387x` realtime. No repeat required.
+  - **E1 Fixture Governance Clarification**: The canonical fixture bytes/hash are frozen inputs generated under the frozen DevQA generation environment. Downstream candidate validation consumes that frozen artifact rather than assuming candidate runtimes will regenerate byte-identical MP4 encoding.
+  - **E2 — Output Quality / Parity: PASS**. Canonical synthetic golden comparison was an exact match. The 30-second private `sample_h` 900-930s packaged-vs-trusted-DevQA DirectML parity spot check produced 225 observations, 29 cues, 6 adjacent exact duplicate raw cues, and 2 missing-language cues in both lanes, with identical cue timing and structure. Owner evidence recorded four cue text differences limited to one OCR character in the known fixed-footer/noise line while main subtitle text remained identical; this is bounded real-OCR nondeterminism, not a packaging regression.
+  - **E3 — Reconciliation Verdict: PASS**. Phase E is COMPLETE / PASS; Phase F has since completed; Milestone 13 is COMPLETE; Release Ready = NO; Issue #27 is the completed execution record for Milestone 13; no M13 execution work remains open.
+- **Phase F — Installer Lifecycle, Upgrade, Repair & Uninstall Testing: COMPLETE / PASS (2026-09-06)**:
+  - **F1 — Repair: PASS.** **F2 — Two-Version Upgrade: PASS.**
+  - **Runtime-Write Prohibition Gate: PASS.** Owner confirmed the installer-owned `app_root` remained at 21,721 files before and after a normal launch/exit cycle, with added/removed/modified = 0 and first-party `__pycache__`/`*.pyc` count = 0.
+  - **F3 — Default Uninstall: PASS (corrected).** Original run left 202 residual files (runtime-generated `__pycache__`/`*.pyc`) because the launcher wrote bytecode into `app_root` and standard Inno uninstall only removes files it tracked at install time; uninstall itself exited 0 and preserved `%USERPROFILE%\.glyphcue` with an unchanged DB hash throughout. Fixed (PR [#28](https://github.com/Peter-S-Shi/glyphcue/pull/28)) by suppressing launcher bytecode writes (`python.exe -B`, both authoritative launcher paths) and unconditionally force-removing `{app}` on uninstall. Corrected retest PASS: exit 0, `app_root` fully removed, 0 residual, user data/DB preserved with unchanged hash, synthetic sentinel preserved.
+  - **F4 — Explicit Purge: PASS (corrected).** Original attempt crashed at uninstall runtime with `Internal error: Unknown constant "userprofile"` — `{userprofile}` is not a valid Inno Setup constant; failure was narrowly scoped, with `app_root` already fully removed, the synthetic `%USERPROFILE%\.glyphcue` intact, and real user-data backups/hashes unaffected. Fixed (PR [#28](https://github.com/Peter-S-Shi/glyphcue/pull/28)) by resolving the purge path via `GetEnv('USERPROFILE')` with a fail-closed blank check before any deletion. Final retest PASS: `app_root` removed, synthetic `%USERPROFILE%\.glyphcue` removed, real user-data backup unaffected; owner subsequently restored real user data and confirmed the restored DB hash matches the pre-Phase-F baseline.
+  - **Provenance Truth Audit (metadata-only, PR [#28](https://github.com/Peter-S-Shi/glyphcue/pull/28)):** found `generate_payload_manifest.py` recorded a hardcoded, never-accurate `source_artifact_sha256` constant for `GlyphCue.exe` regardless of which launcher source revision was actually compiled. Corrected to compute this value dynamically from the actual compiled `LAUNCHER_CS_SOURCE` in both authoritative build paths. Manifest-generation-code-only change — does not alter runtime, launcher behavior, or uninstall logic, so it does not invalidate and does not require rerunning the F1/F2/Runtime-Write/F3/F4 owner evidence above.
+  - **Final metadata-reconciled installer**: SHA-256 `DBC855FB710A8B4BDB9B9F181942E61F2FEE404DD3B1ABDDE20CAC8E8A85A9F0`, 544,293,224 bytes, Authenticode Valid, signer thumbprint `DEDF7D0881E3A172CC018B63CCCF69FC51333AFC` (local test certificate; not a production signing identity). Rebuilt from the same corrective `app_root` after correcting `GlyphCue.exe`'s manifest provenance (see Provenance Truth Audit above); manifest-to-disk reconciliation confirmed 21,718/21,718 files, 0 missing, 0 mismatches; the inner `GlyphCue.exe` launcher binary is byte-identical to the historical candidate below.
+  - **Historical Owner-tested candidate (pre-provenance-reconciliation)**: SHA-256 `85B683221BFCA6DAC53E297449DABBE25925E7CAB4E0839847744C2897750BB7` — the exact installer Runtime-Write Prohibition, F3, and F4 above were actually validated against. Superseded only by the metadata-only provenance correction; no runtime/launcher/uninstall behavior differs between the two, so the F1/F2/Runtime-Write/F3/F4 evidence above is inherited unchanged per the Corrective Iteration Policy.
+- **Release Status**: **Release Ready = NO** (Phase D, Phase E, and Phase F PASS complete Milestone 13's owner-executed validation scope only; the Release Redistribution Compliance Gate and formal production/public-trust release signing and governance remain required).
+- **Release Redistribution Compliance Gate**: **OPEN** for all distributed unresolved model assets — the 3 ONNX model assets (`PP-OCRv6_det_medium.onnx`, `PP-OCRv6_rec_small.onnx`, `ch_ppocr_mobile_v2.0_cls_mobile.onnx`) and the 2 Paddle CPU model archives. None of the five is currently resolved.
 
 ### Validation
+- Clean Reconstruction A vs B Verification: **PASS** (21,711/21,711 unsigned files identical, signed PE identical, installer envelope PASS).
+- Packaging Experiment Scaffold & Drift Test Suite (`tools/packaging/validate_scaffold.py`): **13 passed** (including manifest-to-disk reconciliation and strict offline staging regressions).
+- Phase C Isolated Clean Reconstruction & Drift Pipeline (`tools/packaging/execute_phase_c.py`): **PASS** (zero unsigned file drift, zero signed PE drift, envelope drift PASS).
+- D3 Corrective Runtime Binding Tests (`tests/adapters/test_packaged_runtime_model_binding.py`, plus selection regressions): **17 passed**.
+- D3 Corrected Phase B Reseal: **PASS** (`build_artifacts/d3_b_clean2/phase_b_report.json`); signed installer 544,156,896 bytes, SHA-256 `cff101ba4105e1f39d86ddfff1e585744a086315e6cf39317e398a76a68c1084`, runtime sanity PASS, signature gate PASS.
+- D3 Corrected Phase C Reseal: **PASS** (`build_artifacts/d3_c_reseal2/phase_c_summary.json`); recon1 installer 544,136,408 bytes SHA-256 `47c9fbe10db5481570cd4ee43606b818768707018987b294cebbd78a00d9b7a7`; recon2 installer 544,135,880 bytes SHA-256 `a7306ec7718215e5dcdaea03ca0353a5ba6d29fb4b52a505e840f33cdc4ff0a5`; payload drift PASS, installer envelope PASS with 528-byte allowed delta, source identity/model-DLL identity/untracked/provenance/manifest/SBOM/signature gates PASS.
+- D3 Narrow Recognizer Fallback Fix: **PASS** (`tests/adapters/test_ocr_engine_selection.py`, `tests/adapters/test_packaged_runtime_model_binding.py`, `tests/adapters/test_directml_ocr_engine_contract.py`: 20 passed); rebuilt installer `build_artifacts/d3_recognizer_fallback_fix/installer/GlyphCue-Setup.exe`, 544,118,632 bytes, SHA-256 `cf76cb5632befccccb3b63bcd884e5f1e6f515d68fba8fdf0490845100d9b870`, runtime sanity PASS, signature gate PASS.
+- Phase D D1 Owner Validation: **PASS** (clean offline install, first launch, reboot, and relaunch).
+- Phase D D2 Owner Validation: **PASS** (`DirectMlOcrEngine`, `DirectMlTextDetector`, DirectML-first ONNX Runtime providers, bounded OCR smoke returned `GLYPHCUE DIRECTML 123`).
+- Phase D D3 Owner Validation: **PASS** (`PaddleOcrEngine`, `PaddleOcrTextDetector`, offline initialization, bounded CPU OCR smoke returned `GLYPHCUE TEST 123`).
+- Phase D D4 Reconciliation: **PASS** (D1/D2/D3 reconciled; Phase E progression opened; Release Ready remained NO).
+- Phase E E1 Owner Validation: **PASS** (packaged DirectML performance on canonical frozen fixture; warm-up discarded; timed runs `1.153x` / `1.387x` / `1.392x`; median `1.387x`; no repeat required).
+- Phase E E2 Owner Validation: **PASS** (synthetic golden exact match; bounded private `sample_h` packaged-vs-trusted-DevQA DirectML parity spot-check accepted with only bounded fixed-footer/noise-line OCR nondeterminism).
+- Phase E E3 Reconciliation: **PASS** (E1/E2 reconciled; Phase F has since completed; Release Ready remains NO).
+- PR [#28](https://github.com/Peter-S-Shi/glyphcue/pull/28) Phase F corrective fixes (launcher bytecode suppression, default-uninstall force-removal, F4 purge-path fix, launcher provenance correction): local `tools/packaging/validate_scaffold.py` **17 passed**; GitHub Actions CI #157: **SUCCESS** (on the pre-provenance-fix commit; the provenance-only follow-up commit is pending a fresh CI run at push time).
+- Private Runtime Local Import Sanity Checks: **PASS** (imports and migrations verified on disposable scratch copies; DirectML hardware acceptance reserved for Phase D).
 - Product Hardening II Targeted Suite (`tests/ui/test_product_hardening_ii_seams.py`): **5 passed** in 1.03s.
 - Product Hardening II Affected Suites: **53 passed** in 3.95s.
 - Local Whole-Repository Regression: **962 passed, 1 skipped, 1 xfailed** in 172.06s (0 failures).
@@ -834,7 +875,7 @@ appears anywhere in the repository.
 
 ## Unresolved
 
-- Release Ready = NO (remains NO until the Milestone 13 release gate itself succeeds).
+- Release Ready = NO. Milestone 13 (Phases D, E, F) is COMPLETE, but Release Ready remains NO until the Release Redistribution Compliance Gate (all distributed unresolved model assets) and formal production/public-trust release signing and governance are resolved — both are post-M13 work, not part of Milestone 13's scope.
 - Packaging suspension lifted; packaging work may resume strictly within scoped Milestone 13 release/packaging activities.
 - Residual non-blocking evaluation findings preserved (informational, not release blockers on their own):
   - `sample_c`: Isolated window-boundary non-text reading (`"zh": "3\n8"`) on Cue 1 (1.1s), safely fail-closed with `ambiguous_languages: ["zh"]`; non-contaminating.
@@ -843,5 +884,6 @@ appears anywhere in the repository.
 
 ## Next action
 
-1. Advance into Milestone 13 (Release Candidate & Signed Release, ROADMAP §20).
-2. Packaging work may resume strictly within scoped Milestone 13 release/packaging deliverables.
+1. Owner/ChatGPT Pre-Merge Governance Gate on PR [#28](https://github.com/Peter-S-Shi/glyphcue/pull/28) (kept Draft pending this gate); PR merge and Issue #27 closure follow once that gate clears.
+2. Post-Milestone-13: resolve the Release Redistribution Compliance Gate for all distributed unresolved model assets (3 ONNX model assets + 2 Paddle CPU model archives).
+3. Post-Milestone-13: complete formal production/public-trust release signing (the local self-signed test certificate used throughout Phases B-F is not a production signing identity) and final release governance verification.

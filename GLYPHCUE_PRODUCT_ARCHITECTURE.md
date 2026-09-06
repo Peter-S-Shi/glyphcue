@@ -3,9 +3,9 @@
 **Document type:** Authoritative post-Grill product architecture baseline  
 **Project:** GlyphCue  
 **Repository:** `Peter-S-Shi/glyphcue`  
-**Lifecycle phase:** Production Development → Milestone 10 complete; Milestone 11 (Product Hardening & Full Regression) CLOSED (2026-09-04); Milestone 12 (Product Rework & Cue Quality Recovery: Stages ① and ②) COMPLETED & ACCEPTED (2026-09-05) via PR #14 and PR #15; Product Hardening II & Full Regression COMPLETED & ACCEPTED (2026-09-05) via PR #16 — Feature Freeze ACTIVE, Release Ready = NO, packaging suspension lifted for scoped M13 release work. Next target: Milestone 13 (Release Candidate & Signed Release). See `ROADMAP.md` §18/§19/§20/§31 and `PROJECT_STATUS.md`.  
+**Lifecycle phase:** Production Development → Milestone 10 complete; Milestone 11 (Product Hardening & Full Regression) CLOSED (2026-09-04); Milestone 12 (Product Rework & Cue Quality Recovery: Stages ① and ②) COMPLETED & ACCEPTED (2026-09-05) via PR #14 and PR #15; Product Hardening II & Full Regression COMPLETED & ACCEPTED (2026-09-05) via PR #16; **Milestone 13 (Minimum Runtime-Fidelity Packaging Experiment, Phases A-F) is COMPLETE (2026-09-06) — all phases PASS** — Feature Freeze ACTIVE, **Release Ready remains NO** (Release Redistribution Compliance Gate for all unresolved distributed model assets, plus formal production/public-trust signing and release governance, remain open, post-M13 gates). **Next target: Milestone 14 (Portfolio Packaging & Stop-Building Closure)** — starting it does not itself make the product publicly shipped or release-ready. See `ROADMAP.md` §18/§19/§20/§21/§31 and `PROJECT_STATUS.md`.  
 **Status:** Authoritative V1 product architecture for production development  
-**Last updated:** 2026-09-05
+**Last updated:** 2026-09-06
 
 ---
 
@@ -1264,7 +1264,10 @@ Milestone 12 — Product Rework & Cue Quality Recovery
 ✓ complete / CLOSED (2026-09-05) — Stage ① UI / Review Workflow Recovery (2026-09-04) and Stage ② Cue Production Quality Recovery (2026-09-05) both accepted; Clean Cues integrated.
 
 Product Hardening II & Full Regression Pass
-✓ complete / CLOSED (2026-09-05) via PR #16 — Step ② targeted seam regressions PASS; Step ④ local full regression (962 passed, 1 skipped, 1 xfailed) & clean-environment CI PASS; Step ⑤ owner Human Acceptance PASS; Feature Freeze remains active; packaging suspension lifted for scoped M13 release work; approved to advance into Milestone 13 (Release Candidate & Signed Release).
+✓ complete / CLOSED (2026-09-05) via PR #16 — Step ② targeted seam regressions PASS; Step ④ local full regression (962 passed, 1 skipped, 1 xfailed) & clean-environment CI PASS; Step ⑤ owner Human Acceptance PASS; Feature Freeze remains active.
+
+Milestone 13 — Minimum Runtime-Fidelity Packaging Experiment (Phases A-F)
+✓ COMPLETE (2026-09-06) — Phase A-C ACCEPTED/FINAL ACCEPTED; Phase D (D0-D4) COMPLETE/PASS; Phase E (E1-E3) COMPLETE/PASS; Phase F (F1/F2/Runtime-Write/F3/F4) COMPLETE/PASS. Accepted packaging path: app-local embedded CPython runtime + Inno Setup 6.3.3 offline installer, local development-test signing only. Release Ready remains NO — Release Redistribution Compliance Gate and formal production/public-trust release signing/governance are open, post-M13 gates. Next target: Milestone 14 (Portfolio Packaging & Stop-Building Closure); starting it does not itself make GlyphCue publicly shipped or release-ready.
 ```
 
 ---

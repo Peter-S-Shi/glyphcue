@@ -17,16 +17,23 @@ from glyphcue.adapters.paddleocr_engine import (
     _crop_polygon_region,
     _sort_polygons_in_reading_order,
 )
+from glyphcue.adapters.runtime_models import require_packaged_onnx_model
 
-# Optional local overrides for offline/pinned-artifact environments (e.g. a
-# private test machine with no internet access). Neither is required for a
-# normal `pip install -e ".[directml]"`: RapidOCR manages its own model
-# download/cache on first use, the same way paddleocr/paddlepaddle already
-# do for the Paddle path -- GlyphCue does not bundle or version the .onnx
-# weights itself. See docs/adr/0001-ocr-runtime-selection.md's Milestone 11
-# addendum for the model provenance/packaging contract.
+# Optional local package override for offline/pinned-artifact environments.
+# Model paths are resolved through glyphcue.adapters.runtime_models so packaged
+# runs stay bound to the frozen model set instead of RapidOCR's default
+# first-use model-host retrieval.
 _DEFAULT_PACKAGES_DIR = Path(os.environ.get("GLYPHCUE_DIRECTML_PACKAGES_DIR", ""))
 _DEFAULT_MODELS_DIR = Path(os.environ.get("GLYPHCUE_DIRECTML_MODELS_DIR", ""))
+
+
+def _component_session_providers(component: Any) -> tuple[str, ...]:
+    wrapper = getattr(component, "session", None)
+    ort_session = getattr(wrapper, "session", None)
+    get_providers = getattr(ort_session, "get_providers", None)
+    if not callable(get_providers):
+        return ()
+    return tuple(str(provider) for provider in get_providers())
 
 
 def _construct_rapidocr(
@@ -45,6 +52,9 @@ def _construct_rapidocr(
     params: dict[str, Any] = {
         "Global.use_cls": False,
         "EngineConfig.onnxruntime.use_dml": use_dml,
+        "Det.model_path": str(require_packaged_onnx_model("det_medium")),
+        "Rec.model_path": str(require_packaged_onnx_model("rec_small")),
+        "Cls.model_path": str(require_packaged_onnx_model("cls_mobile")),
     }
     if models_dir is not None:
         params["Global.model_root_dir"] = models_dir
@@ -178,6 +188,12 @@ class DirectMlOcrEngine:
             backend="directml",
             backend_version="onnxruntime-directml",
         )
+
+    def uses_directml_provider(self) -> bool:
+        if self._engine is None:
+            return False
+        providers = _component_session_providers(getattr(self._engine, "text_rec", None))
+        return bool(providers) and providers[0] == "DmlExecutionProvider"
 
     def shutdown(self) -> None:
         self._engine = None

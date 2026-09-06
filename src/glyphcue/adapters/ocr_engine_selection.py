@@ -30,11 +30,11 @@ def _directml_probe_succeeds(language: str) -> bool:
     probe = DirectMlOcrEngine(language)
     try:
         probe.initialize()
+        return probe.uses_directml_provider()
     except OcrInitializationError:
         return False
     finally:
         probe.shutdown()
-    return True
 
 
 def create_ocr_engine(language: str, *, prefer_directml: bool = False) -> OcrEngine:
