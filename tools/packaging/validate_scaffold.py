@@ -559,6 +559,121 @@ def test_launcher_provenance_reflects_actual_compiled_source_not_stale_constant(
     print("[OK] test_launcher_provenance_reflects_actual_compiled_source_not_stale_constant passed")
 
 
+def test_gpl_ffmpeg_codec_guard_fails_closed_on_forbidden_libraries(tmp_dir: Path) -> None:
+    """v1.0.0 Public Distribution Gate A: PyAV's official Windows wheel vendors
+    an FFmpeg build compiled with --enable-gpl (confirmed by libx264/libx265
+    presence). Removing just those external codec DLLs does not relicense the
+    remaining avcodec/avformat/avutil binaries back to LGPL -- FFmpeg's own
+    policy is that enabling any GPL-only component makes the GPL apply to the
+    whole build. The real fix is a verified LGPL-only FFmpeg build (see
+    docs/v1_public_distribution_gate_a_compliance_audit.md); this guard must
+    fail closed if a forbidden GPL-only codec library is ever found in a
+    packaged app_root."""
+    from tools.packaging.verify_no_gpl_ffmpeg_codecs import (
+        assert_no_gpl_ffmpeg_codec_libraries,
+        scan_for_forbidden_gpl_codec_libraries,
+    )
+
+    dirty_root = tmp_dir / "gpl_guard_dirty_root"
+    dirty_root.mkdir(parents=True, exist_ok=True)
+    (dirty_root / "lib").mkdir(exist_ok=True)
+    (dirty_root / "lib" / "av.libs").mkdir(exist_ok=True)
+    (dirty_root / "lib" / "av.libs" / "libx264-165-deadbeef.dll").write_bytes(b"fake")
+    (dirty_root / "lib" / "av.libs" / "avcodec-62-deadbeef.dll").write_bytes(b"fake")
+
+    hits = scan_for_forbidden_gpl_codec_libraries(dirty_root)
+    assert hits == ["lib/av.libs/libx264-165-deadbeef.dll"], hits
+
+    raised = False
+    try:
+        assert_no_gpl_ffmpeg_codec_libraries(dirty_root)
+    except RuntimeError as exc:
+        raised = True
+        assert "libx264-165-deadbeef.dll" in str(exc)
+    assert raised, "Must fail closed (raise) when a GPL-only codec library is present"
+
+    clean_root = tmp_dir / "gpl_guard_clean_root"
+    clean_root.mkdir(parents=True, exist_ok=True)
+    (clean_root / "lib").mkdir(exist_ok=True)
+    (clean_root / "lib" / "avcodec-62-deadbeef.dll").write_bytes(b"fake")
+
+    assert scan_for_forbidden_gpl_codec_libraries(clean_root) == []
+    assert_no_gpl_ffmpeg_codec_libraries(clean_root)  # must not raise
+    print("[OK] test_gpl_ffmpeg_codec_guard_fails_closed_on_forbidden_libraries passed")
+
+
+def test_lgpl_core_identity_check_rejects_wrong_content_at_correct_filenames(tmp_dir: Path) -> None:
+    """Strengthened guard requirement: filename scanning alone is not
+    sufficient evidence that avcodec/avformat came from the verified LGPL
+    build. A GPL-configured core DLL simply renamed/placed under the correct
+    plain filename (with libx264/libx265 absent) must still be rejected by
+    content (SHA-256) identity, not accepted merely because no forbidden
+    filename is present."""
+    from tools.packaging.verify_no_gpl_ffmpeg_codecs import (
+        assert_lgpl_ffmpeg_core_identities,
+        find_core_ffmpeg_dlls,
+    )
+
+    root = tmp_dir / "lgpl_identity_test_root"
+    lib_dir = root / "lib" / "av.libs"
+    lib_dir.mkdir(parents=True, exist_ok=True)
+
+    # Wrong content (not the pinned LGPL build) at exactly the right plain
+    # filenames -- no libx264/libx265 filename anywhere, so a filename-only
+    # scan would see nothing wrong.
+    for plain_name in (
+        "avutil-60.dll",
+        "avcodec-62.dll",
+        "avformat-62.dll",
+        "avdevice-62.dll",
+        "avfilter-11.dll",
+        "swscale-9.dll",
+        "swresample-6.dll",
+    ):
+        (lib_dir / plain_name).write_bytes(b"not the verified LGPL build")
+
+    found = find_core_ffmpeg_dlls(root)
+    assert set(found) == {
+        "avutil-60.dll", "avcodec-62.dll", "avformat-62.dll", "avdevice-62.dll",
+        "avfilter-11.dll", "swscale-9.dll", "swresample-6.dll",
+    }, found
+
+    raised = False
+    try:
+        assert_lgpl_ffmpeg_core_identities(root)
+    except RuntimeError as exc:
+        raised = True
+        assert "identity mismatch" in str(exc)
+    assert raised, (
+        "Must fail closed when core DLL content does not match the pinned "
+        "LGPL build, even though no forbidden filename is present"
+    )
+    print("[OK] test_lgpl_core_identity_check_rejects_wrong_content_at_correct_filenames passed")
+
+
+def test_lgpl_ffmpeg_replacement_fails_closed_on_archive_hash_mismatch(tmp_dir: Path) -> None:
+    """apply_lgpl_ffmpeg_replacement must refuse to proceed if the archive it
+    is given does not match the pinned SHA-256 -- never apply an unverified
+    archive's contents."""
+    from tools.packaging.lgpl_ffmpeg_replacement import apply_lgpl_ffmpeg_replacement
+
+    fake_archive = tmp_dir / "lgpl_hash_mismatch_test" / "fake.zip"
+    fake_archive.parent.mkdir(parents=True, exist_ok=True)
+    fake_archive.write_bytes(b"not the real pinned archive")
+
+    fake_app_root = tmp_dir / "lgpl_hash_mismatch_test" / "app_root"
+    (fake_app_root / "lib" / "av.libs").mkdir(parents=True, exist_ok=True)
+
+    raised = False
+    try:
+        apply_lgpl_ffmpeg_replacement(fake_app_root, fake_archive)
+    except ValueError as exc:
+        raised = True
+        assert "does not match pinned SHA-256" in str(exc)
+    assert raised, "Must fail closed on archive SHA-256 mismatch, never apply unverified content"
+    print("[OK] test_lgpl_ffmpeg_replacement_fails_closed_on_archive_hash_mismatch passed")
+
+
 def run_all_scaffold_tests() -> bool:
     """Run complete scaffold validation suite."""
     test_dir = REPO_ROOT / "temp_scaffold_test"
@@ -581,6 +696,9 @@ def run_all_scaffold_tests() -> bool:
         test_uninstaller_forcibly_removes_app_root_preserving_user_data()
         test_explicit_purge_resolves_userprofile_via_getenv_not_invalid_constant()
         test_launcher_provenance_reflects_actual_compiled_source_not_stale_constant()
+        test_gpl_ffmpeg_codec_guard_fails_closed_on_forbidden_libraries(test_dir)
+        test_lgpl_core_identity_check_rejects_wrong_content_at_correct_filenames(test_dir)
+        test_lgpl_ffmpeg_replacement_fails_closed_on_archive_hash_mismatch(test_dir)
         print("\nALL PHASE A/C SCAFFOLD & FROZEN-INPUT VALIDATION TESTS PASSED (INCLUDING REGRESSIONS).")
         return True
     finally:

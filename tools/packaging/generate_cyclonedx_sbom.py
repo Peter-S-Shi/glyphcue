@@ -1,8 +1,8 @@
 """CycloneDX 1.6 JSON SBOM Generator for GlyphCue Release Packaging.
 
 Consumes payload_manifest.json and outputs valid CycloneDX 1.6 JSON (specVersion: '1.6').
-First-party and unresolved components carry NOASSERTION license expressions per
-Wayfinder Issue #24 and #26 charter.
+First-party components carry the resolved MIT license; unresolved third-party
+components retain NOASSERTION where appropriate.
 """
 
 from __future__ import annotations
@@ -11,8 +11,24 @@ import argparse
 import hashlib
 import json
 import sys
+import subprocess
 from pathlib import Path
 from typing import Any
+
+
+def current_source_commit_timestamp() -> str:
+    """Return a deterministic UTC timestamp for the Git HEAD being packaged."""
+    result = subprocess.run(
+        ["git", "show", "-s", "--format=%cI", "HEAD"],
+        cwd=Path(__file__).resolve().parents[2],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    value = result.stdout.strip()
+    if not value:
+        raise RuntimeError("Unable to resolve Git HEAD commit timestamp for SBOM")
+    return value
 
 
 def generate_cyclonedx_sbom(manifest_path: Path, output_path: Path | None = None) -> dict[str, Any]:
@@ -42,27 +58,27 @@ def generate_cyclonedx_sbom(manifest_path: Path, output_path: Path | None = None
         elif role == "first_party_application_source":
             comp_key = "glyphcue-core"
             comp_name = "glyphcue"
-            comp_version = "0.1.0"
+            comp_version = "1.0.0"
             comp_type = "application"
-            license_expr = "NOASSERTION"
+            license_expr = "MIT"
         elif role == "first_party_database_migration":
             comp_key = "glyphcue-migrations"
             comp_name = "glyphcue-persistence-migrations"
-            comp_version = "0.1.0"
+            comp_version = "1.0.0"
             comp_type = "data"
-            license_expr = "NOASSERTION"
+            license_expr = "MIT"
         elif role == "onnx_model_weights":
             comp_key = "ppocr-onnx-models"
             comp_name = "paddleocr-onnx-models"
             comp_version = "v6"
             comp_type = "data"
-            license_expr = "NOASSERTION"  # Redistribution rights unconfirmed
+            license_expr = "Apache-2.0"
         elif role == "paddle_cpu_model_weights":
             comp_key = "ppocr-paddle-cpu-models"
             comp_name = "paddleocr-paddle-cpu-models"
             comp_version = "v6"
             comp_type = "data"
-            license_expr = "NOASSERTION"  # Redistribution rights unconfirmed
+            license_expr = "Apache-2.0"
         elif role == "qt_runtime_plugin":
             comp_key = "pyside6-qt-plugins"
             comp_name = "pyside6-plugins"
@@ -79,9 +95,9 @@ def generate_cyclonedx_sbom(manifest_path: Path, output_path: Path | None = None
         elif role == "first_party_launcher_pe":
             comp_key = "glyphcue-launcher"
             comp_name = "GlyphCue-Launcher"
-            comp_version = "0.1.0"
+            comp_version = "1.0.0"
             comp_type = "application"
-            license_expr = "NOASSERTION"
+            license_expr = "MIT"
         else:
             comp_key = f"other-{role}"
             comp_name = role
@@ -130,7 +146,7 @@ def generate_cyclonedx_sbom(manifest_path: Path, output_path: Path | None = None
         "serialNumber": serial_urn,
         "version": 1,
         "metadata": {
-            "timestamp": "2026-09-05T12:00:00Z",
+            "timestamp": current_source_commit_timestamp(),
             "tools": [
                 {
                     "vendor": "GlyphCue Packaging Scaffold",
@@ -141,8 +157,8 @@ def generate_cyclonedx_sbom(manifest_path: Path, output_path: Path | None = None
             "component": {
                 "type": "application",
                 "name": "GlyphCue",
-                "version": "0.1.0",
-                "licenses": [{"expression": "NOASSERTION"}],
+                "version": "1.0.0",
+                "licenses": [{"expression": "MIT"}],
                 "description": "Desktop Subtitle Workflow Application with Hardware-Accelerated OCR",
             },
         },

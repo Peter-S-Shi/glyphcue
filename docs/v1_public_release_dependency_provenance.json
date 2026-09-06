@@ -1,0 +1,82 @@
+{
+  "schema_version": "1.0",
+  "document_title": "GlyphCue v1.0.0 Public Distribution Gate — Public-Release Dependency & Governance Provenance",
+  "note": "This file records provenance introduced or resolved specifically for the v1.0.0 Public Distribution Gate (Issue #30). It does NOT modify or supersede the historical M13 frozen inventory at docs/m13_build_base_identity.json, which remains the authoritative record of what M13's own Phases A-F actually built and Owner-validated.",
+  "governing_issue": "#30",
+  "branch": "release/1.0.0-public-distribution",
+  "supersedes_m13_frozen_inventory": false,
+
+  "lgpl_ffmpeg_replacement": {
+    "reason": "PyAV 18.1.0's official Windows wheel vendors an FFmpeg build compiled with --enable-gpl (confirmed by libx264/libx265 presence). FFmpeg's own licensing policy makes the entire compiled build GPL-2.0-or-later as a whole once --enable-gpl is used. Fixed by replacing the vendored FFmpeg binary with a verified LGPL-only build; PyAV 18.1.0 itself and GlyphCue's media architecture are unchanged.",
+    "source_project": "BtbN/FFmpeg-Builds",
+    "release_tag": "autobuild-2026-09-06-13-06",
+    "archive_filename": "ffmpeg-n8.1.2-50-g1a748fe2cd-win64-lgpl-shared-8.1.zip",
+    "source_url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-09-06-13-06/ffmpeg-n8.1.2-50-g1a748fe2cd-win64-lgpl-shared-8.1.zip",
+    "archive_sha256": "0f86693cd5b8bcc61296cdbfd38c98817dd5491fa81a28b44b7e0a86965043fb",
+    "ffmpeg_version": "n8.1.2-50-g1a748fe2cd-20260906",
+    "ffmpeg_source_git_commit": "1a748fe2cd",
+    "license": "LGPL-3.0-only",
+    "license_verified_from": "Archive's own LICENSE.txt (GNU LESSER GENERAL PUBLIC LICENSE, Version 3)",
+    "confirmed_configure_flags": {
+      "verified_via": "Running the archive's own ffmpeg.exe -version and reading its reported configuration string",
+      "disabled_gpl_codecs": ["--disable-libx264", "--disable-libx265"],
+      "gpl_enabled": false
+    },
+    "core_dll_identities": {
+      "avutil-60.dll": "9b41bf41515bac464b2360cd0eb8bdbf60a2fd2d2e57b56b890c45449e4b0cf0",
+      "avcodec-62.dll": "43c1b8c0095b40b6ef4866a702997f689c0759b3043a34f49c7d76848e221485",
+      "avformat-62.dll": "9c76c9f6b847152b9ef93f4f9964f5633eb27838c60778e04928f4499ae94767",
+      "avdevice-62.dll": "e83f4c1930c210be9b7c1558ac798418452fcc383b550dd55a10c4ba0eb41bb1",
+      "avfilter-11.dll": "744fdd880e3ab08d28a8181c70df6e42c59c9f5c2775107545964a4cef64583e",
+      "swscale-9.dll": "1c58300c596d53ff5ac55ece65008bc74c9d28464442bf3bdb676049c1d476aa",
+      "swresample-6.dll": "927752b1918e7e99c39003e03609e507e3d649cf20916911800b9ecaaeecbf1c"
+    },
+    "matched_pyav_version": "18.1.0",
+    "matched_soname_versions": {
+      "avutil": 60, "avcodec": 62, "avformat": 62, "avdevice": 62,
+      "avfilter": 11, "swscale": 9, "swresample": 6
+    },
+    "removed_auxiliary_dll_prefixes": [
+      "libx264", "libx265", "libvpx", "libwebp", "libwebpmux", "libopus",
+      "libmp3lame", "libdav1d", "libSvtAv1Enc", "libvpl",
+      "libopencore-amrnb", "libopencore-amrwb", "libsharpyuv", "libiconv",
+      "libgcc_s_seh", "libwinpthread", "zlib1", "libstdc++"
+    ],
+    "validation_evidence_dir": "build_artifacts/v1_gate_a/lgpl_pyav_test/",
+    "validation_result": "PyAV 18.1.0 loaded successfully against these DLLs; decoded frame count, PTS sequence, and decoded frame bytes (SHA-256 of raw RGB24 arrays) on the canonical synthetic fixture are byte-identical to a GPL-configured baseline decode of the same fixture.",
+    "corresponding_source_package": {
+      "filename": "GlyphCue-v1.0.0-FFmpeg-LGPL-Corresponding-Source.zip",
+      "sha256": "fc59a64db0b932a63fb7432c57cfe850ba3caa07f73e9bec4437416e3240d3cc",
+      "size_bytes": 16859628,
+      "contents": [
+        "README.md (build identity, confirmed configure flags, contents manifest)",
+        "ffmpeg-n8.1.2-source.tar.gz (official FFmpeg source, tag n8.1.2, SHA-256 9fd092511605bbebafe095ea6d38d9e40f34d12f7386e1258372df8be0576eb7, from https://github.com/FFmpeg/FFmpeg/archive/refs/tags/n8.1.2.tar.gz)",
+        "btbn-ffmpeg-builds-source.tar.gz (BtbN/FFmpeg-Builds build-script repository, SHA-256 241274c42e8340b19ddd76ff62dba58d59c9a3b702d6cd94ecd3f637ba46aa6b, from https://github.com/BtbN/FFmpeg-Builds/archive/refs/heads/master.tar.gz)",
+        "FFMPEG-LGPL-3.0-LICENSE.txt (verbatim LGPLv3 text from the distributed build's own LICENSE.txt, SHA-256 da7eabb7bafdf7d3ae5e9f223aa5bdc1eece45ac569dc21b3b037520b4464768)"
+      ],
+      "purpose": "Prepared as a GitHub v1.0.0 Release asset (not merely linked to the mutable BtbN release page) per FFmpeg's own distribution-compliance guidance (https://www.ffmpeg.org/legal.html). Staged under build_artifacts/v1_gate_a/ pending the actual GitHub Release publication (not performed this session)."
+    },
+    "packaging_guard_module": "tools/packaging/lgpl_ffmpeg_replacement.py",
+    "identity_verification_module": "tools/packaging/verify_no_gpl_ffmpeg_codecs.py"
+  },
+
+  "owner_governance_decisions": {
+    "license_decision": {
+      "status": "RESOLVED",
+      "decision": "GlyphCue's own source code is licensed under the MIT License, consistent with the Owner's Vocabulary App MIT posture.",
+      "artifact": "LICENSE (repository root, and copied into the installed application at app_root/LICENSE)"
+    },
+    "signing_policy_decision": {
+      "status": "RESOLVED",
+      "decision": "The existing self-signed Authenticode development certificate (CN=GlyphCue Development Test Certificate, O=GlyphCue Local Test Root, thumbprint DEDF7D0881E3A172CC018B63CCCF69FC51333AFC) is accepted for v1.0.0 public distribution, with explicit SmartScreen / not-publicly-trusted disclosure to end users. Formal production/public-trust signing is not a v1.0.0 blocker.",
+      "not_yet_done": "The explicit SmartScreen/not-publicly-trusted disclosure text for the README/release notes and installer has not yet been drafted in this pass."
+    }
+  },
+
+  "third_party_notices_surface": {
+    "in_app_notices_file": "app_root/legal/THIRD-PARTY-NOTICES.txt",
+    "in_app_license_texts_dir": "app_root/legal/third_party_licenses/",
+    "generator": "tools/packaging/generate_third_party_notices.py",
+    "full_license_texts_bundled": ["docs/licenses/lgpl-3.0.txt", "docs/licenses/apache-2.0.txt"]
+  }
+}

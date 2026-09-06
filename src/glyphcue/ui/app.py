@@ -130,7 +130,7 @@ class GlyphCueWorkbench(QMainWindow):
         brand_logo.setObjectName("brandLogoBox")
         brand_label = QLabel("GlyphCue")
         brand_label.setObjectName("brandLabel")
-        app_badge = QLabel("v0.1.0 · LOCAL")
+        app_badge = QLabel("v1.0.0 · LOCAL")
         app_badge.setObjectName("appBadge")
         brand_box.addWidget(brand_logo)
         brand_box.addWidget(brand_label)

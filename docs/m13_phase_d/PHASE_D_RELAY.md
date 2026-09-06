@@ -1,7 +1,7 @@
 # GlyphCue — Phase D Relay Authority
 
 **Document type:** Public Canonical Phase D Relay Document  
-**Status:** Phase D COMPLETE / PASS. Phase E COMPLETE / PASS. Phase F COMPLETE / PASS. Milestone 13 COMPLETE. Release Ready = NO (Release Redistribution Compliance Gate and formal production/public-trust release signing and governance remain required).
+**Status:** Phase D COMPLETE / PASS. Phase E COMPLETE / PASS. Phase F COMPLETE / PASS. Milestone 13 COMPLETE (merged via PR #29). Post-M13 Public Distribution Gate (Issue #30, PR #31) CLOSED & ACCEPTED. Release Ready = NO; Portfolio Packaging Ready = NO (pending post-merge release sequence: merge PR #31 → create v1.0.0 tag on accepted main commit → generate final provenance.json & SHA256SUMS.txt → publish GitHub Release with all four assets: GlyphCue-Setup-1.0.0.exe, GlyphCue-v1.0.0-FFmpeg-LGPL-Corresponding-Source.zip, SHA256SUMS.txt, provenance.json → independent download verification).
 **Branch:** `milestone/13-release-candidate`  
 **Operating Model:** Risk-separated, Owner-executed, Agent-instrumented Validation
 **Phase C Closure Commit:** `00a3c65ccd7fca5180e94f242947c2438a0f9651`  
@@ -108,7 +108,7 @@ The previous Phase C accepted installer is superseded for further Phase D testin
 - **Final D1 Result:** **PASS**. Owner validation confirmed clean offline install, first launch, reboot, and relaunch on qualified Environment B.
 - **Final D2 Result:** **PASS**. Owner validation on the real RTX 3060 Windows host confirmed `DirectMlOcrEngine`, `DirectMlTextDetector`, ONNX Runtime sessions reporting `['DmlExecutionProvider', 'CPUExecutionProvider']` with DirectML first, and bounded OCR smoke returning `GLYPHCUE DIRECTML 123`.
 - **Final D3 Result:** **PASS**. Owner validation on qualified offline Environment B confirmed `PaddleOcrEngine`, `PaddleOcrTextDetector`, offline initialization from packaged artifacts, one detected polygon, and bounded CPU OCR smoke returning `GLYPHCUE TEST 123`.
-- **Current Status:** Phase D D4 reconciliation, Phase E owner-led validation, and Phase F owner-led lifecycle validation are all **COMPLETE / PASS**. Milestone 13 is **COMPLETE**. `Release Ready = NO` (Release Redistribution Compliance Gate and formal production/public-trust release signing and governance remain required — see Section 11).
+- **Current Status:** Phase D D4 reconciliation, Phase E owner-led validation, and Phase F owner-led lifecycle validation are all **COMPLETE / PASS**. Milestone 13 is **COMPLETE**. Post-M13 Public Distribution Gate (Issue #30, PR #31) is **CLOSED & ACCEPTED**. `Release Ready = NO` and `Portfolio Packaging Ready = NO` remain current until the post-merge release sequence (merge PR #31 → create v1.0.0 tag on accepted main commit → generate final provenance.json & SHA256SUMS.txt → publish GitHub Release with all four assets: `GlyphCue-Setup-1.0.0.exe`, `GlyphCue-v1.0.0-FFmpeg-LGPL-Corresponding-Source.zip`, `SHA256SUMS.txt`, `provenance.json` → independently verify downloads) completes.
 
 Before any Phase D retest installation, the owner/agent **must** independently verify the installer SHA-256 (`Get-FileHash GlyphCue-Setup.exe -Algorithm SHA256`).
 
@@ -227,7 +227,7 @@ Every agent or owner stopping normally, hitting quota exhaustion, encountering a
 - [x] All D1–D3 evidence collected, verified fail-closed, and reconciled
 - [x] Charter #26 acceptance criteria evaluated against D1–D3 evidence
 - [x] Phase D verdict rendered: **PASS**
-- [x] Progression permitted to Phase E at D4 closure. Phase E has since completed; Release Ready remains `NO`, and Phase F plus Release Redistribution Compliance Gate remain required.
+- [x] Progression permitted to Phase E at D4 closure. Phase E and Phase F have since completed; Milestone 13 is complete; Post-M13 Public Distribution Gate is closed; Release Ready remains NO and Portfolio Packaging Ready remains NO pending post-merge release sequence (merge PR #31 → create v1.0.0 tag → generate final provenance.json & SHA256SUMS.txt → publish GitHub Release with all four assets → independent download verification).
 - [x] Evidence recorded in `build_artifacts/phase_d/d4_verdict/`
 
 ### Phase F Lifecycle Finding (Not A Phase D Failure) — RESOLVED
@@ -303,13 +303,23 @@ screenshots, relay state, and machine-specific context are
 ## 10. Release Gate Sequencing & Release Readiness Boundary
 
 > [!IMPORTANT]
-> **Phase D, Phase E, and Phase F PASS do NOT make GlyphCue Release Ready.**
-> Per Issue #27, Phase D/E/F PASS complete Milestone 13's owner-executed validation scope only. The following compliance gates remain strictly required before any public release:
+> **Phase D, Phase E, and Phase F PASS completed Milestone 13's owner-executed validation scope.**
+> Subsequent post-M13 Public Distribution Gate (Issue #30, PR #31) has CLOSED & ACCEPTED redistribution and packaging compliance:
 > 
-> 1. **Release Redistribution Compliance Gate**: OPEN. Must be resolved for all distributed unresolved model assets before public release — the 3 ONNX model assets (`PP-OCRv6_det_medium.onnx`, `PP-OCRv6_rec_small.onnx`, `ch_ppocr_mobile_v2.0_cls_mobile.onnx`) and the 2 Paddle CPU model archives. None of the five is currently resolved; this gate is OPEN, not passed, for all of them.
-> 2. **Final Release Signing & Release Governance Verification**: formal production/public-trust code signing (the local self-signed test certificate used throughout Phases B-F is not a production signing identity) and final release governance sign-off.
+> 1. **Release Redistribution Compliance Gate**: CLOSED & ACCEPTED. All 5 OCR models resolved under Apache-2.0; GlyphCue licensed under MIT; PyAV FFmpeg replaced with pinned LGPL-3.0 build (`GlyphCue-v1.0.0-FFmpeg-LGPL-Corresponding-Source.zip`, SHA-256 `FC59A64DB0B932A63FB7432C57CFE850BA3CAA07F73E9BEC4437416E3240D3CC`).
+> 2. **Release Signing Policy**: Self-signed Authenticode (`CN=GlyphCue Development Test Certificate, O=GlyphCue Local Test Root`, thumbprint `DEDF7D0881E3A172CC018B63CCCF69FC51333AFC`) accepted by Owner for v1.0.0 public distribution with explicit SmartScreen / not-publicly-trusted disclosure; formal production/public-trust code signing is future hardening, NOT a v1.0.0 blocker.
+> 3. **Candidate Installer Frozen**: `GlyphCue-Setup-1.0.0.exe`, SHA-256 `F88C2FE2C6D226BD2FFF5ECFDC7E7F64DC32917B8C00597FB17D42B9A7244446` (Authenticode `Valid`).
 > 
-> **Current Release Status:** `Release Ready = NO`.
+> **Final Release Assets (4 Total):**
+> 1. `GlyphCue-Setup-1.0.0.exe` (SHA-256: `F88C2FE2C6D226BD2FFF5ECFDC7E7F64DC32917B8C00597FB17D42B9A7244446`)
+> 2. `GlyphCue-v1.0.0-FFmpeg-LGPL-Corresponding-Source.zip` (SHA-256: `FC59A64DB0B932A63FB7432C57CFE850BA3CAA07F73E9BEC4437416E3240D3CC`)
+> 3. `SHA256SUMS.txt`
+> 4. `provenance.json` (generated post-merge, bound to final `main` merge commit SHA and `v1.0.0` tag)
+> 
+> **Post-Merge Release Sequence:**
+> `merge PR #31 → create v1.0.0 tag on accepted main commit → generate final provenance.json and SHA256SUMS.txt → publish GitHub Release with all four assets → independently verify downloads → Portfolio Packaging Ready = YES / Milestone 14`
+> 
+> **Current Release Status:** `Release Ready = NO`; `Portfolio Packaging Ready = NO` (until the above post-merge sequence completes).
 
 ---
 
@@ -431,6 +441,7 @@ test certificate; the inner launcher was not recompiled or re-signed.
 ### Phase F Verdict
 
 Phase F is **COMPLETE / PASS**. Combined with Phase D and Phase E, Milestone
-13's owner-executed validation scope is **COMPLETE**. `Release Ready`
-remains **NO** pending the Release Redistribution Compliance Gate and formal
-release signing/governance (Section 10).
+13's owner-executed validation scope is **COMPLETE**. The post-M13 Public
+Distribution Gate (Issue #30, PR #31) is **CLOSED & ACCEPTED**. `Release Ready`
+remains **NO** and `Portfolio Packaging Ready` remains **NO** pending the post-merge
+release sequence with all four assets and independent download verification (Section 10).

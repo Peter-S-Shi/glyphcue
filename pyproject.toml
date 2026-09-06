@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "glyphcue"
-version = "0.1.0"
+version = "1.0.0"
 description = "Local-first difficult-subtitle reconstruction workbench (V1 production skeleton)."
 requires-python = ">=3.12"
 dependencies = [

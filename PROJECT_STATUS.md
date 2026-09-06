@@ -4,7 +4,7 @@
 
 ## Current milestone
 
-**Milestone 13 — Release Candidate & Signed Release / Minimum Runtime-Fidelity Packaging Experiment (Issue #27): Phase D COMPLETE / PASS; Phase E COMPLETE / PASS; Phase F COMPLETE / PASS; Milestone 13 COMPLETE; Release Ready = NO.**
+**Milestone 13 — Release Candidate & Signed Release / Minimum Runtime-Fidelity Packaging Experiment (Issue #27): COMPLETE / PASS (Phases A–F all passed; merged to `main` via PR #29); Post-M13 Public Distribution Gate (Issue #30, PR #31): CLOSED & ACCEPTED; Release Ready = NO; Portfolio Packaging Ready = NO.**
 
 Milestone 13 Minimum Runtime-Fidelity Packaging Experiment was executed on dedicated branch `milestone/13-release-candidate` governed by Wayfinder charter packages #17–#26 and execution issue #27:
 - **Phase A — Frozen Inputs & Experiment Scaffold: ACCEPTED (2026-09-05)**:
@@ -60,9 +60,17 @@ Milestone 13 Minimum Runtime-Fidelity Packaging Experiment was executed on dedic
   - **F4 — Explicit Purge: PASS (corrected).** Original attempt crashed at uninstall runtime with `Internal error: Unknown constant "userprofile"` — `{userprofile}` is not a valid Inno Setup constant; failure was narrowly scoped, with `app_root` already fully removed, the synthetic `%USERPROFILE%\.glyphcue` intact, and real user-data backups/hashes unaffected. Fixed (PR [#28](https://github.com/Peter-S-Shi/glyphcue/pull/28)) by resolving the purge path via `GetEnv('USERPROFILE')` with a fail-closed blank check before any deletion. Final retest PASS: `app_root` removed, synthetic `%USERPROFILE%\.glyphcue` removed, real user-data backup unaffected; owner subsequently restored real user data and confirmed the restored DB hash matches the pre-Phase-F baseline.
   - **Provenance Truth Audit (metadata-only, PR [#28](https://github.com/Peter-S-Shi/glyphcue/pull/28)):** found `generate_payload_manifest.py` recorded a hardcoded, never-accurate `source_artifact_sha256` constant for `GlyphCue.exe` regardless of which launcher source revision was actually compiled. Corrected to compute this value dynamically from the actual compiled `LAUNCHER_CS_SOURCE` in both authoritative build paths. Manifest-generation-code-only change — does not alter runtime, launcher behavior, or uninstall logic, so it does not invalidate and does not require rerunning the F1/F2/Runtime-Write/F3/F4 owner evidence above.
   - **Final metadata-reconciled installer**: SHA-256 `DBC855FB710A8B4BDB9B9F181942E61F2FEE404DD3B1ABDDE20CAC8E8A85A9F0`, 544,293,224 bytes, Authenticode Valid, signer thumbprint `DEDF7D0881E3A172CC018B63CCCF69FC51333AFC` (local test certificate; not a production signing identity). Rebuilt from the same corrective `app_root` after correcting `GlyphCue.exe`'s manifest provenance (see Provenance Truth Audit above); manifest-to-disk reconciliation confirmed 21,718/21,718 files, 0 missing, 0 mismatches; the inner `GlyphCue.exe` launcher binary is byte-identical to the historical candidate below.
-  - **Historical Owner-tested candidate (pre-provenance-reconciliation)**: SHA-256 `85B683221BFCA6DAC53E297449DABBE25925E7CAB4E0839847744C2897750BB7` — the exact installer Runtime-Write Prohibition, F3, and F4 above were actually validated against. Superseded only by the metadata-only provenance correction; no runtime/launcher/uninstall behavior differs between the two, so the F1/F2/Runtime-Write/F3/F4 evidence above is inherited unchanged per the Corrective Iteration Policy.
-- **Release Status**: **Release Ready = NO** (Phase D, Phase E, and Phase F PASS complete Milestone 13's owner-executed validation scope only; the Release Redistribution Compliance Gate and formal production/public-trust release signing and governance remain required).
-- **Release Redistribution Compliance Gate**: **OPEN** for all distributed unresolved model assets — the 3 ONNX model assets (`PP-OCRv6_det_medium.onnx`, `PP-OCRv6_rec_small.onnx`, `ch_ppocr_mobile_v2.0_cls_mobile.onnx`) and the 2 Paddle CPU model archives. None of the five is currently resolved.
+- **Post-M13 Public Distribution Gate (Issue #30, PR #31)**: **CLOSED & ACCEPTED (2026-09-06)**:
+  - **Gate A — Redistribution & Licensing Compliance Audit**: **PASS**.
+    - All 5 OCR model assets (`PP-OCRv6_det_medium.onnx`, `PP-OCRv6_rec_small.onnx`, `ch_ppocr_mobile_v2.0_cls_mobile.onnx`, and 2 Paddle CPU inference archives) resolved under Apache-2.0 via PaddlePaddle release announcement and RapidOCR ModelScope publication.
+    - GlyphCue source code licensed under MIT (root `LICENSE` added, aligned with Vocabulary App).
+    - PyAV 18.1.0 retained; its GPL-configured vendored FFmpeg runtime replaced with pinned LGPL-only shared FFmpeg build (BtbN/FFmpeg-Builds, SHA-256 `0f86693cd5b8bcc61296cdbfd38c98817dd5491fa81a28b44b7e0a86965043fb`), verified with exact SHA-256 content match on all 7 core DLLs and exclusion of all GPL-only codecs (`libx264`/`libx265`). Standalone corresponding-source archive created: `GlyphCue-v1.0.0-FFmpeg-LGPL-Corresponding-Source.zip` (SHA-256 `FC59A64DB0B932A63FB7432C57CFE850BA3CAA07F73E9BEC4437416E3240D3CC`).
+    - Third-party notices compliance surface shipped inside installed payload (`legal/THIRD-PARTY-NOTICES.txt` and `legal/third_party_licenses/`).
+    - Signing policy: self-signed Authenticode (`CN=GlyphCue Development Test Certificate, O=GlyphCue Local Test Root`, thumbprint `DEDF7D0881E3A172CC018B63CCCF69FC51333AFC`) accepted by Owner for v1.0.0 public distribution with explicit SmartScreen / not-publicly-trusted disclosure; formal production/public-trust signing is future hardening, NOT a v1.0.0 blocker.
+  - **Gate B — Minimum Real Public Distribution Payload & Candidate Freeze**: **PASS**.
+    - Rebuilt `app_root` (21,811 files), manifest-to-disk reconciliation confirmed (0 unindexed, 0 missing, all gates PASS).
+    - Final frozen candidate installer: `GlyphCue-Setup-1.0.0.exe`, SHA-256 `F88C2FE2C6D226BD2FFF5ECFDC7E7F64DC32917B8C00597FB17D42B9A7244446`, Authenticode `Valid`.
+- **Release Status**: **Release Ready = NO**; **Portfolio Packaging Ready = NO** (v1.0.0 release candidate is accepted and packaging/redistribution compliance gates are closed; both remain NO until the post-merge release sequence — PR merge → create v1.0.0 tag → generate final provenance.json & SHA256SUMS.txt → publish GitHub Release with all four assets → independent download verification — is completed).
 
 ### Validation
 - Clean Reconstruction A vs B Verification: **PASS** (21,711/21,711 unsigned files identical, signed PE identical, installer envelope PASS).
@@ -868,15 +876,14 @@ appears anywhere in the repository.
 
 ## Git / PR status
 
-- Authoritative state: `main` contains Milestone 12 Stage ② (PR [#15](https://github.com/Peter-S-Shi/glyphcue/pull/15)) and Product Hardening II & Full Regression (PR [#16](https://github.com/Peter-S-Shi/glyphcue/pull/16)); Product Hardening II is CLOSED / ACCEPTED.
-- Active working branch: none / no active hardening or implementation branch.
-- Product Hardening II vehicle: PR [#16](https://github.com/Peter-S-Shi/glyphcue/pull/16) — Product Hardening II & Full Regression Pass; completed integration vehicle.
-- Milestone 12 Stage ② vehicle: PR [#15](https://github.com/Peter-S-Shi/glyphcue/pull/15) — Milestone 12 Stage ②: Cue Production Quality Recovery (Cue Cleaner V0.6.1 Integration); completed integration vehicle for Stage ②.
+- Authoritative state: `main` contains Milestone 13 (PR [#29](https://github.com/Peter-S-Shi/glyphcue/pull/29)); Milestone 13 is COMPLETE / CLOSED.
+- Active working branch: `release/1.0.0-public-distribution` (PR [#31](https://github.com/Peter-S-Shi/glyphcue/pull/31) — Close GlyphCue v1.0.0 Public Distribution Gate; governing Issue [#30](https://github.com/Peter-S-Shi/glyphcue/issues/30)).
+- Public Distribution Gate vehicle: PR [#31](https://github.com/Peter-S-Shi/glyphcue/pull/31) — Gate A (Licensing & Redistribution Compliance) and Gate B (Minimum Real Public Distribution Payload & Candidate Freeze) are CLOSED & ACCEPTED.
 
 ## Unresolved
 
-- Release Ready = NO. Milestone 13 (Phases D, E, F) is COMPLETE, but Release Ready remains NO until the Release Redistribution Compliance Gate (all distributed unresolved model assets) and formal production/public-trust release signing and governance are resolved — both are post-M13 work, not part of Milestone 13's scope.
-- Packaging suspension lifted; packaging work may resume strictly within scoped Milestone 13 release/packaging activities.
+- `Release Ready = NO`; `Portfolio Packaging Ready = NO`. The candidate installer and redistribution compliance gates are fully resolved and accepted, but formal release tag, GitHub Release asset publication, and independent download verification have not yet occurred.
+- SmartScreen / not-publicly-trusted disclosure text is accepted policy and to be included in user-facing release notes and documentation upon publication.
 - Residual non-blocking evaluation findings preserved (informational, not release blockers on their own):
   - `sample_c`: Isolated window-boundary non-text reading (`"zh": "3\n8"`) on Cue 1 (1.1s), safely fail-closed with `ambiguous_languages: ["zh"]`; non-contaminating.
   - `sample_f`: One illegible Chinese layer at 661.1s left untranscribed in GT rather than guessed; rapid b-roll editor button glyphs flagged ambiguous.
@@ -884,6 +891,9 @@ appears anywhere in the repository.
 
 ## Next action
 
-1. Owner/ChatGPT Pre-Merge Governance Gate on PR [#28](https://github.com/Peter-S-Shi/glyphcue/pull/28) (kept Draft pending this gate); PR merge and Issue #27 closure follow once that gate clears.
-2. Post-Milestone-13: resolve the Release Redistribution Compliance Gate for all distributed unresolved model assets (3 ONNX model assets + 2 Paddle CPU model archives).
-3. Post-Milestone-13: complete formal production/public-trust release signing (the local self-signed test certificate used throughout Phases B-F is not a production signing identity) and final release governance verification.
+1. Merge PR [#31](https://github.com/Peter-S-Shi/glyphcue/pull/31) into `main`.
+2. Create `v1.0.0` tag on the accepted `main` merge commit.
+3. Generate final `provenance.json` (binding the final `main` merge commit/tag and frozen installer hash) and `SHA256SUMS.txt`.
+4. Formally publish the GlyphCue `v1.0.0` GitHub Release attaching all four release assets: `GlyphCue-Setup-1.0.0.exe` (SHA-256 `F88C2FE2C6D226BD2FFF5ECFDC7E7F64DC32917B8C00597FB17D42B9A7244446`), `GlyphCue-v1.0.0-FFmpeg-LGPL-Corresponding-Source.zip` (SHA-256 `FC59A64DB0B932A63FB7432C57CFE850BA3CAA07F73E9BEC4437416E3240D3CC`), `SHA256SUMS.txt`, and `provenance.json`, with release notes including SmartScreen disclosure.
+5. Independently verify downloads and clean installation from public assets.
+6. Portfolio Packaging Ready = YES; advance to Milestone 14 (Portfolio Packaging & Stop-Building Closure).
