@@ -159,7 +159,7 @@ Both previously-blocking items are now resolved and empirically verified against
 - PyAV import + canonical fixture decode, run under the rebuilt `app_root`'s own embedded CPython 3.12 (not the dev venv): frame count, PTS sequence, and decoded frame bytes (SHA-256 of raw RGB24 arrays) **byte-identical** to the original GPL-configured baseline: **PASS**
 - Installer signed with the existing self-signed development certificate, Authenticode `Valid`: **PASS**
 
-**Final candidate installer:** SHA-256 (signed) `bf576d81e626a04f0b0cfd78f834a748cb23c184af14e6720774185fb234ba69`, 611,055,240 bytes. See `build_artifacts/v1_public_release/provenance.json` and `SHA256SUMS.txt` (machine-local, gitignored) for the full candidate release-asset record.
+**Final frozen candidate installer:** `GlyphCue-Setup-1.0.0.exe`, SHA-256 (signed) `F88C2FE2C6D226BD2FFF5ECFDC7E7F64DC32917B8C00597FB17D42B9A7244446`, Authenticode `Valid`. Standalone corresponding-source archive: `GlyphCue-v1.0.0-FFmpeg-LGPL-Corresponding-Source.zip`, SHA-256 `FC59A64DB0B932A63FB7432C57CFE850BA3CAA07F73E9BEC4437416E3240D3CC`.
 
 ### Remaining before tagging/publishing v1.0.0 (not performed this session, per instruction)
 

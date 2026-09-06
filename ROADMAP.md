@@ -2,7 +2,7 @@
 
 **Document type:** Authoritative V1 milestone roadmap  
 **Project:** GlyphCue  
-**Lifecycle phase:** Production Development → Milestone 10 complete; **Milestone 11 (Product Hardening & Full Regression) is CLOSED (2026-09-04)** (Release Acceptance rejected by human adjudication); **Milestone 12 (Product Rework & Cue Quality Recovery) is CLOSED & ACCEPTED (2026-09-05)**: Stage ① (UI / Review Workflow Recovery) and Stage ② (Cue Production Quality Recovery via Cue Cleaner V0.6.1 "Clean Cues" integration) both completed and accepted; **Product Hardening II & Full Regression is CLOSED & ACCEPTED (2026-09-05)** via PR #16; **Milestone 13 (redefined as the Minimum Runtime-Fidelity Packaging Experiment, Issues #17/#26/#27) is COMPLETE — Phases A–F all PASS**; Feature Freeze remains ACTIVE; **Release Ready remains NO** (Release Redistribution Compliance Gate for all unresolved distributed model assets, plus formal production/public-trust signing and release governance, remain open, post-M13 gates); **Milestone 14 (Portfolio Packaging & Stop-Building Closure) is the next development target** — starting it does not itself make the product publicly shipped or release-ready. See §19/§20/§21/§31 and `PROJECT_STATUS.md`.  
+**Lifecycle phase:** Production Development → Milestone 10 complete; **Milestone 11 (Product Hardening & Full Regression) is CLOSED (2026-09-04)** (Release Acceptance rejected by human adjudication); **Milestone 12 (Product Rework & Cue Quality Recovery) is CLOSED & ACCEPTED (2026-09-05)**: Stage ① (UI / Review Workflow Recovery) and Stage ② (Cue Production Quality Recovery via Cue Cleaner V0.6.1 "Clean Cues" integration) both completed and accepted; **Product Hardening II & Full Regression is CLOSED & ACCEPTED (2026-09-05)** via PR #16; **Milestone 13 (redefined as the Minimum Runtime-Fidelity Packaging Experiment, Issues #17/#26/#27) is COMPLETE — Phases A–F all PASS (merged via PR #29)**; **Post-M13 Public Distribution Gate (Issue #30, PR #31) is CLOSED & ACCEPTED**: 5 OCR models resolved under Apache-2.0, GlyphCue under MIT, PyAV 18.1.0 vendored FFmpeg replaced with pinned LGPL-3.0 shared build, candidate installer frozen as `GlyphCue-Setup-1.0.0.exe` (SHA-256 `F88C2FE2...`), self-signed Authenticode accepted by Owner with SmartScreen disclosure; Feature Freeze remains ACTIVE; **Release Ready remains NO**; **Portfolio Packaging Ready remains NO** (pending formal v1.0.0 GitHub Release publication, release tag, and independent download verification). **Next development target: formal v1.0.0 release publication & verification, followed by Milestone 14 (Portfolio Packaging & Stop-Building Closure)**. See §19/§20/§21/§31 and `PROJECT_STATUS.md`.  
 **Status:** Current V1 execution roadmap  
 
 **Last updated:** 2026-09-06
@@ -159,11 +159,11 @@ an unused research candidate.
 
 Signing:
 
-> Local M13 development-test certificate signing only (`CN=GlyphCue Development Test Certificate, O=GlyphCue Local Test Root`). This is **not** a production/public-trust signing identity — formal release signing remains a separate, unresolved post-M13 gate.
+> Self-signed development certificate (`CN=GlyphCue Development Test Certificate, O=GlyphCue Local Test Root`, thumbprint `DEDF7D0881E3A172CC018B63CCCF69FC51333AFC`) is accepted by Owner for v1.0.0 public distribution, with explicit SmartScreen / not-publicly-trusted disclosure to end users. Formal production/public-trust code signing is future hardening, NOT a v1.0.0 blocker.
 
 Public release readiness:
 
-> Packaging and installer-lifecycle validation (Phases A–F: offline install, DirectML/CPU-fallback runtime fidelity, performance/output-quality benchmarking, repair/upgrade/uninstall lifecycle) is COMPLETE and PASS. This does **not** make GlyphCue publicly shipped or Release Ready: the Release Redistribution Compliance Gate (all distributed unresolved model assets) and formal production/public-trust release signing and governance remain open. `Release Ready = NO`.
+> Packaging and installer-lifecycle validation (Phases A–F) is COMPLETE and PASS; the post-M13 Public Distribution Gate (Issue #30, PR #31) is CLOSED & ACCEPTED (5 OCR models resolved under Apache-2.0, GlyphCue under MIT, PyAV FFmpeg replaced with pinned LGPL build, candidate installer frozen as `GlyphCue-Setup-1.0.0.exe`, SHA-256 `F88C2FE2...`). This does not itself make GlyphCue publicly shipped or Release Ready until formal v1.0.0 GitHub Release publication, release tag, and independent download verification occur. `Release Ready = NO`; `Portfolio Packaging Ready = NO`.
 
 ---
 
@@ -1860,18 +1860,16 @@ Phase A ACCEPTED
 → Phase F COMPLETE / PASS
 ```
 
-**All PASSED (2026-09-06). Milestone 13 is COMPLETE.**
+**All PASSED (2026-09-06). Milestone 13 is COMPLETE (merged to `main` via PR #29).**
 
-This does **not** mean V1 is a shipped product or that GlyphCue is
-Release Ready. The original goal's full release checklist above (`RC
-built → clean install passed → manual acceptance passed → release
-blockers = 0 → signed/formal installer accepted → GitHub release ready →
-V1 is a shipped product`) was **not** this milestone's actual acceptance
-gate and remains **unmet and unscheduled** as a numbered milestone: the
-Release Redistribution Compliance Gate (for all distributed unresolved
-model assets) and formal production/public-trust release signing and
-governance are still open, post-M13 gates, tracked separately from
-Milestone 14 (§21) below. `Release Ready = NO`.
+Post-Milestone-13 Public Distribution Gate (Issue #30, PR #31) has also **CLOSED & ACCEPTED**:
+- All 5 OCR models resolved under Apache-2.0.
+- GlyphCue source code licensed under MIT.
+- PyAV 18.1.0 vendored FFmpeg replaced with pinned LGPL-3.0 build; standalone corresponding-source archive created (`GlyphCue-v1.0.0-FFmpeg-LGPL-Corresponding-Source.zip`, SHA-256 `FC59A64DB0B932A63FB7432C57CFE850BA3CAA07F73E9BEC4437416E3240D3CC`).
+- Candidate installer frozen: `GlyphCue-Setup-1.0.0.exe`, SHA-256 `F88C2FE2C6D226BD2FFF5ECFDC7E7F64DC32917B8C00597FB17D42B9A7244446` (Authenticode `Valid`).
+- Self-signed Authenticode accepted by Owner with explicit SmartScreen / not-publicly-trusted disclosure; formal production/public-trust signing is future hardening, NOT a v1.0.0 blocker.
+
+`Release Ready = NO` and `Portfolio Packaging Ready = NO` remain current until formal v1.0.0 GitHub Release publication, release tag, and independent download verification are executed.
 
 ---
 
@@ -2227,14 +2225,17 @@ Milestone 12 — Product Rework & Cue Quality Recovery ✓ complete / CLOSED (20
   ├─ Stage ① UI / Review Workflow Recovery           ✓ complete (2026-09-04)
   └─ Stage ② Cue Production Quality Recovery          ✓ complete (2026-09-05)
 Product Hardening II & Full Regression              ✓ complete / CLOSED (2026-09-05, PR #16)
-Milestone 13 — Minimum Runtime-Fidelity Packaging Experiment (Phases A-F) ✓ complete / COMPLETE (2026-09-06) — see §20
+Milestone 13 — Minimum Runtime-Fidelity Packaging Experiment (Phases A-F) ✓ complete / COMPLETE (2026-09-06, merged via PR #29) — see §20
+Post-M13 Public Distribution Gate (Issue #30, PR #31) ✓ complete / CLOSED & ACCEPTED (2026-09-06)
 
 Corrective Product Rework               CLOSED / ACCEPTED (2026-09-05)
 Product Hardening II & Full Regression  CLOSED / ACCEPTED (2026-09-05)
 Milestone 13 (Phases A-F)               COMPLETE / PASS (2026-09-06)
+Post-M13 Public Distribution Gate       CLOSED / ACCEPTED (2026-09-06)
 Feature Freeze                          ACTIVE
-Release / Packaging                     App-local CPython + Inno Setup 6.3.3 path validated under M13; dev-test signing only
-Release Ready                           NO (Release Redistribution Compliance Gate + production signing/release governance still open, post-M13)
+Release / Packaging                     App-local CPython + Inno Setup 6.3.3 path; candidate installer frozen as GlyphCue-Setup-1.0.0.exe (SHA-256 F88C2FE2...); self-signed Authenticode with SmartScreen disclosure
+Release Ready                           NO (pending formal v1.0.0 GitHub Release publication, release tag, and independent download verification)
+Portfolio Packaging Ready               NO (pending formal v1.0.0 release publication & verification)
 ```
 
 ---
@@ -2243,19 +2244,19 @@ Release Ready                           NO (Release Redistribution Compliance Ga
 
 The next engineering action is:
 
-> **Milestone 14 — Portfolio Packaging & Stop-Building Closure** (ROADMAP §21; may begin now that Milestone 13's engineering closure is complete)
+> **Formal v1.0.0 Release Publication & Verification → Milestone 14 (Portfolio Packaging & Stop-Building Closure)** (ROADMAP §21)
 
-**Milestone 13 — Minimum Runtime-Fidelity Packaging Experiment is COMPLETE (2026-09-06).**
+**Milestone 13 is COMPLETE (2026-09-06) and the Post-M13 Public Distribution Gate is CLOSED & ACCEPTED (2026-09-06).**
 All verification gates have been satisfied:
 1. **Phases A-C** (frozen inputs, primary runtime assembly, clean reconstruction & drift verification): ACCEPTED / FINAL ACCEPTED.
 2. **Phase D** (target-machine offline runtime & DirectML validation, D0-D4): COMPLETE / PASS.
 3. **Phase E** (representative performance & output-quality benchmarking, E1-E3): COMPLETE / PASS.
 4. **Phase F** (installer lifecycle, upgrade, repair & uninstall testing, F1/F2/Runtime-Write/F3/F4): COMPLETE / PASS, including corrective fixes and a metadata-only provenance reconciliation, preserved as historical fact in `PROJECT_STATUS.md`.
-5. **Accepted V1 Known Limitation Preserved**: Cue Cleaner V0.6.1 conservative contract preserved as a non-blocking V1 product trade-off; remaining cases resolved via manual Merge workflow.
-6. **Feature Freeze remains ACTIVE**.
-7. **Accepted packaging path**: app-local embedded CPython runtime + Inno Setup 6.3.3 offline installer, validated under Milestone 13; local development-test signing only.
-8. **Release Ready remains NO**: the Release Redistribution Compliance Gate (all distributed unresolved model assets) and formal production/public-trust release signing and governance are open, post-M13 gates — not part of Milestone 13 or Milestone 14's scope.
-9. **Next Target**: Milestone 14 (Portfolio Packaging & Stop-Building Closure, §21). Starting Milestone 14 does not itself make GlyphCue publicly shipped or Release Ready.
+5. **Post-M13 Public Distribution Gate (Gate A/B)**: CLOSED & ACCEPTED (5 OCR models resolved under Apache-2.0; GlyphCue licensed under MIT; PyAV FFmpeg replaced with pinned LGPL build; standalone corresponding source zip frozen; candidate installer frozen as `GlyphCue-Setup-1.0.0.exe`, SHA-256 `F88C2FE2...`; self-signed Authenticode accepted by Owner with SmartScreen disclosure).
+6. **Accepted V1 Known Limitation Preserved**: Cue Cleaner V0.6.1 conservative contract preserved as a non-blocking V1 product trade-off; remaining cases resolved via manual Merge workflow.
+7. **Feature Freeze remains ACTIVE**.
+8. **Release Ready remains NO; Portfolio Packaging Ready remains NO**: until the formal v1.0.0 GitHub Release is published with attached assets and independently verified.
+9. **Next Target**: Complete PR #31 merge, publish the formal `v1.0.0` GitHub Release and release tag, verify clean download, and advance to Milestone 14 (Portfolio Packaging & Stop-Building Closure, §21).
 
 ---
 
@@ -2320,7 +2321,7 @@ M8 completes the second ingestion path.
 
 M9 closes the accepted V1 product surface and formally declares Feature Freeze.
 
-M10–M13 convert engineering work into a finished, evaluated, hardened, and professionally legible product. (M13's packaging-lifecycle validation is COMPLETE; this does not mean V1 is publicly shipped — Release Ready remains NO until the post-M13 redistribution-compliance and production-signing/release-governance gates close.)
+M10–M13 convert engineering work into a finished, evaluated, hardened, and professionally legible product. (M13 is COMPLETE and post-M13 Public Distribution Gate is CLOSED & ACCEPTED; Release Ready and Portfolio Packaging Ready remain NO until formal v1.0.0 GitHub Release publication, release tag, and independent download verification.)
 
 ---
 

@@ -67,8 +67,10 @@
   },
   "gates": {
     "release_ready": false,
-    "redistribution_compliance": "OPEN",
-    "redistribution_compliance_scope": "All distributed unresolved model assets: 3 ONNX model assets (PP-OCRv6_det_medium.onnx, PP-OCRv6_rec_small.onnx, ch_ppocr_mobile_v2.0_cls_mobile.onnx) and 2 Paddle CPU model archives. Compliance is OPEN, not passed, for all five.",
+    "portfolio_packaging_ready": false,
+    "redistribution_compliance": "CLOSED_ACCEPTED",
+    "redistribution_compliance_scope": "All 5 OCR model assets resolved under Apache-2.0; GlyphCue under MIT; PyAV FFmpeg replaced with pinned LGPL-3.0 build; standalone corresponding source zip frozen; candidate installer frozen as GlyphCue-Setup-1.0.0.exe (SHA-256 F88C2FE2C6D226BD2FFF5ECFDC7E7F64DC32917B8C00597FB17D42B9A7244446); self-signed Authenticode accepted by Owner with SmartScreen disclosure.",
+    "public_distribution_gate": "CLOSED_ACCEPTED",
     "phase_d_verdict": "PASS",
     "phase_e_verdict": "PASS",
     "phase_e_required": false,
@@ -150,6 +152,7 @@
     }
   },
   "milestone_13_status": "COMPLETE",
-  "next_gate": "Post-M13: Release Redistribution Compliance Gate (all distributed unresolved model assets) and formal production/public-trust release signing and release governance. Release Ready remains NO until both are resolved.",
+  "public_distribution_gate_status": "CLOSED_ACCEPTED",
+  "next_gate": "Post-M13: Merge PR #31, publish formal v1.0.0 GitHub Release attaching GlyphCue-Setup-1.0.0.exe and corresponding source zip, tag v1.0.0, execute clean download verification, and advance to Milestone 14 (Portfolio Packaging). Release Ready and Portfolio Packaging Ready remain NO until published and verified.",
   "relay_document": "docs/m13_phase_d/PHASE_D_RELAY.md"
 }
