@@ -287,8 +287,8 @@ structure.
 - Phase E is **COMPLETE / PASS**.
 - Phase F has since completed (Section 11); Milestone 13 is **COMPLETE**.
 - `Release Ready = NO`.
-- Issue #27 remains open because it governs Phases A-F and final release
-  closure until the PR that carries this closure is merged.
+- Issue #27 is the completed execution record for Phases A-F; no Milestone
+  13 execution gate remains open.
 
 ---
 
