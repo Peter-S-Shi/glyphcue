@@ -1,4 +1,4 @@
-# GlyphCue
+﻿# GlyphCue
 
 **Local-first Windows subtitle reconstruction workbench.**
 
@@ -7,7 +7,7 @@
 [![UI PySide6](https://img.shields.io/badge/UI-PySide6%20(Qt6)-41CD52.svg)](https://www.qt.io/)
 [![Acceleration DirectML](https://img.shields.io/badge/acceleration-DirectML%20%7C%20ONNX-FF6F00.svg)](https://onnxruntime.ai/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Tests Passing](https://img.shields.io/badge/tests-962%20passed-brightgreen.svg)](tests/)
+[![Tests Passing](https://img.shields.io/badge/tests-967%20passed-brightgreen.svg)](tests/)
 
 ---
 
@@ -15,22 +15,22 @@
 
 GlyphCue transforms noisy, burned-in video subtitles and fragmented rolling captions into clean, structured, verified subtitle files.
 
-Burning subtitles into video pixels strips away timing, layout, and textual integrity. Traditional video-OCR approaches attempt frame-by-frame text extraction, which creates high-frequency timing jitter, OCR character noise bursts, and catastrophic failures on bilingual or stacked subtitle tracks. Automated speech recognition tools also produce fragmented, rolling text windows with redundant duplicate phrases.
+Burning subtitles into video pixels strips away timing, layout, and textual integrity. Traditional video-OCR approaches attempt frame-by-frame text extraction, which creates high-frequency timing jitter, OCR character noise bursts, and severe degradation on bilingual or stacked subtitle tracks. Automated speech recognition tools also produce fragmented, rolling text windows with redundant duplicate phrases.
 
-GlyphCue bridges the gap between raw optical evidence and broadcast-ready subtitle cues through selective frame difference gating, DirectML hardware-accelerated neural OCR, multi-frame temporal consensus, script-range layer isolation, conservative duplicate cleaning, and explainable review routing.
+GlyphCue bridges the gap between raw optical evidence and structured subtitle cues through selective frame difference gating, DirectML hardware-accelerated neural OCR, multi-frame temporal consensus, script-range layer isolation, conservative duplicate cleaning, and explainable review routing.
 
 ---
 
 ## Core Capabilities
 
 ### 1. Hardcoded Video Subtitle Reconstruction (Path A)
-- **Selective OCR Gating**: Gated by a mean-absolute pixel difference change detector, reducing expensive neural inference calls by ~75% compared to naive per-frame scanning.
-- **Hardware-Accelerated Inference**: Native ONNX Runtime DirectML engine executing at **>1.38x realtime** on standard Windows GPUs (e.g. RTX 3060), with fully self-contained offline CPU fallback.
-- **Multi-Frame Consensus**: State-run temporal clustering and majority-vote character reconciliation eliminate single-frame OCR glitches and boundary jitter.
+- **Selective OCR Gating**: Gated by a mean-absolute pixel difference change detector, reducing neural inference calls compared to naive per-frame scanning (~4x end-to-end throughput gain).
+- **Hardware-Accelerated Inference**: Native ONNX Runtime DirectML engine operating at a measured **1.387× realtime ratio** (median across timed benchmark runs on RTX 3060), with a self-contained offline CPU fallback (`PaddleOcrEngine`).
+- **Multi-Frame Consensus**: State-run temporal clustering and majority-vote character reconciliation mitigate single-frame OCR glitches and timing boundary noise.
 
 ### 2. Multilingual & Bilingual Track Separation
 - **Script-Range Attribution**: Distinguishes overlapping subtitle layers (such as simultaneous Japanese and Chinese, or English and Japanese) via fixed-point Unicode script clustering.
-- **Independent Track Reconstruction**: Reconstructs distinct subtitle tracks with dedicated timing rather than interleaving foreign-language lines into unreadable composite strings.
+- **Shared-Timing Multi-Layer Representation**: Reconstructs structured cues sharing timestamp boundaries with dedicated Language Layers (`Cue` ➔ `LanguageLayer[1..N]`), preventing foreign-language lines from interleaving into unreadable composite strings.
 
 ### 3. Rolling & Fragmented Caption Normalization (Path B)
 - **Temporal State-Machine Processing**: Ingests rolling, fragmented, or messy auto-caption transcripts (SRT, VTT, TXT) and consolidates sliding-window phrase repeats into discrete, coherent sentences.
@@ -41,7 +41,7 @@ GlyphCue bridges the gap between raw optical evidence and broadcast-ready subtit
 - **Monotonic Review Priority Scoring**: Automatically calculates an explainable quality score for each reconstructed cue, routing uncertain timestamps, low OCR confidence, or ambiguous attribution directly to human reviewers.
 
 ### 5. Local-First Persistence & Atomic Multi-Format Export
-- **100% Offline & Private**: All video decoding, neural OCR inference, and SQLite persistence happen locally on the user's workstation with zero cloud telemetry.
+- **Local-First & Offline**: Video decoding, neural OCR inference, and SQLite persistence execute entirely on the local workstation with zero cloud dependencies or telemetry.
 - **Atomic File Serialization**: Exports reviewed subtitle tracks to `.srt`, `.vtt`, `.ass`, and plain `.txt` via temporary-file-and-rename semantics, preventing file corruption or accidental source overwrites.
 
 ---
@@ -116,13 +116,13 @@ GlyphCue bridges the gap between raw optical evidence and broadcast-ready subtit
 
 | Technical Domain | Engineering Approach | Real Repository Evidence |
 |---|---|---|
-| **Hardware Acceleration & Fail-Closed Fallback** | Native `onnxruntime-directml` acceleration on Windows D3D12 devices paired with an automatic, fully offline `PaddleOcrEngine` CPU fallback using bundled model assets. | [`docs/adr/0001-ocr-runtime-selection.md`](docs/adr/0001-ocr-runtime-selection.md) |
+| **Hardware Acceleration & Fail-Closed Fallback** | Native `onnxruntime-directml` acceleration on Windows D3D12 devices (measured median `1.387×` realtime ratio) paired with an automatic, fully offline `PaddleOcrEngine` CPU fallback using bundled model assets. | [`docs/adr/0001-ocr-runtime-selection.md`](docs/adr/0001-ocr-runtime-selection.md) |
 | **Selective OCR Invocation** | Pixel-difference frame gating filters non-subtitle movement and static pauses, yielding a ~4x end-to-end processing throughput gain over dense scanning. | [`docs/adr/0002-selective-ocr-strategy.md`](docs/adr/0002-selective-ocr-strategy.md) |
-| **Multi-Frame Consensus** | Custom temporal state-run clustering algorithms vote on character sequences across stable frame runs, eliminating transient OCR artifacts. | [`docs/adr/0003-consensus-reconstruction-approach.md`](docs/adr/0003-consensus-reconstruction-approach.md) |
+| **Multi-Frame Consensus** | Custom temporal state-run clustering algorithms vote on character sequences across stable frame runs, suppressing single-frame OCR noise. | [`docs/adr/0003-consensus-reconstruction-approach.md`](docs/adr/0003-consensus-reconstruction-approach.md) |
 | **Cooperative Concurrency** | Qt Signal + worker thread contract (`Job`/`JobContext`) enforcing cooperative cancellation, terminal state guarantees, and responsive UI. | [`docs/adr/0004-media-architecture.md`](docs/adr/0004-media-architecture.md) |
-| **Multilingual Attribution** | Hand-crafted Unicode script range analysis separating mixed CJK/Latin layers without unpredictable cloud language-detection calls. | [`docs/adr/0005-multilingual-timing-simplification.md`](docs/adr/0005-multilingual-timing-simplification.md) |
+| **Multilingual Attribution** | Hand-crafted Unicode script range analysis separating mixed CJK/Latin layers into structured language layers sharing Cue timing. | [`docs/adr/0005-multilingual-timing-simplification.md`](docs/adr/0005-multilingual-timing-simplification.md) |
 | **Reproducible Packaging** | Dual clean reconstructions verified across 21,811 payload files with 0 unsigned drift, CycloneDX SBOM, and pinned LGPL FFmpeg DLLs. | [`docs/m13_dependency_and_packaging_audit.md`](docs/m13_dependency_and_packaging_audit.md) |
-| **Comprehensive Regression Baseline** | 962 unit, integration, and UI tests guarding state persistence, migration replay, cleaner invariants, and export contracts. | [`tests/`](tests/) |
+| **Comprehensive Regression Baseline** | 967 unit, integration, and UI tests (plus 1 skipped, 1 xfailed) guarding state persistence, migration replay, cleaner invariants, and export contracts. | [`tests/`](tests/) |
 
 ---
 
@@ -130,7 +130,7 @@ GlyphCue bridges the gap between raw optical evidence and broadcast-ready subtit
 
 ### Option A: Standalone Windows Installer (Recommended for Users)
 
-1. Download the latest `GlyphCue-Setup-1.0.0.exe` from [GitHub Releases](https://github.com/Peter-S-Shi/glyphcue/releases).
+1. Download the verified `GlyphCue-Setup-1.0.0.exe` from [GitHub Releases](https://github.com/Peter-S-Shi/glyphcue/releases/tag/v1.0.0).
 2. Run the installer.
    > **Note on Windows SmartScreen**: The installer is signed with a local Authenticode development certificate (`CN=GlyphCue Development Test Certificate`). When prompted by Windows SmartScreen, click **More info** → **Run anyway**.
 3. Launch **GlyphCue** from the Start Menu or desktop shortcut.
@@ -199,7 +199,7 @@ For detailed technical analysis, see [`BUILD_VS_INTEGRATE.md`](BUILD_VS_INTEGRAT
 - **Product Architecture**: [`GLYPHCUE_PRODUCT_ARCHITECTURE.md`](GLYPHCUE_PRODUCT_ARCHITECTURE.md) — Authoritative macro-architecture, system contracts, and module boundaries.
 - **Design Specifications**: [`DESIGN.md`](DESIGN.md) — UI interaction patterns, state management, and schema designs.
 - **Architectural Decision Records**: [`docs/adr/`](docs/adr/) — Historical technical rationale for OCR engines, selective frame policies, and media architectures.
-- **Product Roadmap & History**: [`ROADMAP.md`](ROADMAP.md) — Detailed milestone progression (M0 through M14).
+- **Product Roadmap & History**: [`ROADMAP.md`](ROADMAP.md) — Milestone progression and Stop-Building closure.
 - **Current Project Status**: [`PROJECT_STATUS.md`](PROJECT_STATUS.md) — Active verification status, gate closures, and release readiness.
 
 ---
