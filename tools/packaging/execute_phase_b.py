@@ -66,7 +66,9 @@ namespace GlyphCue.Launcher {
             }
             ProcessStartInfo psi = new ProcessStartInfo();
             psi.FileName = pythonExe;
-            psi.Arguments = "-m glyphcue.ui.app";
+            // -B: never write __pycache__/*.pyc into the installer-owned app root
+            // (uninstall cannot cleanly remove a directory it doesn't fully track).
+            psi.Arguments = "-B -m glyphcue.ui.app";
             psi.WorkingDirectory = baseDir;
             psi.UseShellExecute = false;
             try {
@@ -463,6 +465,17 @@ def build_real_app_root(
     print("Compiling real first-party GlyphCue.exe launcher...")
     presign_sha = compile_launcher(launcher_exe)
     print(f"Pre-sign GlyphCue.exe SHA-256: {presign_sha}")
+
+    # Record the actual compiled launcher source's SHA-256 in provenance,
+    # rather than the historical hardcoded manifest-generator fallback
+    # constant (never a real hash of any LAUNCHER_CS_SOURCE revision).
+    extraction_provenance_map["GlyphCue.exe"] = {
+        "source_artifact": "glyphcue_first_party_launcher_cs_source",
+        "source_artifact_sha256": hashlib.sha256(LAUNCHER_CS_SOURCE.encode("utf-8")).hexdigest(),
+        "license": "UNRESOLVED — Product License Gate",
+        "verification_status": "unresolved",
+        "role": "first_party_launcher_pe",
+    }
 
     # 9. Inner Signing: Sign GlyphCue.exe
     print("Applying Authenticode test signature to GlyphCue.exe...")

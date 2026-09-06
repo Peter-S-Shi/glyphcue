@@ -68,18 +68,41 @@ end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
+  UserProfileDir: string;
   UserDataPath: string;
+  AppRootPath: string;
 begin
   if CurUninstallStep = usPostUninstall then
   begin
     // Check if user requested explicit purge
     if (PurgeUserDataCheckbox <> nil) and PurgeUserDataCheckbox.Checked then
     begin
-      UserDataPath := ExpandConstant('{userprofile}\.glyphcue');
-      if DirExists(UserDataPath) then
+      // "userprofile" is not a valid Inno Setup constant name -- calling
+      // ExpandConstant with it fails at uninstall runtime with 'Internal
+      // error: Unknown constant "userprofile"'. Read the real environment
+      // variable instead, and fail closed (skip deletion) if it's blank
+      // rather than ever forming a deletion path from an unresolved prefix.
+      UserProfileDir := GetEnv('USERPROFILE');
+      if UserProfileDir <> '' then
       begin
-        DelTree(UserDataPath, True, True, True);
+        UserDataPath := AddBackslash(UserProfileDir) + '.glyphcue';
+        if DirExists(UserDataPath) then
+        begin
+          DelTree(UserDataPath, True, True, True);
+        end;
       end;
+    end;
+
+    // Unconditional, independent of the purge choice above: standard Inno
+    // uninstall only removes the files/dirs it tracked at install time, so
+    // runtime-generated residue (e.g. __pycache__/*.pyc from installs
+    // predating -B) leaves {app} non-empty and never removed. {app} is
+    // entirely installer-owned, so force-remove it regardless.
+    // %USERPROFILE%\.glyphcue is a disjoint path and is never touched here.
+    AppRootPath := ExpandConstant('{app}');
+    if DirExists(AppRootPath) then
+    begin
+      DelTree(AppRootPath, True, True, True);
     end;
   end;
 end;

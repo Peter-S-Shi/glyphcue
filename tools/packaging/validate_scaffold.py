@@ -22,7 +22,9 @@ or substitute for real Phase B runtime assembly.
 
 from __future__ import annotations
 
+import hashlib
 import json
+import re
 import shutil
 import sys
 from pathlib import Path
@@ -367,6 +369,196 @@ def test_strict_offline_reconstruction_fails_on_missing_staged_input(tmp_dir: Pa
     print("[OK] test_strict_offline_reconstruction_fails_on_missing_staged_input passed (fail closed)")
 
 
+def _find_matching_end(source: str, begin_index: int) -> int:
+    """Return the index of the ``end;`` keyword that closes the ``begin`` at begin_index."""
+    depth = 0
+    for match in re.finditer(r"\b(begin|end)\b", source[begin_index:], flags=re.IGNORECASE):
+        if match.group(1).lower() == "begin":
+            depth += 1
+        else:
+            depth -= 1
+            if depth == 0:
+                return begin_index + match.end()
+    raise AssertionError("Unbalanced begin/end while scanning Inno Setup [Code] section")
+
+
+def test_launcher_suppresses_bytecode_writes_into_app_root() -> None:
+    """Both authoritative launcher-compilation paths (Phase B real build and
+    Phase C independent reconstruction) must invoke python.exe with -B so no
+    __pycache__/*.pyc is ever written into the installer-owned <app_root>.
+    F3 default uninstall previously failed because standard Inno uninstall
+    cannot remove files/dirs it never tracked at install time."""
+    for module_name in ("execute_phase_b", "execute_phase_c"):
+        module_path = REPO_ROOT / "tools" / "packaging" / f"{module_name}.py"
+        source = module_path.read_text(encoding="utf-8")
+        assert "LAUNCHER_CS_SOURCE" in source, f"{module_name}.py must define LAUNCHER_CS_SOURCE"
+        assert 'psi.Arguments = "-B -m glyphcue.ui.app";' in source, (
+            f"{module_name}.py launcher must invoke python.exe with -B "
+            f"to suppress bytecode writes into <app_root>"
+        )
+    print("[OK] test_launcher_suppresses_bytecode_writes_into_app_root passed")
+
+
+def test_uninstaller_forcibly_removes_app_root_preserving_user_data() -> None:
+    """Default uninstall must force-remove the entire installer-owned
+    <app_root> (including any legacy runtime-generated residue such as
+    pre-existing __pycache__/*.pyc), unconditionally and independent of the
+    explicit, opt-in %USERPROFILE%\\.glyphcue user-data purge checkbox."""
+    iss_path = REPO_ROOT / "tools" / "packaging" / "glyphcue_installer.iss"
+    source = iss_path.read_text(encoding="utf-8")
+
+    proc_index = source.index("procedure CurUninstallStepChanged")
+    proc_begin_index = source.index("begin", proc_index)
+    proc_end_index = _find_matching_end(source, proc_begin_index)
+    proc_body = source[proc_begin_index:proc_end_index]
+
+    purge_if_marker = "if (PurgeUserDataCheckbox <> nil) and PurgeUserDataCheckbox.Checked then"
+    assert purge_if_marker in proc_body, "Explicit user-data purge checkbox gating must remain unchanged"
+    purge_if_index = proc_body.index(purge_if_marker)
+    purge_begin_index = proc_body.index("begin", purge_if_index)
+    purge_end_index = _find_matching_end(proc_body, purge_begin_index)
+
+    app_removal_marker = "AppRootPath := ExpandConstant('{app}');"
+    assert app_removal_marker in proc_body, "Uninstall must force-remove {app} unconditionally"
+    app_removal_index = proc_body.index(app_removal_marker)
+    assert app_removal_index >= purge_end_index, (
+        "{app} removal must sit outside (after) the purge checkbox's begin/end "
+        "block, not nested inside it -- otherwise default (non-purge) uninstall "
+        "would still leave <app_root> residue behind"
+    )
+    assert "DelTree(AppRootPath, True, True, True);" in proc_body[app_removal_index:]
+    assert ".glyphcue" in proc_body, "User data path must remain disjoint from {app}"
+    print("[OK] test_uninstaller_forcibly_removes_app_root_preserving_user_data passed")
+
+
+def test_explicit_purge_resolves_userprofile_via_getenv_not_invalid_constant() -> None:
+    """F4 Explicit Purge crashed at uninstall runtime with 'Internal error:
+    Unknown constant "userprofile"' -- {userprofile} is not a valid Inno Setup
+    constant, so ExpandConstant('{userprofile}\\.glyphcue') fails whenever the
+    purge checkbox is checked. The purge path must instead be resolved via the
+    real USERPROFILE environment variable (GetEnv), and must fail closed
+    (skip deletion entirely) if that variable is blank, rather than ever
+    building a deletion path from an empty/garbage prefix."""
+    iss_path = REPO_ROOT / "tools" / "packaging" / "glyphcue_installer.iss"
+    source = iss_path.read_text(encoding="utf-8")
+
+    assert "{userprofile}" not in source.lower(), (
+        "{userprofile} is not a valid Inno Setup constant; ExpandConstant "
+        'raises \'Unknown constant "userprofile"\' at uninstall runtime'
+    )
+
+    proc_index = source.index("procedure CurUninstallStepChanged")
+    proc_begin_index = source.index("begin", proc_index)
+    proc_end_index = _find_matching_end(source, proc_begin_index)
+    proc_body = source[proc_begin_index:proc_end_index]
+
+    purge_if_marker = "if (PurgeUserDataCheckbox <> nil) and PurgeUserDataCheckbox.Checked then"
+    assert purge_if_marker in proc_body, "Explicit user-data purge checkbox gating must remain unchanged"
+    purge_if_index = proc_body.index(purge_if_marker)
+    purge_begin_index = proc_body.index("begin", purge_if_index)
+    purge_end_index = _find_matching_end(proc_body, purge_begin_index)
+    purge_body = proc_body[purge_begin_index:purge_end_index]
+
+    getenv_marker = "GetEnv('USERPROFILE')"
+    assert getenv_marker in purge_body, "Purge path must resolve USERPROFILE via GetEnv, not an invalid ExpandConstant"
+
+    # Fail closed: the resolved value must be tested for blank before any
+    # deletion path is built from it or DelTree is called.
+    getenv_index = purge_body.index(getenv_marker)
+    blank_check_marker = "<> ''"
+    deltree_index = purge_body.index("DelTree(")
+    assert blank_check_marker in purge_body[getenv_index:deltree_index], (
+        "Purge logic must check USERPROFILE for blank ('<> ''') before any "
+        "deletion path is built or DelTree is called -- never form a "
+        "deletion path from an empty/unresolved prefix"
+    )
+    assert ".glyphcue" in purge_body
+    print("[OK] test_explicit_purge_resolves_userprofile_via_getenv_not_invalid_constant passed")
+
+
+def test_launcher_provenance_reflects_actual_compiled_source_not_stale_constant() -> None:
+    """Provenance truth audit: GlyphCue.exe's source_artifact_sha256 must be
+    computed from the LAUNCHER_CS_SOURCE actually compiled into that build.
+    generate_payload_manifest.py's classify_payload_file() previously fell
+    back to a hardcoded constant (dea596e9...) for every GlyphCue.exe entry
+    regardless of build -- that constant does not match the SHA-256 of
+    either the pre-fix or post-fix LAUNCHER_CS_SOURCE text, so it was never
+    real provenance and silently went further stale across every launcher
+    change. Both authoritative launcher-compilation paths must now inject
+    real, dynamically-computed provenance via their extraction map, which
+    classify_payload_file() already prefers over the hardcoded fallback."""
+    stale_constant = "dea596e97c1648d9480494f2923e9d0aeee6a2f02ab91fd4455e10592c82400a"
+
+    for module_name, extraction_var in (
+        ("execute_phase_b", "extraction_provenance_map"),
+        ("execute_phase_c", "extraction_map"),
+    ):
+        module_path = REPO_ROOT / "tools" / "packaging" / f"{module_name}.py"
+        source = module_path.read_text(encoding="utf-8")
+
+        marker = f'{extraction_var}["GlyphCue.exe"] = {{'
+        assert marker in source, (
+            f"{module_name}.py must record real launcher provenance for GlyphCue.exe "
+            f"in {extraction_var}, not rely on the stale hardcoded manifest fallback"
+        )
+        block_start = source.index(marker)
+        block_end = source.index("}", block_start)
+        block = source[block_start:block_end]
+        assert 'hashlib.sha256(LAUNCHER_CS_SOURCE.encode("utf-8")).hexdigest()' in block, (
+            f"{module_name}.py must compute source_artifact_sha256 from the actual "
+            f"compiled LAUNCHER_CS_SOURCE, not a hardcoded constant"
+        )
+        assert stale_constant not in block
+
+    # The two independent launcher-compilation paths must currently agree on
+    # the real hash of their (identical) LAUNCHER_CS_SOURCE, and neither may
+    # coincide with the old stale constant.
+    def _extract_launcher_cs_source(src: str) -> str:
+        marker_index = src.index("LAUNCHER_CS_SOURCE")
+        q1 = src.index('"""', marker_index)
+        q2 = src.index('"""', q1 + 3)
+        return src[q1 + 3 : q2]
+
+    b_source = (REPO_ROOT / "tools" / "packaging" / "execute_phase_b.py").read_text(encoding="utf-8")
+    c_source = (REPO_ROOT / "tools" / "packaging" / "execute_phase_c.py").read_text(encoding="utf-8")
+    b_hash = hashlib.sha256(_extract_launcher_cs_source(b_source).encode("utf-8")).hexdigest()
+    c_hash = hashlib.sha256(_extract_launcher_cs_source(c_source).encode("utf-8")).hexdigest()
+    assert b_hash == c_hash, "Both authoritative launcher sources must currently match for provenance to reconcile"
+    assert b_hash != stale_constant
+
+    # The stale constant must not exist anywhere in generate_payload_manifest.py
+    # -- not merely be overridden by Phase B/C's extraction-map injection.
+    from tools.packaging.generate_payload_manifest import (
+        build_source_artifact_sha_map,
+        classify_payload_file,
+        load_frozen_inventory,
+    )
+
+    manifest_gen_path = REPO_ROOT / "tools" / "packaging" / "generate_payload_manifest.py"
+    manifest_gen_source = manifest_gen_path.read_text(encoding="utf-8")
+    assert stale_constant not in manifest_gen_source, (
+        "generate_payload_manifest.py must not retain the stale constant anywhere in its "
+        "source -- it was never a real provenance hash for any LAUNCHER_CS_SOURCE revision"
+    )
+
+    frozen_inv = load_frozen_inventory()
+    sha_map = build_source_artifact_sha_map(frozen_inv)
+    assert sha_map.get("glyphcue_first_party_launcher") is None, (
+        "build_source_artifact_sha_map() must not hardcode any launcher source SHA -- the "
+        "launcher is compiled at build time, not a frozen downloaded artifact"
+    )
+
+    # Fail closed at the real classification seam: with no extraction-map
+    # provenance supplied (e.g. a caller that never compiled a launcher),
+    # source_artifact_sha256 must be left unresolved, never fabricated.
+    meta = classify_payload_file("GlyphCue.exe", wheel_map={}, source_sha_map=sha_map, extraction_map=None)
+    assert meta["source_artifact_sha256"] is None, (
+        "classify_payload_file() must fail closed (leave source_artifact_sha256 unresolved) "
+        "for GlyphCue.exe when no extraction-map provenance is supplied, not fabricate a hash"
+    )
+    print("[OK] test_launcher_provenance_reflects_actual_compiled_source_not_stale_constant passed")
+
+
 def run_all_scaffold_tests() -> bool:
     """Run complete scaffold validation suite."""
     test_dir = REPO_ROOT / "temp_scaffold_test"
@@ -385,6 +577,10 @@ def run_all_scaffold_tests() -> bool:
         test_installer_envelope_comparison_mock(test_dir)
         test_final_payload_manifest_exact_disk_reconciliation(test_dir)
         test_strict_offline_reconstruction_fails_on_missing_staged_input(test_dir)
+        test_launcher_suppresses_bytecode_writes_into_app_root()
+        test_uninstaller_forcibly_removes_app_root_preserving_user_data()
+        test_explicit_purge_resolves_userprofile_via_getenv_not_invalid_constant()
+        test_launcher_provenance_reflects_actual_compiled_source_not_stale_constant()
         print("\nALL PHASE A/C SCAFFOLD & FROZEN-INPUT VALIDATION TESTS PASSED (INCLUDING REGRESSIONS).")
         return True
     finally:

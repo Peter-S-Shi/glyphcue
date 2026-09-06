@@ -68,10 +68,12 @@
   "gates": {
     "release_ready": false,
     "redistribution_compliance": "OPEN",
+    "redistribution_compliance_scope": "All distributed unresolved model assets: 3 ONNX model assets (PP-OCRv6_det_medium.onnx, PP-OCRv6_rec_small.onnx, ch_ppocr_mobile_v2.0_cls_mobile.onnx) and 2 Paddle CPU model archives. Compliance is OPEN, not passed, for all five.",
     "phase_d_verdict": "PASS",
     "phase_e_verdict": "PASS",
     "phase_e_required": false,
-    "phase_f_required": true
+    "phase_f_verdict": "PASS",
+    "phase_f_required": false
   },
   "phase_d_evidence_summary": {
     "D1": "PASS: owner confirmed clean offline install, first launch, reboot, and relaunch on qualified Environment B.",
@@ -103,14 +105,51 @@
       "completed_at": "2026-09-06"
     }
   },
-  "phase_f_open_findings": [
-    {
-      "id": "phase_f_uninstall_hygiene_residual_payload",
-      "status": "OPEN",
-      "classification": "Phase F lifecycle hardening item; not a D1/D2/D3 failure",
-      "summary": "After normal Inno uninstall on the owner host, substantial owned installation payload remained under the GlyphCue install directory, including app/ and lib/ trees. Owner manually removed only the install directory afterward and confirmed it no longer existed."
+  "phase_f_modules": {
+    "F1": {
+      "name": "Repair",
+      "status": "PASS"
+    },
+    "F2": {
+      "name": "Two-Version Upgrade",
+      "status": "PASS"
+    },
+    "runtime_write_prohibition_gate": {
+      "status": "PASS",
+      "evidence": "Installer-owned app_root remained at 21,721 files before and after normal launch/exit, added/removed/modified = 0, first-party __pycache__/*.pyc count = 0."
+    },
+    "F3": {
+      "name": "Default Uninstall",
+      "status": "PASS",
+      "corrective_history": "Original F3 run left 202 residual files (all runtime-generated __pycache__/*.pyc under the installer-owned app_root) because the launcher wrote bytecode into app_root and standard Inno uninstall only removes files it tracked at install time. Fixed by suppressing launcher bytecode writes (python.exe -B) and force-removing {app} unconditionally on uninstall (PR #28). Corrected retest PASS: exit 0, app_root fully removed, 0 residual, user data/DB preserved with unchanged hash, synthetic sentinel preserved."
+    },
+    "F4": {
+      "name": "Explicit Purge",
+      "status": "PASS",
+      "corrective_history": "First F4 attempt failed at uninstall runtime with 'Internal error: Unknown constant \"userprofile\"' -- {userprofile} is not a valid Inno Setup constant. Failure was narrowly scoped: app_root was already fully removed, the synthetic %USERPROFILE%\\.glyphcue stayed intact, real user-data backups/hashes were unaffected. Fixed by resolving the purge path via GetEnv('USERPROFILE') with a fail-closed blank check before any deletion (PR #28). Final retest PASS: app_root removed, synthetic %USERPROFILE%\\.glyphcue removed, real user-data backup unaffected; owner subsequently restored real user data and confirmed the restored DB hash matches the pre-Phase-F baseline."
+    },
+    "provenance_corrective_note": "Narrow provenance truth audit (PR #28) found generate_payload_manifest.py recorded a hardcoded, never-accurate source_artifact_sha256 constant for GlyphCue.exe regardless of which LAUNCHER_CS_SOURCE revision was actually compiled. Pre-Merge Governance Gate review found the Phase B/C caller-side fix alone insufficient: the stale constant still existed as an executable fallback inside generate_payload_manifest.py itself. Removed entirely (source-of-truth fix): with no extraction-map provenance supplied, source_artifact_sha256 for GlyphCue.exe is now left unresolved (None), fail-closed, never fabricated. Both authoritative build paths (execute_phase_b.py, execute_phase_c.py) supply real provenance dynamically from the actual compiled launcher source. Metadata/manifest-generation-code-only correction: no runtime, launcher behavior, or uninstall logic changed, so it does not invalidate the already-owner-validated F1/F2/Runtime-Write/F3/F4 evidence below, which predates this manifest-code fix and is inherited unchanged under the existing risk-scoped corrective policy.",
+    "provenance_reconciliation": {
+      "app_root_reconciled": "build_artifacts/phase_f/f3_corrective/app_root",
+      "launcher_source_sha256": "0656b07fd2384b3065b7ba9b3ba41d1b5d4106c3e0406fcd61b4a8d75207823f",
+      "manifest_to_disk_check": "21,718 manifest entries = 21,718 on-disk files; 0 unindexed; 0 missing; 0 integrity mismatches",
+      "inner_launcher_sha256_unchanged": "e2d2230f3f8839036b1a1f6103e38848217495f624e45801dcb3c49f3d68e829",
+      "note": "Manifest/SBOM regenerated and outer installer rebuilt/re-signed because packaged metadata bytes changed; the inner GlyphCue.exe launcher binary itself was not recompiled or re-signed (byte-identical before and after)."
+    },
+    "final_metadata_reconciled_installer": {
+      "sha256_signed": "DBC855FB710A8B4BDB9B9F181942E61F2FEE404DD3B1ABDDE20CAC8E8A85A9F0",
+      "size_bytes": 544293224,
+      "authenticode_status": "Valid",
+      "signer_thumbprint": "DEDF7D0881E3A172CC018B63CCCF69FC51333AFC",
+      "signer_scope": "Local self-signed development test certificate only; not a production signing identity.",
+      "built_with": "Inno Setup 6.3.3 (portable, already-restored copy)"
+    },
+    "historical_owner_tested_candidate_pre_provenance_reconciliation": {
+      "sha256_signed": "85B683221BFCA6DAC53E297449DABBE25925E7CAB4E0839847744C2897750BB7",
+      "status": "Exact installer identity Runtime-Write Prohibition, F3, and F4 were actually Owner-validated against. Superseded only by the metadata-only provenance correction; inner GlyphCue.exe is byte-identical to the reconciled candidate, so that owner evidence is inherited unchanged."
     }
-  ],
-  "next_phase": "Phase F — Installer Lifecycle, Upgrade, Repair & Uninstall Testing",
+  },
+  "milestone_13_status": "COMPLETE",
+  "next_gate": "Post-M13: Release Redistribution Compliance Gate (all distributed unresolved model assets) and formal production/public-trust release signing and release governance. Release Ready remains NO until both are resolved.",
   "relay_document": "docs/m13_phase_d/PHASE_D_RELAY.md"
 }
