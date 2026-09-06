@@ -5,7 +5,6 @@
   "governing_issue": "#30",
   "branch": "release/1.0.0-public-distribution",
   "supersedes_m13_frozen_inventory": false,
-
   "lgpl_ffmpeg_replacement": {
     "reason": "PyAV 18.1.0's official Windows wheel vendors an FFmpeg build compiled with --enable-gpl (confirmed by libx264/libx265 presence). FFmpeg's own licensing policy makes the entire compiled build GPL-2.0-or-later as a whole once --enable-gpl is used. Fixed by replacing the vendored FFmpeg binary with a verified LGPL-only build; PyAV 18.1.0 itself and GlyphCue's media architecture are unchanged.",
     "source_project": "BtbN/FFmpeg-Builds",
@@ -19,7 +18,10 @@
     "license_verified_from": "Archive's own LICENSE.txt (GNU LESSER GENERAL PUBLIC LICENSE, Version 3)",
     "confirmed_configure_flags": {
       "verified_via": "Running the archive's own ffmpeg.exe -version and reading its reported configuration string",
-      "disabled_gpl_codecs": ["--disable-libx264", "--disable-libx265"],
+      "disabled_gpl_codecs": [
+        "--disable-libx264",
+        "--disable-libx265"
+      ],
       "gpl_enabled": false
     },
     "core_dll_identities": {
@@ -33,14 +35,33 @@
     },
     "matched_pyav_version": "18.1.0",
     "matched_soname_versions": {
-      "avutil": 60, "avcodec": 62, "avformat": 62, "avdevice": 62,
-      "avfilter": 11, "swscale": 9, "swresample": 6
+      "avutil": 60,
+      "avcodec": 62,
+      "avformat": 62,
+      "avdevice": 62,
+      "avfilter": 11,
+      "swscale": 9,
+      "swresample": 6
     },
     "removed_auxiliary_dll_prefixes": [
-      "libx264", "libx265", "libvpx", "libwebp", "libwebpmux", "libopus",
-      "libmp3lame", "libdav1d", "libSvtAv1Enc", "libvpl",
-      "libopencore-amrnb", "libopencore-amrwb", "libsharpyuv", "libiconv",
-      "libgcc_s_seh", "libwinpthread", "zlib1", "libstdc++"
+      "libx264",
+      "libx265",
+      "libvpx",
+      "libwebp",
+      "libwebpmux",
+      "libopus",
+      "libmp3lame",
+      "libdav1d",
+      "libSvtAv1Enc",
+      "libvpl",
+      "libopencore-amrnb",
+      "libopencore-amrwb",
+      "libsharpyuv",
+      "libiconv",
+      "libgcc_s_seh",
+      "libwinpthread",
+      "zlib1",
+      "libstdc++"
     ],
     "validation_evidence_dir": "build_artifacts/v1_gate_a/lgpl_pyav_test/",
     "validation_result": "PyAV 18.1.0 loaded successfully against these DLLs; decoded frame count, PTS sequence, and decoded frame bytes (SHA-256 of raw RGB24 arrays) on the canonical synthetic fixture are byte-identical to a GPL-configured baseline decode of the same fixture.",
@@ -54,12 +75,11 @@
         "btbn-ffmpeg-builds-source.tar.gz (BtbN/FFmpeg-Builds build-script repository, SHA-256 241274c42e8340b19ddd76ff62dba58d59c9a3b702d6cd94ecd3f637ba46aa6b, from https://github.com/BtbN/FFmpeg-Builds/archive/refs/heads/master.tar.gz)",
         "FFMPEG-LGPL-3.0-LICENSE.txt (verbatim LGPLv3 text from the distributed build's own LICENSE.txt, SHA-256 da7eabb7bafdf7d3ae5e9f223aa5bdc1eece45ac569dc21b3b037520b4464768)"
       ],
-      "purpose": "Prepared as a GitHub v1.0.0 Release asset (not merely linked to the mutable BtbN release page) per FFmpeg's own distribution-compliance guidance (https://www.ffmpeg.org/legal.html). Staged under build_artifacts/v1_gate_a/ pending the actual GitHub Release publication (not performed this session)."
+      "purpose": "Published as a same-release GitHub v1.0.0 asset (not merely linked to a mutable upstream page) per FFmpeg distribution-compliance guidance. Public release: https://github.com/Peter-S-Shi/glyphcue/releases/tag/v1.0.0."
     },
     "packaging_guard_module": "tools/packaging/lgpl_ffmpeg_replacement.py",
     "identity_verification_module": "tools/packaging/verify_no_gpl_ffmpeg_codecs.py"
   },
-
   "owner_governance_decisions": {
     "license_decision": {
       "status": "RESOLVED",
@@ -69,14 +89,38 @@
     "signing_policy_decision": {
       "status": "RESOLVED",
       "decision": "The existing self-signed Authenticode development certificate (CN=GlyphCue Development Test Certificate, O=GlyphCue Local Test Root, thumbprint DEDF7D0881E3A172CC018B63CCCF69FC51333AFC) is accepted for v1.0.0 public distribution, with explicit SmartScreen / not-publicly-trusted disclosure to end users. Formal production/public-trust signing is not a v1.0.0 blocker.",
-      "not_yet_done": "The explicit SmartScreen/not-publicly-trusted disclosure text for the README/release notes and installer has not yet been drafted in this pass."
+      "release_disclosure_status": "PUBLISHED in the v1.0.0 GitHub Release notes; SmartScreen/not-publicly-trusted behavior is explicitly disclosed to end users."
     }
   },
-
   "third_party_notices_surface": {
     "in_app_notices_file": "app_root/legal/THIRD-PARTY-NOTICES.txt",
     "in_app_license_texts_dir": "app_root/legal/third_party_licenses/",
     "generator": "tools/packaging/generate_third_party_notices.py",
-    "full_license_texts_bundled": ["docs/licenses/lgpl-3.0.txt", "docs/licenses/apache-2.0.txt"]
+    "full_license_texts_bundled": [
+      "docs/licenses/lgpl-3.0.txt",
+      "docs/licenses/apache-2.0.txt"
+    ]
+  },
+  "public_release": {
+    "status": "LIVE_VERIFIED",
+    "release_url": "https://github.com/Peter-S-Shi/glyphcue/releases/tag/v1.0.0",
+    "tag": "v1.0.0",
+    "release_commit_sha": "d394ec777803364f27a7a9f0cf287f393f977db3",
+    "installer_build_source_commit_sha": "34489a9d9862849e19f50b79e55d5530bd163494",
+    "installer": {
+      "filename": "GlyphCue-Setup-1.0.0.exe",
+      "sha256": "f88c2fe2c6d226bd2fff5ecfdc7e7f64dc32917b8c00597fb17d42b9a7244446",
+      "size_bytes": 610633568,
+      "authenticode_status": "Valid",
+      "signer_thumbprint": "DEDF7D0881E3A172CC018B63CCCF69FC51333AFC"
+    },
+    "ffmpeg_corresponding_source": {
+      "filename": "GlyphCue-v1.0.0-FFmpeg-LGPL-Corresponding-Source.zip",
+      "sha256": "fc59a64db0b932a63fb7432c57cfe850ba3caa07f73e9bec4437416e3240d3cc",
+      "size_bytes": 16859628
+    },
+    "provenance_asset_sha256": "53caaef2849af108ea7d99042693735aa51174c95ab5506832b03078fad36eb4",
+    "independent_download_verification": "PASS",
+    "verified_at": "2026-09-06"
   }
 }

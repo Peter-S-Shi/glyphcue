@@ -7,7 +7,10 @@
   "phase_c_closure_commit": "00a3c65ccd7fca5180e94f242947c2438a0f9651",
   "d0_scaffold_baseline_commit": "182bc46788df66c95b272aa64193937ebed0fb4f",
   "dynamic_head_rule": "Every relay agent MUST dynamically resolve git rev-parse HEAD at module start and record source_head in build_artifacts/phase_d/relay_state.json",
-  "governing_issues": ["#26", "#27"],
+  "governing_issues": [
+    "#26",
+    "#27"
+  ],
   "phase_c": {
     "verdict": "FINAL_ACCEPTED_THEN_SUPERSEDED_FOR_PHASE_D",
     "closure_commit": "00a3c65ccd7fca5180e94f242947c2438a0f9651",
@@ -66,11 +69,11 @@
     "superseded_reason": "D3 offline runtime fidelity failure: runtime attempted external model retrieval instead of using packaged frozen artifacts."
   },
   "gates": {
-    "release_ready": false,
-    "portfolio_packaging_ready": false,
+    "release_ready": true,
+    "portfolio_packaging_ready": true,
     "redistribution_compliance": "CLOSED_ACCEPTED",
     "redistribution_compliance_scope": "All 5 OCR model assets resolved under Apache-2.0; GlyphCue under MIT; PyAV FFmpeg replaced with pinned LGPL-3.0 build; standalone corresponding source zip frozen; candidate installer frozen as GlyphCue-Setup-1.0.0.exe (SHA-256 F88C2FE2C6D226BD2FFF5ECFDC7E7F64DC32917B8C00597FB17D42B9A7244446); self-signed Authenticode accepted by Owner with SmartScreen disclosure.",
-    "public_distribution_gate": "CLOSED_ACCEPTED",
+    "public_distribution_gate": "COMPLETE_VERIFIED",
     "phase_d_verdict": "PASS",
     "phase_e_verdict": "PASS",
     "phase_e_required": false,
@@ -89,7 +92,11 @@
       "fixture_sha256": "72a7621639730b62b5a06a266499ea66768df277cad15553cab6d2487b972465",
       "runtime": "Packaged DirectML runtime",
       "warmup_discarded": true,
-      "timed_realtime_ratios": [1.153, 1.387, 1.392],
+      "timed_realtime_ratios": [
+        1.153,
+        1.387,
+        1.392
+      ],
       "median_realtime_ratio": 1.387,
       "repeat_required": false,
       "fixture_governance": "Canonical fixture bytes/hash are frozen inputs generated under the frozen DevQA generation environment; downstream candidate validation consumes the frozen artifact rather than regenerating MP4 bytes."
@@ -152,7 +159,19 @@
     }
   },
   "milestone_13_status": "COMPLETE",
-  "public_distribution_gate_status": "CLOSED_ACCEPTED",
-  "next_gate": "Post-M13: merge PR #31 -> create v1.0.0 tag on accepted main commit -> generate final provenance.json and SHA256SUMS.txt -> publish GitHub Release with all four assets (GlyphCue-Setup-1.0.0.exe, GlyphCue-v1.0.0-FFmpeg-LGPL-Corresponding-Source.zip, SHA256SUMS.txt, provenance.json) -> independently verify downloads -> Portfolio Packaging Ready = YES / Milestone 14. Release Ready and Portfolio Packaging Ready remain NO until completed.",
-  "relay_document": "docs/m13_phase_d/PHASE_D_RELAY.md"
+  "public_distribution_gate_status": "COMPLETE_VERIFIED",
+  "next_gate": "Milestone 14 — Portfolio Packaging & Stop-Building Closure. Public Distribution Gate is complete; Release Ready = YES; Portfolio Packaging Ready = YES.",
+  "relay_document": "docs/m13_phase_d/PHASE_D_RELAY.md",
+  "public_release": {
+    "status": "LIVE_VERIFIED",
+    "release_url": "https://github.com/Peter-S-Shi/glyphcue/releases/tag/v1.0.0",
+    "tag": "v1.0.0",
+    "release_commit_sha": "d394ec777803364f27a7a9f0cf287f393f977db3",
+    "installer_build_source_commit_sha": "34489a9d9862849e19f50b79e55d5530bd163494",
+    "installer_sha256": "f88c2fe2c6d226bd2fff5ecfdc7e7f64dc32917b8c00597fb17d42b9a7244446",
+    "ffmpeg_corresponding_source_sha256": "fc59a64db0b932a63fb7432c57cfe850ba3caa07f73e9bec4437416e3240d3cc",
+    "provenance_asset_sha256": "53caaef2849af108ea7d99042693735aa51174c95ab5506832b03078fad36eb4",
+    "independent_download_verification": "PASS",
+    "verified_at": "2026-09-06"
+  }
 }
