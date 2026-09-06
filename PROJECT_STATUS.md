@@ -4,7 +4,14 @@
 
 ## Current milestone
 
-**Milestone 13 — Release Candidate & Signed Release / Minimum Runtime-Fidelity Packaging Experiment (Issue #27): COMPLETE / PASS (Phases A–F all passed; merged to `main` via PR #29); Post-M13 Public Distribution Gate (Issue #30, PR #31): COMPLETE / PUBLICLY RELEASED & VERIFIED; GlyphCue v1.0.0 LIVE; Release Ready = YES; Portfolio Packaging Ready = YES; next target = Milestone 14.**
+**Milestone 14 — Portfolio Packaging & Stop-Building Closure (§21): COMPLETE. GlyphCue v1.0.0 PUBLICLY RELEASED & VERIFIED; Release Ready = YES; Portfolio Packaging Ready = YES; V1 feature development formally stops.**
+
+- **Milestone 14 — Portfolio Packaging & Stop-Building Closure (2026-09-06)**:
+  - Portfolio Story Audit completed: structured audience, 1-sentence value, 5 core capabilities, engineering evidence, and evaluation paths.
+  - Portfolio-ready `README.md` authored, presenting product positioning, pipeline architecture, DirectML hardware acceleration, selective OCR policy, multi-frame consensus, script-range layer separation, CJK rolling normalization, Build-vs-Integrate separation, and atomic multi-format export.
+  - All relative links and quantitative claims verified against empirical repository evidence.
+  - V1 feature development formally stopped (§21).
+- **Milestone 13 — Release Candidate & Signed Release / Minimum Runtime-Fidelity Packaging Experiment (Issue #27): COMPLETE / PASS (Phases A–F all passed; merged to `main` via PR #29); Post-M13 Public Distribution Gate (Issue #30, PR #31): COMPLETE / PUBLICLY RELEASED & VERIFIED; GlyphCue v1.0.0 LIVE; Release Ready = YES; Portfolio Packaging Ready = YES.**
 
 Milestone 13 Minimum Runtime-Fidelity Packaging Experiment was executed on dedicated branch `milestone/13-release-candidate` governed by Wayfinder charter packages #17–#26 and execution issue #27:
 - **Phase A — Frozen Inputs & Experiment Scaffold: ACCEPTED (2026-09-05)**:
@@ -876,15 +883,14 @@ appears anywhere in the repository.
 
 ## Git / PR status
 
-- Authoritative state: `main` contains Milestone 13 (PR [#29](https://github.com/Peter-S-Shi/glyphcue/pull/29)); Milestone 13 is COMPLETE / CLOSED.
-- Active working branch: none for V1 release engineering; `v1.0.0` is publicly released and verified.
-- Public Distribution Gate vehicle: PR [#31](https://github.com/Peter-S-Shi/glyphcue/pull/31) — merged; Gate A/B, release publication, and independent download verification are COMPLETE. Governing Issue [#30](https://github.com/Peter-S-Shi/glyphcue/issues/30) is ready to close as completed with this reconciliation.
+- Authoritative state: `main` contains Milestone 13 (PR [#29](https://github.com/Peter-S-Shi/glyphcue/pull/29)), Post-M13 Public Distribution Gate (PR [#31](https://github.com/Peter-S-Shi/glyphcue/pull/31), commit `d394ec7`), Post-Release Reconciliation (PR [#32](https://github.com/Peter-S-Shi/glyphcue/pull/32), commit `c0d28ac`), and Milestone 14 Portfolio Packaging & Stop-Building Closure (PR [#33](https://github.com/Peter-S-Shi/glyphcue/pull/33)).
 - Public release: [GlyphCue v1.0.0](https://github.com/Peter-S-Shi/glyphcue/releases/tag/v1.0.0), release commit `d394ec777803364f27a7a9f0cf287f393f977db3`.
+- Active working branch: None for V1 development. Milestone 14 is COMPLETE and V1 Stop-Building Closure is active.
 
 ## Unresolved
 
-- No open Public Distribution Gate blocker remains. `Release Ready = YES`; `Portfolio Packaging Ready = YES`.
-- SmartScreen / not-publicly-trusted disclosure is published in the v1.0.0 GitHub Release notes; formal production/public-trust signing remains optional future hardening, not a V1 release blocker.
+- No open Public Distribution Gate or Portfolio Packaging blocker remains. `Release Ready = YES`; `Portfolio Packaging Ready = YES`.
+- SmartScreen / not-publicly-trusted disclosure is published in the v1.0.0 GitHub Release notes and `README.md`; formal production/public-trust signing remains optional future hardening, not a V1 release blocker.
 - Residual non-blocking evaluation findings preserved (informational, not release blockers on their own):
   - `sample_c`: Isolated window-boundary non-text reading (`"zh": "3\n8"`) on Cue 1 (1.1s), safely fail-closed with `ambiguous_languages: ["zh"]`; non-contaminating.
   - `sample_f`: One illegible Chinese layer at 661.1s left untranscribed in GT rather than guessed; rapid b-roll editor button glyphs flagged ambiguous.
@@ -892,5 +898,5 @@ appears anywhere in the repository.
 
 ## Next action
 
-1. Close Issue [#30](https://github.com/Peter-S-Shi/glyphcue/issues/30) as completed after this post-release governance reconciliation merges.
-2. Advance to Milestone 14 — Portfolio Packaging & Stop-Building Closure. No further V1 release-engineering work is required unless new regression evidence appears.
+1. V1 product development is formally complete; Stop-Building Closure (§21) is active.
+2. Any future feature or maintenance requests default to Deferred / Next Version.

@@ -2,7 +2,7 @@
 
 **Document type:** Authoritative V1 milestone roadmap  
 **Project:** GlyphCue  
-**Lifecycle phase:** Production Development → Milestone 10 complete; **Milestone 11 (Product Hardening & Full Regression) is CLOSED (2026-09-04)** (Release Acceptance rejected by human adjudication); **Milestone 12 (Product Rework & Cue Quality Recovery) is CLOSED & ACCEPTED (2026-09-05)**: Stage ① (UI / Review Workflow Recovery) and Stage ② (Cue Production Quality Recovery via Cue Cleaner V0.6.1 "Clean Cues" integration) both completed and accepted; **Product Hardening II & Full Regression is CLOSED & ACCEPTED (2026-09-05)** via PR #16; **Milestone 13 (redefined as the Minimum Runtime-Fidelity Packaging Experiment, Issues #17/#26/#27) is COMPLETE — Phases A–F all PASS (merged via PR #29)**; **Post-M13 Public Distribution Gate (Issue #30, PR #31) is CLOSED & ACCEPTED**: 5 OCR models resolved under Apache-2.0, GlyphCue under MIT, PyAV 18.1.0 vendored FFmpeg replaced with pinned LGPL-3.0 shared build, candidate installer frozen as `GlyphCue-Setup-1.0.0.exe` (SHA-256 `F88C2FE2...`), self-signed Authenticode accepted by Owner with SmartScreen disclosure; Feature Freeze remains ACTIVE; **GlyphCue v1.0.0 is PUBLICLY RELEASED & VERIFIED**; **Release Ready = YES**; **Portfolio Packaging Ready = YES**. The formal GitHub Release is live with all four required assets and independent clean-download SHA-256 verification passed. **Next development target: Milestone 14 (Portfolio Packaging & Stop-Building Closure)**. See §19/§20/§21/§31 and `PROJECT_STATUS.md`.  
+**Lifecycle phase:** Production Development → Milestone 10 complete; **Milestone 11 (Product Hardening & Full Regression) is CLOSED (2026-09-04)** (Release Acceptance rejected by human adjudication); **Milestone 12 (Product Rework & Cue Quality Recovery) is CLOSED & ACCEPTED (2026-09-05)**: Stage ① (UI / Review Workflow Recovery) and Stage ② (Cue Production Quality Recovery via Cue Cleaner V0.6.1 "Clean Cues" integration) both completed and accepted; **Product Hardening II & Full Regression is CLOSED & ACCEPTED (2026-09-05)** via PR #16; **Milestone 13 (redefined as the Minimum Runtime-Fidelity Packaging Experiment, Issues #17/#26/#27) is COMPLETE — Phases A–F all PASS (merged via PR #29)**; **Post-M13 Public Distribution Gate (Issue #30, PR #31) is CLOSED & ACCEPTED**: 5 OCR models resolved under Apache-2.0, GlyphCue under MIT, PyAV 18.1.0 vendored FFmpeg replaced with pinned LGPL-3.0 shared build, candidate installer frozen as `GlyphCue-Setup-1.0.0.exe` (SHA-256 `F88C2FE2...`), self-signed Authenticode accepted by Owner with SmartScreen disclosure; Feature Freeze remains ACTIVE; **GlyphCue v1.0.0 is PUBLICLY RELEASED & VERIFIED**; **Release Ready = YES**; **Portfolio Packaging Ready = YES**. The formal GitHub Release is live with all four required assets and independent clean-download SHA-256 verification passed. **Milestone 14 COMPLETE; V1 Stop-Building Closure ACTIVE; no active V1 development target. Future feature proposals default to Deferred / Next Version.** See §19/§20/§21/§31 and `PROJECT_STATUS.md`.  
 **Status:** Current V1 execution roadmap  
 
 **Last updated:** 2026-09-06
@@ -1877,7 +1877,7 @@ The post-merge publication sequence is COMPLETE: PR #31 merged; annotated tag `v
 
 ## Goal
 
-Convert the completed technical work into a concise, credible professional artifact and formally stop V1 feature development. Portfolio Packaging may begin now: GlyphCue v1.0.0 is publicly released and independently verified, and `Portfolio Packaging Ready = YES` — see §20.
+Convert the completed technical work into a concise, credible professional artifact and formally stop V1 feature development. Portfolio Packaging is complete; Milestone 14 is CLOSED / COMPLETE and the V1 Stop-Building Closure is active (GlyphCue v1.0.0 is publicly released and independently verified, and `Portfolio Packaging Ready = YES` — see §20).
 
 ## Required public evidence
 
@@ -2235,18 +2235,18 @@ Post-M13 Public Distribution Gate       CLOSED / ACCEPTED (2026-09-06)
 Feature Freeze                          ACTIVE
 Release / Packaging                     App-local CPython + Inno Setup 6.3.3 path; candidate installer frozen as GlyphCue-Setup-1.0.0.exe (SHA-256 F88C2FE2...); self-signed Authenticode with SmartScreen disclosure
 Release Ready                           YES (v1.0.0 public GitHub Release live; independent download verification PASS)
-Portfolio Packaging Ready               YES (Public Distribution Gate complete; M14 may begin)
+Portfolio Packaging Ready               YES (M14 COMPLETE; V1 Stop-Building Closure active)
 ```
 
 ---
 
-# 31. Immediate Next Action
+# 31. V1 Closure State
 
-The next engineering action is:
+The V1 engineering closure state is:
 
-> **Milestone 14 — Portfolio Packaging & Stop-Building Closure** (ROADMAP §21)
+> **Milestone 14 (Portfolio Packaging & Stop-Building Closure) COMPLETE; V1 feature development formally stops.** (ROADMAP §21)
 
-**Milestone 13 is COMPLETE (2026-09-06) and the Post-M13 Public Distribution Gate is CLOSED & ACCEPTED (2026-09-06).**
+**Milestone 13 is COMPLETE (2026-09-06) and the Post-M13 Public Distribution Gate is CLOSED & ACCEPTED (2026-09-06, merged to `main` via PR #31).**
 All verification gates have been satisfied:
 1. **Phases A-C** (frozen inputs, primary runtime assembly, clean reconstruction & drift verification): ACCEPTED / FINAL ACCEPTED.
 2. **Phase D** (target-machine offline runtime & DirectML validation, D0-D4): COMPLETE / PASS.
@@ -2256,7 +2256,8 @@ All verification gates have been satisfied:
 6. **Accepted V1 Known Limitation Preserved**: Cue Cleaner V0.6.1 conservative contract preserved as a non-blocking V1 product trade-off; remaining cases resolved via manual Merge workflow.
 7. **Feature Freeze remains ACTIVE**.
 8. **Release Ready = YES; Portfolio Packaging Ready = YES**: `v1.0.0` is publicly released with all four required assets and independent clean-download SHA-256 verification PASS.
-9. **Next Target**: Milestone 14 (Portfolio Packaging & Stop-Building Closure, §21).
+9. **Milestone 14 Status**: COMPLETE. Portfolio `README.md` authored; all relative links and empirical numbers verified.
+10. **Stop-Building Closure (§21)**: V1 product development is complete; new feature proposals default to Deferred / Next Version.
 
 ---
 
@@ -2308,7 +2309,9 @@ M13
 Minimum Runtime-Fidelity Packaging Experiment, Phases A-F (COMPLETE)
         ↓
 M14
-Portfolio Packaging + Stop-Building Closure (NEXT)
+Portfolio Packaging + Stop-Building Closure (COMPLETE)
+        ↓
+V1 STOP-BUILDING CLOSURE ACTIVE
 ```
 
 The center of gravity is intentionally M2–M7.
@@ -2321,7 +2324,7 @@ M8 completes the second ingestion path.
 
 M9 closes the accepted V1 product surface and formally declares Feature Freeze.
 
-M10–M13 convert engineering work into a finished, evaluated, hardened, and professionally legible product. M13 and the post-M13 Public Distribution Gate are COMPLETE; GlyphCue v1.0.0 is publicly released and independently verified; Release Ready = YES and Portfolio Packaging Ready = YES. M14 is the active next target.
+M10–M14 convert engineering work into a finished, evaluated, hardened, and professionally legible product. M13 and the post-M13 Public Distribution Gate are COMPLETE; GlyphCue v1.0.0 is publicly released and independently verified; Release Ready = YES and Portfolio Packaging Ready = YES. M14 is COMPLETE. GlyphCue V1 is under Stop-Building Closure; future feature work defaults to Deferred / Next Version.
 
 ---
 
