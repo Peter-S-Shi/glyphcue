@@ -153,6 +153,6 @@
   },
   "milestone_13_status": "COMPLETE",
   "public_distribution_gate_status": "CLOSED_ACCEPTED",
-  "next_gate": "Post-M13: Merge PR #31, publish formal v1.0.0 GitHub Release attaching GlyphCue-Setup-1.0.0.exe and corresponding source zip, tag v1.0.0, execute clean download verification, and advance to Milestone 14 (Portfolio Packaging). Release Ready and Portfolio Packaging Ready remain NO until published and verified.",
+  "next_gate": "Post-M13: merge PR #31 -> create v1.0.0 tag on accepted main commit -> generate final provenance.json and SHA256SUMS.txt -> publish GitHub Release with all four assets (GlyphCue-Setup-1.0.0.exe, GlyphCue-v1.0.0-FFmpeg-LGPL-Corresponding-Source.zip, SHA256SUMS.txt, provenance.json) -> independently verify downloads -> Portfolio Packaging Ready = YES / Milestone 14. Release Ready and Portfolio Packaging Ready remain NO until completed.",
   "relay_document": "docs/m13_phase_d/PHASE_D_RELAY.md"
 }

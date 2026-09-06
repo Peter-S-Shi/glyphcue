@@ -1869,7 +1869,7 @@ Post-Milestone-13 Public Distribution Gate (Issue #30, PR #31) has also **CLOSED
 - Candidate installer frozen: `GlyphCue-Setup-1.0.0.exe`, SHA-256 `F88C2FE2C6D226BD2FFF5ECFDC7E7F64DC32917B8C00597FB17D42B9A7244446` (Authenticode `Valid`).
 - Self-signed Authenticode accepted by Owner with explicit SmartScreen / not-publicly-trusted disclosure; formal production/public-trust signing is future hardening, NOT a v1.0.0 blocker.
 
-`Release Ready = NO` and `Portfolio Packaging Ready = NO` remain current until formal v1.0.0 GitHub Release publication, release tag, and independent download verification are executed.
+`Release Ready = NO` and `Portfolio Packaging Ready = NO` remain current until the post-merge release sequence (merge PR #31 → create v1.0.0 tag on accepted main commit → generate final provenance.json & SHA256SUMS.txt → publish GitHub Release with all four assets: `GlyphCue-Setup-1.0.0.exe`, `GlyphCue-v1.0.0-FFmpeg-LGPL-Corresponding-Source.zip`, `SHA256SUMS.txt`, `provenance.json` → independently verify downloads) completes.
 
 ---
 
@@ -2255,8 +2255,8 @@ All verification gates have been satisfied:
 5. **Post-M13 Public Distribution Gate (Gate A/B)**: CLOSED & ACCEPTED (5 OCR models resolved under Apache-2.0; GlyphCue licensed under MIT; PyAV FFmpeg replaced with pinned LGPL build; standalone corresponding source zip frozen; candidate installer frozen as `GlyphCue-Setup-1.0.0.exe`, SHA-256 `F88C2FE2...`; self-signed Authenticode accepted by Owner with SmartScreen disclosure).
 6. **Accepted V1 Known Limitation Preserved**: Cue Cleaner V0.6.1 conservative contract preserved as a non-blocking V1 product trade-off; remaining cases resolved via manual Merge workflow.
 7. **Feature Freeze remains ACTIVE**.
-8. **Release Ready remains NO; Portfolio Packaging Ready remains NO**: until the formal v1.0.0 GitHub Release is published with attached assets and independently verified.
-9. **Next Target**: Complete PR #31 merge, publish the formal `v1.0.0` GitHub Release and release tag, verify clean download, and advance to Milestone 14 (Portfolio Packaging & Stop-Building Closure, §21).
+8. **Release Ready remains NO; Portfolio Packaging Ready remains NO**: until the post-merge release sequence (merge PR #31 → create v1.0.0 tag on accepted main commit → generate final provenance.json & SHA256SUMS.txt → publish GitHub Release with all four assets → independently verify downloads) completes.
+9. **Next Target**: Merge PR #31 → create v1.0.0 tag on main → generate final provenance.json and SHA256SUMS.txt → publish GitHub Release with all four assets (`GlyphCue-Setup-1.0.0.exe`, `GlyphCue-v1.0.0-FFmpeg-LGPL-Corresponding-Source.zip`, `SHA256SUMS.txt`, `provenance.json`) → independently verify downloads → Portfolio Packaging Ready = YES / Milestone 14 (Portfolio Packaging & Stop-Building Closure, §21).
 
 ---
 

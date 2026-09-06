@@ -70,7 +70,7 @@ Milestone 13 Minimum Runtime-Fidelity Packaging Experiment was executed on dedic
   - **Gate B — Minimum Real Public Distribution Payload & Candidate Freeze**: **PASS**.
     - Rebuilt `app_root` (21,811 files), manifest-to-disk reconciliation confirmed (0 unindexed, 0 missing, all gates PASS).
     - Final frozen candidate installer: `GlyphCue-Setup-1.0.0.exe`, SHA-256 `F88C2FE2C6D226BD2FFF5ECFDC7E7F64DC32917B8C00597FB17D42B9A7244446`, Authenticode `Valid`.
-- **Release Status**: **Release Ready = NO**; **Portfolio Packaging Ready = NO** (v1.0.0 release candidate is accepted and packaging/redistribution compliance gates are closed, but formal release tag, GitHub Release publication, asset attachment, and independent download verification have not yet occurred).
+- **Release Status**: **Release Ready = NO**; **Portfolio Packaging Ready = NO** (v1.0.0 release candidate is accepted and packaging/redistribution compliance gates are closed; both remain NO until the post-merge release sequence — PR merge → create v1.0.0 tag → generate final provenance.json & SHA256SUMS.txt → publish GitHub Release with all four assets → independent download verification — is completed).
 
 ### Validation
 - Clean Reconstruction A vs B Verification: **PASS** (21,711/21,711 unsigned files identical, signed PE identical, installer envelope PASS).
@@ -891,7 +891,9 @@ appears anywhere in the repository.
 
 ## Next action
 
-1. Complete Pre-Merge Governance Gate and merge PR [#31](https://github.com/Peter-S-Shi/glyphcue/pull/31) into `main`.
-2. Formally publish the GlyphCue `v1.0.0` GitHub Release attaching `GlyphCue-Setup-1.0.0.exe` (SHA-256 `F88C2FE2C6D226BD2FFF5ECFDC7E7F64DC32917B8C00597FB17D42B9A7244446`), `GlyphCue-v1.0.0-FFmpeg-LGPL-Corresponding-Source.zip` (SHA-256 `FC59A64DB0B932A63FB7432C57CFE850BA3CAA07F73E9BEC4437416E3240D3CC`), `SHA256SUMS.txt`, and release notes with SmartScreen disclosure.
-3. Push the `v1.0.0` release tag and execute independent clean-download verification.
-4. Advance to Milestone 14 (Portfolio Packaging & Stop-Building Closure).
+1. Merge PR [#31](https://github.com/Peter-S-Shi/glyphcue/pull/31) into `main`.
+2. Create `v1.0.0` tag on the accepted `main` merge commit.
+3. Generate final `provenance.json` (binding the final `main` merge commit/tag and frozen installer hash) and `SHA256SUMS.txt`.
+4. Formally publish the GlyphCue `v1.0.0` GitHub Release attaching all four release assets: `GlyphCue-Setup-1.0.0.exe` (SHA-256 `F88C2FE2C6D226BD2FFF5ECFDC7E7F64DC32917B8C00597FB17D42B9A7244446`), `GlyphCue-v1.0.0-FFmpeg-LGPL-Corresponding-Source.zip` (SHA-256 `FC59A64DB0B932A63FB7432C57CFE850BA3CAA07F73E9BEC4437416E3240D3CC`), `SHA256SUMS.txt`, and `provenance.json`, with release notes including SmartScreen disclosure.
+5. Independently verify downloads and clean installation from public assets.
+6. Portfolio Packaging Ready = YES; advance to Milestone 14 (Portfolio Packaging & Stop-Building Closure).

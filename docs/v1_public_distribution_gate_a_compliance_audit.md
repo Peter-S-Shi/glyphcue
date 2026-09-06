@@ -166,7 +166,7 @@ Both previously-blocking items are now resolved and empirically verified against
 1. Draft the explicit SmartScreen/not-publicly-trusted disclosure text for the README/release notes and installer (the signing *policy* is resolved; the user-facing disclosure *copy* is not yet written).
 2. **(Recommended, non-blocking)** Strip unused Qt Addon modules (WebEngine, Charts, DataVisualization) — explicitly deferred, not performed this pass, to avoid unnecessarily broadening the payload delta.
 3. **(Recommended, non-blocking)** Archive dated snapshots of the PaddlePaddle PP-OCRv6 release announcement and RapidOCR's ModelScope license page as durable evidence for the five frozen model assets (§3).
-4. Attach the FFmpeg LGPL corresponding-source package, the installer, and `SHA256SUMS.txt`/`provenance.json` to an actual GitHub v1.0.0 Release (not created this session).
-5. Tag and publish `v1.0.0` only after Owner/ChatGPT distribution review of the candidate installer identity above.
+4. Attach all four assets (`GlyphCue-Setup-1.0.0.exe`, `GlyphCue-v1.0.0-FFmpeg-LGPL-Corresponding-Source.zip`, `SHA256SUMS.txt`, and post-merge generated `provenance.json` bound to the final `main` merge commit and `v1.0.0` tag) to the formal GitHub v1.0.0 Release.
+5. Execute the post-merge release sequence: merge PR #31 → create v1.0.0 tag on accepted main commit → generate final provenance.json and SHA256SUMS.txt → publish GitHub Release with all four assets → independently verify downloads → Portfolio Packaging Ready = YES / Milestone 14.
 
 None of the above requires touching OCR/runtime architecture, retesting Phase D/E/F, F1-F4, or a B/C dual reseal — no targeted check this session exposed a contradiction requiring one.
