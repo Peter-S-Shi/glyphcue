@@ -4,7 +4,7 @@
 
 ## Current milestone
 
-**Milestone 13 — Release Candidate & Signed Release / Minimum Runtime-Fidelity Packaging Experiment (Issue #27): Phase D COMPLETE / PASS; Phase E COMPLETE / PASS; Phase F is next; M13 remains in progress; Release Ready = NO.**
+**Milestone 13 — Release Candidate & Signed Release / Minimum Runtime-Fidelity Packaging Experiment (Issue #27): Phase D COMPLETE / PASS; Phase E COMPLETE / PASS; Phase F COMPLETE / PASS; Milestone 13 COMPLETE; Release Ready = NO.**
 
 Milestone 13 Minimum Runtime-Fidelity Packaging Experiment is executing on dedicated branch `milestone/13-release-candidate` governed by Wayfinder charter packages #17–#26 and execution issue #27:
 - **Phase A — Frozen Inputs & Experiment Scaffold: ACCEPTED (2026-09-05)**:
@@ -52,10 +52,16 @@ Milestone 13 Minimum Runtime-Fidelity Packaging Experiment is executing on dedic
   - **E1 — Packaged DirectML Performance: PASS**. Owner-led evidence used the canonical frozen fixture SHA-256 `72a7621639730b62b5a06a266499ea66768df277cad15553cab6d2487b972465`, packaged DirectML runtime, and discarded warm-up. Three timed runs measured `1.153x`, `1.387x`, and `1.392x` realtime; median `1.387x` realtime. No repeat required.
   - **E1 Fixture Governance Clarification**: The canonical fixture bytes/hash are frozen inputs generated under the frozen DevQA generation environment. Downstream candidate validation consumes that frozen artifact rather than assuming candidate runtimes will regenerate byte-identical MP4 encoding.
   - **E2 — Output Quality / Parity: PASS**. Canonical synthetic golden comparison was an exact match. The 30-second private `sample_h` 900-930s packaged-vs-trusted-DevQA DirectML parity spot check produced 225 observations, 29 cues, 6 adjacent exact duplicate raw cues, and 2 missing-language cues in both lanes, with identical cue timing and structure. Owner evidence recorded four cue text differences limited to one OCR character in the known fixed-footer/noise line while main subtitle text remained identical; this is bounded real-OCR nondeterminism, not a packaging regression.
-  - **E3 — Reconciliation Verdict: PASS**. Phase E is COMPLETE / PASS; Phase F is next; M13 remains in progress; Release Ready = NO; Issue #27 remains open.
-- **Release Status**: **Release Ready = NO** (Phase D and Phase E PASS permit progression to Phase F only; Phase F, Release Redistribution Compliance Gate, and Release Signing remain required).
-- **Release Redistribution Compliance Gate**: **OPEN**.
-- **Phase F Open Finding**: Normal Inno uninstall left substantial owned installation payload under the GlyphCue install directory, including `app/` and `lib/` trees. Owner manually removed only the install directory afterward and confirmed it no longer existed. This remains a Phase F uninstall hygiene defect; Phase F is not complete.
+  - **E3 — Reconciliation Verdict: PASS**. Phase E is COMPLETE / PASS; Phase F has since completed; Milestone 13 is COMPLETE; Release Ready = NO; Issue #27 remains open pending PR merge.
+- **Phase F — Installer Lifecycle, Upgrade, Repair & Uninstall Testing: COMPLETE / PASS (2026-09-06)**:
+  - **F1 — Repair: PASS.** **F2 — Two-Version Upgrade: PASS.**
+  - **Runtime-Write Prohibition Gate: PASS.** Owner confirmed the installer-owned `app_root` remained at 21,721 files before and after a normal launch/exit cycle, with added/removed/modified = 0 and first-party `__pycache__`/`*.pyc` count = 0.
+  - **F3 — Default Uninstall: PASS (corrected).** Original run left 202 residual files (runtime-generated `__pycache__`/`*.pyc`) because the launcher wrote bytecode into `app_root` and standard Inno uninstall only removes files it tracked at install time; uninstall itself exited 0 and preserved `%USERPROFILE%\.glyphcue` with an unchanged DB hash throughout. Fixed (PR [#28](https://github.com/Peter-S-Shi/glyphcue/pull/28)) by suppressing launcher bytecode writes (`python.exe -B`, both authoritative launcher paths) and unconditionally force-removing `{app}` on uninstall. Corrected retest PASS: exit 0, `app_root` fully removed, 0 residual, user data/DB preserved with unchanged hash, synthetic sentinel preserved.
+  - **F4 — Explicit Purge: PASS (corrected).** Original attempt crashed at uninstall runtime with `Internal error: Unknown constant "userprofile"` — `{userprofile}` is not a valid Inno Setup constant; failure was narrowly scoped, with `app_root` already fully removed, the synthetic `%USERPROFILE%\.glyphcue` intact, and real user-data backups/hashes unaffected. Fixed (PR [#28](https://github.com/Peter-S-Shi/glyphcue/pull/28)) by resolving the purge path via `GetEnv('USERPROFILE')` with a fail-closed blank check before any deletion. Final retest PASS: `app_root` removed, synthetic `%USERPROFILE%\.glyphcue` removed, real user-data backup unaffected; owner subsequently restored real user data and confirmed the restored DB hash matches the pre-Phase-F baseline.
+  - **Provenance Truth Audit (metadata-only, PR [#28](https://github.com/Peter-S-Shi/glyphcue/pull/28)):** found `generate_payload_manifest.py` recorded a hardcoded, never-accurate `source_artifact_sha256` constant for `GlyphCue.exe` regardless of which launcher source revision was actually compiled. Corrected to compute this value dynamically from the actual compiled `LAUNCHER_CS_SOURCE` in both authoritative build paths. Manifest-generation-code-only change — does not alter runtime, launcher behavior, or uninstall logic, so it does not invalidate and does not require rerunning the F1/F2/Runtime-Write/F3/F4 owner evidence above.
+  - **Final validated installer**: SHA-256 `85B683221BFCA6DAC53E297449DABBE25925E7CAB4E0839847744C2897750BB7`, Authenticode Valid, signer thumbprint `DEDF7D0881E3A172CC018B63CCCF69FC51333AFC` (local test certificate; not a production signing identity).
+- **Release Status**: **Release Ready = NO** (Phase D, Phase E, and Phase F PASS complete Milestone 13's owner-executed validation scope only; the Release Redistribution Compliance Gate and formal production/public-trust release signing and governance remain required).
+- **Release Redistribution Compliance Gate**: **OPEN** for all distributed unresolved model assets — the 3 ONNX model assets (`PP-OCRv6_det_medium.onnx`, `PP-OCRv6_rec_small.onnx`, `ch_ppocr_mobile_v2.0_cls_mobile.onnx`) and the 2 Paddle CPU model archives. None of the five is currently resolved.
 
 ### Validation
 - Clean Reconstruction A vs B Verification: **PASS** (21,711/21,711 unsigned files identical, signed PE identical, installer envelope PASS).
@@ -71,7 +77,8 @@ Milestone 13 Minimum Runtime-Fidelity Packaging Experiment is executing on dedic
 - Phase D D4 Reconciliation: **PASS** (D1/D2/D3 reconciled; Phase E progression opened; Release Ready remained NO).
 - Phase E E1 Owner Validation: **PASS** (packaged DirectML performance on canonical frozen fixture; warm-up discarded; timed runs `1.153x` / `1.387x` / `1.392x`; median `1.387x`; no repeat required).
 - Phase E E2 Owner Validation: **PASS** (synthetic golden exact match; bounded private `sample_h` packaged-vs-trusted-DevQA DirectML parity spot-check accepted with only bounded fixed-footer/noise-line OCR nondeterminism).
-- Phase E E3 Reconciliation: **PASS** (E1/E2 reconciled; Phase F next; M13 remains in progress; Release Ready remains NO).
+- Phase E E3 Reconciliation: **PASS** (E1/E2 reconciled; Phase F has since completed; Release Ready remains NO).
+- PR [#28](https://github.com/Peter-S-Shi/glyphcue/pull/28) Phase F corrective fixes (launcher bytecode suppression, default-uninstall force-removal, F4 purge-path fix, launcher provenance correction): local `tools/packaging/validate_scaffold.py` **17 passed**; GitHub Actions CI #157: **SUCCESS** (on the pre-provenance-fix commit; the provenance-only follow-up commit is pending a fresh CI run at push time).
 - Private Runtime Local Import Sanity Checks: **PASS** (imports and migrations verified on disposable scratch copies; DirectML hardware acceptance reserved for Phase D).
 - Product Hardening II Targeted Suite (`tests/ui/test_product_hardening_ii_seams.py`): **5 passed** in 1.03s.
 - Product Hardening II Affected Suites: **53 passed** in 3.95s.
@@ -867,7 +874,7 @@ appears anywhere in the repository.
 
 ## Unresolved
 
-- Release Ready = NO (remains NO until the Milestone 13 release gate itself succeeds).
+- Release Ready = NO. Milestone 13 (Phases D, E, F) is COMPLETE, but Release Ready remains NO until the Release Redistribution Compliance Gate (all distributed unresolved model assets) and formal production/public-trust release signing and governance are resolved — both are post-M13 work, not part of Milestone 13's scope.
 - Packaging suspension lifted; packaging work may resume strictly within scoped Milestone 13 release/packaging activities.
 - Residual non-blocking evaluation findings preserved (informational, not release blockers on their own):
   - `sample_c`: Isolated window-boundary non-text reading (`"zh": "3\n8"`) on Cue 1 (1.1s), safely fail-closed with `ambiguous_languages: ["zh"]`; non-contaminating.
@@ -876,5 +883,6 @@ appears anywhere in the repository.
 
 ## Next action
 
-1. Begin Milestone 13 Phase F installer lifecycle validation: upgrade, repair, clean uninstall, and residual filesystem/registry hygiene.
-2. Keep the known uninstall residual payload defect open as a Phase F lifecycle hardening item until Phase F evidence or fixes close it.
+1. Owner/ChatGPT Pre-Merge Governance Gate on PR [#28](https://github.com/Peter-S-Shi/glyphcue/pull/28) (kept Draft pending this gate); PR merge and Issue #27 closure follow once that gate clears.
+2. Post-Milestone-13: resolve the Release Redistribution Compliance Gate for all distributed unresolved model assets (3 ONNX model assets + 2 Paddle CPU model archives).
+3. Post-Milestone-13: complete formal production/public-trust release signing (the local self-signed test certificate used throughout Phases B-F is not a production signing identity) and final release governance verification.

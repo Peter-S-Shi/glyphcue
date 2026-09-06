@@ -560,6 +560,17 @@ def build_reconstruction_app_root(
     launcher_exe = app_root / "GlyphCue.exe"
     presign_sha = compile_launcher(launcher_exe)
 
+    # Record the actual compiled launcher source's SHA-256 in provenance,
+    # rather than the historical hardcoded manifest-generator fallback
+    # constant (never a real hash of any LAUNCHER_CS_SOURCE revision).
+    extraction_map["GlyphCue.exe"] = {
+        "source_artifact": "glyphcue_first_party_launcher_cs_source",
+        "source_artifact_sha256": hashlib.sha256(LAUNCHER_CS_SOURCE.encode("utf-8")).hexdigest(),
+        "license": "UNRESOLVED — Product License Gate",
+        "verification_status": "unresolved",
+        "role": "first_party_launcher_pe",
+    }
+
     # 10. Inner Signing: Sign GlyphCue.exe
     sign_pe_file(launcher_exe, TEST_CERT_THUMBPRINT)
     postsign_sha = hash_file(launcher_exe)

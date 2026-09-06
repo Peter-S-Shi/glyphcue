@@ -22,6 +22,7 @@ or substitute for real Phase B runtime assembly.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import shutil
@@ -475,6 +476,58 @@ def test_explicit_purge_resolves_userprofile_via_getenv_not_invalid_constant() -
     print("[OK] test_explicit_purge_resolves_userprofile_via_getenv_not_invalid_constant passed")
 
 
+def test_launcher_provenance_reflects_actual_compiled_source_not_stale_constant() -> None:
+    """Provenance truth audit: GlyphCue.exe's source_artifact_sha256 must be
+    computed from the LAUNCHER_CS_SOURCE actually compiled into that build.
+    generate_payload_manifest.py's classify_payload_file() previously fell
+    back to a hardcoded constant (dea596e9...) for every GlyphCue.exe entry
+    regardless of build -- that constant does not match the SHA-256 of
+    either the pre-fix or post-fix LAUNCHER_CS_SOURCE text, so it was never
+    real provenance and silently went further stale across every launcher
+    change. Both authoritative launcher-compilation paths must now inject
+    real, dynamically-computed provenance via their extraction map, which
+    classify_payload_file() already prefers over the hardcoded fallback."""
+    stale_constant = "dea596e97c1648d9480494f2923e9d0aeee6a2f02ab91fd4455e10592c82400a"
+
+    for module_name, extraction_var in (
+        ("execute_phase_b", "extraction_provenance_map"),
+        ("execute_phase_c", "extraction_map"),
+    ):
+        module_path = REPO_ROOT / "tools" / "packaging" / f"{module_name}.py"
+        source = module_path.read_text(encoding="utf-8")
+
+        marker = f'{extraction_var}["GlyphCue.exe"] = {{'
+        assert marker in source, (
+            f"{module_name}.py must record real launcher provenance for GlyphCue.exe "
+            f"in {extraction_var}, not rely on the stale hardcoded manifest fallback"
+        )
+        block_start = source.index(marker)
+        block_end = source.index("}", block_start)
+        block = source[block_start:block_end]
+        assert 'hashlib.sha256(LAUNCHER_CS_SOURCE.encode("utf-8")).hexdigest()' in block, (
+            f"{module_name}.py must compute source_artifact_sha256 from the actual "
+            f"compiled LAUNCHER_CS_SOURCE, not a hardcoded constant"
+        )
+        assert stale_constant not in block
+
+    # The two independent launcher-compilation paths must currently agree on
+    # the real hash of their (identical) LAUNCHER_CS_SOURCE, and neither may
+    # coincide with the old stale constant.
+    def _extract_launcher_cs_source(src: str) -> str:
+        marker_index = src.index("LAUNCHER_CS_SOURCE")
+        q1 = src.index('"""', marker_index)
+        q2 = src.index('"""', q1 + 3)
+        return src[q1 + 3 : q2]
+
+    b_source = (REPO_ROOT / "tools" / "packaging" / "execute_phase_b.py").read_text(encoding="utf-8")
+    c_source = (REPO_ROOT / "tools" / "packaging" / "execute_phase_c.py").read_text(encoding="utf-8")
+    b_hash = hashlib.sha256(_extract_launcher_cs_source(b_source).encode("utf-8")).hexdigest()
+    c_hash = hashlib.sha256(_extract_launcher_cs_source(c_source).encode("utf-8")).hexdigest()
+    assert b_hash == c_hash, "Both authoritative launcher sources must currently match for provenance to reconcile"
+    assert b_hash != stale_constant
+    print("[OK] test_launcher_provenance_reflects_actual_compiled_source_not_stale_constant passed")
+
+
 def run_all_scaffold_tests() -> bool:
     """Run complete scaffold validation suite."""
     test_dir = REPO_ROOT / "temp_scaffold_test"
@@ -496,6 +549,7 @@ def run_all_scaffold_tests() -> bool:
         test_launcher_suppresses_bytecode_writes_into_app_root()
         test_uninstaller_forcibly_removes_app_root_preserving_user_data()
         test_explicit_purge_resolves_userprofile_via_getenv_not_invalid_constant()
+        test_launcher_provenance_reflects_actual_compiled_source_not_stale_constant()
         print("\nALL PHASE A/C SCAFFOLD & FROZEN-INPUT VALIDATION TESTS PASSED (INCLUDING REGRESSIONS).")
         return True
     finally:

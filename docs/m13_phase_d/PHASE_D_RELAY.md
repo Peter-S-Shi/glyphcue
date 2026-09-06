@@ -1,7 +1,7 @@
 # GlyphCue — Phase D Relay Authority
 
 **Document type:** Public Canonical Phase D Relay Document  
-**Status:** Phase D COMPLETE / PASS. Phase E COMPLETE / PASS. Phase F is next. M13 remains in progress. Release Ready = NO.
+**Status:** Phase D COMPLETE / PASS. Phase E COMPLETE / PASS. Phase F COMPLETE / PASS. Milestone 13 COMPLETE. Release Ready = NO (Release Redistribution Compliance Gate and formal production/public-trust release signing and governance remain required).
 **Branch:** `milestone/13-release-candidate`  
 **Operating Model:** Risk-separated, Owner-executed, Agent-instrumented Validation
 **Phase C Closure Commit:** `00a3c65ccd7fca5180e94f242947c2438a0f9651`  
@@ -108,7 +108,7 @@ The previous Phase C accepted installer is superseded for further Phase D testin
 - **Final D1 Result:** **PASS**. Owner validation confirmed clean offline install, first launch, reboot, and relaunch on qualified Environment B.
 - **Final D2 Result:** **PASS**. Owner validation on the real RTX 3060 Windows host confirmed `DirectMlOcrEngine`, `DirectMlTextDetector`, ONNX Runtime sessions reporting `['DmlExecutionProvider', 'CPUExecutionProvider']` with DirectML first, and bounded OCR smoke returning `GLYPHCUE DIRECTML 123`.
 - **Final D3 Result:** **PASS**. Owner validation on qualified offline Environment B confirmed `PaddleOcrEngine`, `PaddleOcrTextDetector`, offline initialization from packaged artifacts, one detected polygon, and bounded CPU OCR smoke returning `GLYPHCUE TEST 123`.
-- **Current Status:** Phase D D4 reconciliation and Phase E owner-led validation are **COMPLETE / PASS**. Phase F is next. M13 remains in progress and `Release Ready = NO`.
+- **Current Status:** Phase D D4 reconciliation, Phase E owner-led validation, and Phase F owner-led lifecycle validation are all **COMPLETE / PASS**. Milestone 13 is **COMPLETE**. `Release Ready = NO` (Release Redistribution Compliance Gate and formal production/public-trust release signing and governance remain required — see Section 11).
 
 Before any Phase D retest installation, the owner/agent **must** independently verify the installer SHA-256 (`Get-FileHash GlyphCue-Setup.exe -Algorithm SHA256`).
 
@@ -230,14 +230,16 @@ Every agent or owner stopping normally, hitting quota exhaustion, encountering a
 - [x] Progression permitted to Phase E at D4 closure. Phase E has since completed; Release Ready remains `NO`, and Phase F plus Release Redistribution Compliance Gate remain required.
 - [x] Evidence recorded in `build_artifacts/phase_d/d4_verdict/`
 
-### Phase F Lifecycle Finding (Not A Phase D Failure)
+### Phase F Lifecycle Finding (Not A Phase D Failure) — RESOLVED
 
 Owner lifecycle observation after normal Inno uninstall found substantial owned
 installation payload still present under the GlyphCue install directory,
 including `app/` and `lib/` trees. The owner then manually removed only the
-install directory and confirmed that directory no longer existed. This is a
-Phase F uninstall hygiene defect and lifecycle-hardening item. It is not a D1,
-D2, or D3 failure, and Phase F is not complete.
+install directory and confirmed that directory no longer existed. This was a
+Phase F uninstall hygiene defect and lifecycle-hardening item; it was not a D1,
+D2, or D3 failure. **Status: RESOLVED.** Root cause and fix, plus a second,
+narrower F4 defect found and fixed during the same corrective pass, are
+recorded in full in Section 11 below.
 
 ---
 
@@ -283,30 +285,122 @@ structure.
 ### E3 Reconciliation Verdict
 
 - Phase E is **COMPLETE / PASS**.
-- Phase F is next.
-- M13 remains in progress.
+- Phase F has since completed (Section 11); Milestone 13 is **COMPLETE**.
 - `Release Ready = NO`.
 - Issue #27 remains open because it governs Phases A-F and final release
-  closure.
+  closure until the PR that carries this closure is merged.
 
 ---
 
 ## 9. Local Evidence Root
 
-The local gitignored evidence roots for Phase D and Phase E artifacts, logs,
+The local gitignored evidence roots for Phase D, Phase E, and Phase F artifacts, logs,
 screenshots, relay state, and machine-specific context are
-`build_artifacts/phase_d/` and `build_artifacts/phase_e/`.
+`build_artifacts/phase_d/`, `build_artifacts/phase_e/`, and `build_artifacts/phase_f/`.
 
 ---
 
 ## 10. Release Gate Sequencing & Release Readiness Boundary
 
 > [!IMPORTANT]
-> **Phase E PASS does NOT make GlyphCue Release Ready.**
-> Per Issue #27, Phase D and Phase E PASS permit progression to Phase F only. The following subsequent phase and compliance gates remain strictly required before any public release:
+> **Phase D, Phase E, and Phase F PASS do NOT make GlyphCue Release Ready.**
+> Per Issue #27, Phase D/E/F PASS complete Milestone 13's owner-executed validation scope only. The following compliance gates remain strictly required before any public release:
 > 
-> 1. **Phase F** — Installer Lifecycle, Upgrade, Repair & Uninstall Testing
-> 2. **Release Redistribution Compliance Gate**: OPEN. Must be resolved for all three ONNX model licenses before public release.
-> 3. **Final Release Signing & Release Governance Verification**
+> 1. **Release Redistribution Compliance Gate**: OPEN. Must be resolved for all distributed unresolved model assets before public release — the 3 ONNX model assets (`PP-OCRv6_det_medium.onnx`, `PP-OCRv6_rec_small.onnx`, `ch_ppocr_mobile_v2.0_cls_mobile.onnx`) and the 2 Paddle CPU model archives. None of the five is currently resolved; this gate is OPEN, not passed, for all of them.
+> 2. **Final Release Signing & Release Governance Verification**: formal production/public-trust code signing (the local self-signed test certificate used throughout Phases B-F is not a production signing identity) and final release governance sign-off.
 > 
 > **Current Release Status:** `Release Ready = NO`.
+
+---
+
+## 11. Phase F Closure — Installer Lifecycle, Upgrade, Repair & Uninstall
+
+Phase F owner-led lifecycle validation is **COMPLETE / PASS**. Two real defects
+were found and fixed during this phase; both corrective histories are
+preserved below as historical fact rather than edited away.
+
+### F1 — Repair: PASS
+### F2 — Two-Version Upgrade: PASS
+### Runtime-Write Prohibition Gate: PASS
+
+Owner confirmed that across a normal launch/exit cycle, the entire
+installer-owned `app_root` remained at **21,721 files** before and after,
+with **added/removed/modified = 0** and **first-party `__pycache__`/`*.pyc`
+count = 0**.
+
+### F3 — Default Uninstall: PASS (corrected)
+
+**Original failure (historical fact, preserved):** the first F3 run left 202
+residual files under the installer-owned `app_root` — all runtime-generated
+`__pycache__`/`*.pyc` — because the launcher wrote Python bytecode into
+`app_root` on every run, and standard Inno Setup uninstall only removes
+files/directories it tracked at install time, so that untracked residue was
+never cleaned up. Uninstall itself exited 0 and correctly preserved
+`%USERPROFILE%\.glyphcue` with an unchanged DB hash throughout.
+
+**Fix (PR #28):** the packaged launcher now runs `python.exe -B` (suppressing
+bytecode writes) in both authoritative launcher-compilation paths
+(`execute_phase_b.py`, `execute_phase_c.py`), and default uninstall now
+unconditionally force-removes `{app}` after the existing, unchanged opt-in
+user-data purge logic.
+
+**Corrected retest: PASS.** Exit 0; `app_root` fully removed; 0 residual
+files; user data/DB preserved with unchanged hash; synthetic sentinel
+preserved.
+
+### F4 — Explicit Purge: PASS (corrected)
+
+**Original failure (historical fact, preserved):** the first F4 attempt (with
+the "Remove user databases and custom settings" checkbox checked) crashed at
+uninstall runtime with `Internal error: Unknown constant "userprofile"` —
+`{userprofile}` is not a valid Inno Setup constant, so
+`ExpandConstant('{userprofile}\.glyphcue')` always failed once actually
+evaluated. The failure was narrowly scoped: `app_root` was already fully
+removed, the synthetic `%USERPROFILE%\.glyphcue` remained intact, and real
+user-data backups and their hashes were entirely unaffected.
+
+**Fix (PR #28):** the purge path now resolves via `GetEnv('USERPROFILE')`,
+fails closed (skips deletion entirely) if that variable is blank, and only
+then builds the deletion path via `AddBackslash(...) + '.glyphcue'`. Default
+(non-purge) uninstall and the independent `{app}` force-removal are
+unaffected.
+
+**Final retest: PASS.** `app_root` removed; synthetic
+`%USERPROFILE%\.glyphcue` removed; real user-data backup unaffected. The
+owner subsequently restored the real user data, and the restored DB hash
+matches the pre-Phase-F baseline.
+
+### Provenance Truth Audit & Correction (metadata-only, PR #28)
+
+A narrow provenance audit found that `generate_payload_manifest.py`'s
+`classify_payload_file()` recorded a **hardcoded constant**
+(`dea596e97c1648d9480494f2923e9d0aeee6a2f02ab91fd4455e10592c82400a`) as
+`GlyphCue.exe`'s `source_artifact_sha256` regardless of which
+`LAUNCHER_CS_SOURCE` revision was actually compiled — that constant matches
+neither the pre-fix nor post-fix launcher source hash, so it was never real
+provenance for any build. **Correction:** both authoritative launcher
+build paths (`execute_phase_b.py`, `execute_phase_c.py`) now compute
+`source_artifact_sha256` dynamically from the actual `LAUNCHER_CS_SOURCE`
+compiled into that build, via each path's existing `extraction_map`/
+`extraction_provenance_map`, which `classify_payload_file()` already
+prefers over the hardcoded fallback. This is a manifest-generation-code-only
+change — it does not alter runtime, launcher behavior, or uninstall logic —
+so per the Corrective Iteration Policy (Section 1) it does not invalidate
+and does not require rerunning the F1/F2/Runtime-Write/F3/F4 owner evidence
+above, which predates this manifest-code fix.
+
+### Final Validated Installer
+
+| Property | Value |
+|---|---|
+| **SHA-256 (Signed)** | `85B683221BFCA6DAC53E297449DABBE25925E7CAB4E0839847744C2897750BB7` |
+| **Authenticode Status** | `Valid` |
+| **Signer Thumbprint** | `DEDF7D0881E3A172CC018B63CCCF69FC51333AFC` |
+| **Signer Scope** | Local self-signed development test certificate only; not a production signing identity. |
+
+### Phase F Verdict
+
+Phase F is **COMPLETE / PASS**. Combined with Phase D and Phase E, Milestone
+13's owner-executed validation scope is **COMPLETE**. `Release Ready`
+remains **NO** pending the Release Redistribution Compliance Gate and formal
+release signing/governance (Section 10).
