@@ -426,8 +426,53 @@ def test_uninstaller_forcibly_removes_app_root_preserving_user_data() -> None:
         "would still leave <app_root> residue behind"
     )
     assert "DelTree(AppRootPath, True, True, True);" in proc_body[app_removal_index:]
-    assert "{userprofile}\\.glyphcue" in proc_body, "User data path must remain disjoint from {app}"
+    assert ".glyphcue" in proc_body, "User data path must remain disjoint from {app}"
     print("[OK] test_uninstaller_forcibly_removes_app_root_preserving_user_data passed")
+
+
+def test_explicit_purge_resolves_userprofile_via_getenv_not_invalid_constant() -> None:
+    """F4 Explicit Purge crashed at uninstall runtime with 'Internal error:
+    Unknown constant "userprofile"' -- {userprofile} is not a valid Inno Setup
+    constant, so ExpandConstant('{userprofile}\\.glyphcue') fails whenever the
+    purge checkbox is checked. The purge path must instead be resolved via the
+    real USERPROFILE environment variable (GetEnv), and must fail closed
+    (skip deletion entirely) if that variable is blank, rather than ever
+    building a deletion path from an empty/garbage prefix."""
+    iss_path = REPO_ROOT / "tools" / "packaging" / "glyphcue_installer.iss"
+    source = iss_path.read_text(encoding="utf-8")
+
+    assert "{userprofile}" not in source.lower(), (
+        "{userprofile} is not a valid Inno Setup constant; ExpandConstant "
+        'raises \'Unknown constant "userprofile"\' at uninstall runtime'
+    )
+
+    proc_index = source.index("procedure CurUninstallStepChanged")
+    proc_begin_index = source.index("begin", proc_index)
+    proc_end_index = _find_matching_end(source, proc_begin_index)
+    proc_body = source[proc_begin_index:proc_end_index]
+
+    purge_if_marker = "if (PurgeUserDataCheckbox <> nil) and PurgeUserDataCheckbox.Checked then"
+    assert purge_if_marker in proc_body, "Explicit user-data purge checkbox gating must remain unchanged"
+    purge_if_index = proc_body.index(purge_if_marker)
+    purge_begin_index = proc_body.index("begin", purge_if_index)
+    purge_end_index = _find_matching_end(proc_body, purge_begin_index)
+    purge_body = proc_body[purge_begin_index:purge_end_index]
+
+    getenv_marker = "GetEnv('USERPROFILE')"
+    assert getenv_marker in purge_body, "Purge path must resolve USERPROFILE via GetEnv, not an invalid ExpandConstant"
+
+    # Fail closed: the resolved value must be tested for blank before any
+    # deletion path is built from it or DelTree is called.
+    getenv_index = purge_body.index(getenv_marker)
+    blank_check_marker = "<> ''"
+    deltree_index = purge_body.index("DelTree(")
+    assert blank_check_marker in purge_body[getenv_index:deltree_index], (
+        "Purge logic must check USERPROFILE for blank ('<> ''') before any "
+        "deletion path is built or DelTree is called -- never form a "
+        "deletion path from an empty/unresolved prefix"
+    )
+    assert ".glyphcue" in purge_body
+    print("[OK] test_explicit_purge_resolves_userprofile_via_getenv_not_invalid_constant passed")
 
 
 def run_all_scaffold_tests() -> bool:
@@ -450,6 +495,7 @@ def run_all_scaffold_tests() -> bool:
         test_strict_offline_reconstruction_fails_on_missing_staged_input(test_dir)
         test_launcher_suppresses_bytecode_writes_into_app_root()
         test_uninstaller_forcibly_removes_app_root_preserving_user_data()
+        test_explicit_purge_resolves_userprofile_via_getenv_not_invalid_constant()
         print("\nALL PHASE A/C SCAFFOLD & FROZEN-INPUT VALIDATION TESTS PASSED (INCLUDING REGRESSIONS).")
         return True
     finally:

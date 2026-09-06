@@ -68,6 +68,7 @@ end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
+  UserProfileDir: string;
   UserDataPath: string;
   AppRootPath: string;
 begin
@@ -76,10 +77,19 @@ begin
     // Check if user requested explicit purge
     if (PurgeUserDataCheckbox <> nil) and PurgeUserDataCheckbox.Checked then
     begin
-      UserDataPath := ExpandConstant('{userprofile}\.glyphcue');
-      if DirExists(UserDataPath) then
+      // "userprofile" is not a valid Inno Setup constant name -- calling
+      // ExpandConstant with it fails at uninstall runtime with 'Internal
+      // error: Unknown constant "userprofile"'. Read the real environment
+      // variable instead, and fail closed (skip deletion) if it's blank
+      // rather than ever forming a deletion path from an unresolved prefix.
+      UserProfileDir := GetEnv('USERPROFILE');
+      if UserProfileDir <> '' then
       begin
-        DelTree(UserDataPath, True, True, True);
+        UserDataPath := AddBackslash(UserProfileDir) + '.glyphcue';
+        if DirExists(UserDataPath) then
+        begin
+          DelTree(UserDataPath, True, True, True);
+        end;
       end;
     end;
 
