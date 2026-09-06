@@ -559,6 +559,49 @@ def test_launcher_provenance_reflects_actual_compiled_source_not_stale_constant(
     print("[OK] test_launcher_provenance_reflects_actual_compiled_source_not_stale_constant passed")
 
 
+def test_gpl_ffmpeg_codec_guard_fails_closed_on_forbidden_libraries(tmp_dir: Path) -> None:
+    """v1.0.0 Public Distribution Gate A: PyAV's official Windows wheel vendors
+    an FFmpeg build compiled with --enable-gpl (confirmed by libx264/libx265
+    presence). Removing just those external codec DLLs does not relicense the
+    remaining avcodec/avformat/avutil binaries back to LGPL -- FFmpeg's own
+    policy is that enabling any GPL-only component makes the GPL apply to the
+    whole build. The real fix is a verified LGPL-only FFmpeg build (see
+    docs/v1_public_distribution_gate_a_compliance_audit.md); this guard must
+    fail closed if a forbidden GPL-only codec library is ever found in a
+    packaged app_root."""
+    from tools.packaging.verify_no_gpl_ffmpeg_codecs import (
+        assert_no_gpl_ffmpeg_codec_libraries,
+        scan_for_forbidden_gpl_codec_libraries,
+    )
+
+    dirty_root = tmp_dir / "gpl_guard_dirty_root"
+    dirty_root.mkdir(parents=True, exist_ok=True)
+    (dirty_root / "lib").mkdir(exist_ok=True)
+    (dirty_root / "lib" / "av.libs").mkdir(exist_ok=True)
+    (dirty_root / "lib" / "av.libs" / "libx264-165-deadbeef.dll").write_bytes(b"fake")
+    (dirty_root / "lib" / "av.libs" / "avcodec-62-deadbeef.dll").write_bytes(b"fake")
+
+    hits = scan_for_forbidden_gpl_codec_libraries(dirty_root)
+    assert hits == ["lib/av.libs/libx264-165-deadbeef.dll"], hits
+
+    raised = False
+    try:
+        assert_no_gpl_ffmpeg_codec_libraries(dirty_root)
+    except RuntimeError as exc:
+        raised = True
+        assert "libx264-165-deadbeef.dll" in str(exc)
+    assert raised, "Must fail closed (raise) when a GPL-only codec library is present"
+
+    clean_root = tmp_dir / "gpl_guard_clean_root"
+    clean_root.mkdir(parents=True, exist_ok=True)
+    (clean_root / "lib").mkdir(exist_ok=True)
+    (clean_root / "lib" / "avcodec-62-deadbeef.dll").write_bytes(b"fake")
+
+    assert scan_for_forbidden_gpl_codec_libraries(clean_root) == []
+    assert_no_gpl_ffmpeg_codec_libraries(clean_root)  # must not raise
+    print("[OK] test_gpl_ffmpeg_codec_guard_fails_closed_on_forbidden_libraries passed")
+
+
 def run_all_scaffold_tests() -> bool:
     """Run complete scaffold validation suite."""
     test_dir = REPO_ROOT / "temp_scaffold_test"
@@ -581,6 +624,7 @@ def run_all_scaffold_tests() -> bool:
         test_uninstaller_forcibly_removes_app_root_preserving_user_data()
         test_explicit_purge_resolves_userprofile_via_getenv_not_invalid_constant()
         test_launcher_provenance_reflects_actual_compiled_source_not_stale_constant()
+        test_gpl_ffmpeg_codec_guard_fails_closed_on_forbidden_libraries(test_dir)
         print("\nALL PHASE A/C SCAFFOLD & FROZEN-INPUT VALIDATION TESTS PASSED (INCLUDING REGRESSIONS).")
         return True
     finally:
