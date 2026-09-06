@@ -2,10 +2,10 @@
 
 **Document type:** Authoritative V1 milestone roadmap  
 **Project:** GlyphCue  
-**Lifecycle phase:** Production Development → Milestone 10 complete; **Milestone 11 (Product Hardening & Full Regression) is CLOSED (2026-09-04)** (Release Acceptance rejected by human adjudication); **Milestone 12 (Product Rework & Cue Quality Recovery) is CLOSED & ACCEPTED (2026-09-05)**: Stage ① (UI / Review Workflow Recovery) and Stage ② (Cue Production Quality Recovery via Cue Cleaner V0.6.1 "Clean Cues" integration) both completed and accepted; **Product Hardening II & Full Regression is CLOSED & ACCEPTED (2026-09-05)** via PR #16; Feature Freeze remains ACTIVE; Release Ready = NO; packaging suspension lifted for scoped Milestone 13 release work; approved to advance into Milestone 13 (Release Candidate & Signed Release). See §19/§20/§31 and `PROJECT_STATUS.md`.  
+**Lifecycle phase:** Production Development → Milestone 10 complete; **Milestone 11 (Product Hardening & Full Regression) is CLOSED (2026-09-04)** (Release Acceptance rejected by human adjudication); **Milestone 12 (Product Rework & Cue Quality Recovery) is CLOSED & ACCEPTED (2026-09-05)**: Stage ① (UI / Review Workflow Recovery) and Stage ② (Cue Production Quality Recovery via Cue Cleaner V0.6.1 "Clean Cues" integration) both completed and accepted; **Product Hardening II & Full Regression is CLOSED & ACCEPTED (2026-09-05)** via PR #16; **Milestone 13 (redefined as the Minimum Runtime-Fidelity Packaging Experiment, Issues #17/#26/#27) is COMPLETE — Phases A–F all PASS**; Feature Freeze remains ACTIVE; **Release Ready remains NO** (Release Redistribution Compliance Gate for all unresolved distributed model assets, plus formal production/public-trust signing and release governance, remain open, post-M13 gates); **Milestone 14 (Portfolio Packaging & Stop-Building Closure) is the next development target** — starting it does not itself make the product publicly shipped or release-ready. See §19/§20/§21/§31 and `PROJECT_STATUS.md`.  
 **Status:** Current V1 execution roadmap  
 
-**Last updated:** 2026-09-05
+**Last updated:** 2026-09-06
 
 
 ---
@@ -144,27 +144,26 @@ Evaluated candidates:
 
 ## Packaging
 
-Current release-packaging decision:
+Accepted release-packaging path (validated under Milestone 13, Phases A–F):
 
-> **NO ACTIVE RELEASE PACKAGING PATH** — packaging suspension from Milestone 12 / Hardening II lifted; selection and execution resume within scoped Milestone 13 work.
+> **App-local embedded CPython 3.12.10 runtime + Inno Setup 6.3.3 offline installer.** Vendored wheels/dependencies, authoritative ONNX/Paddle CPU models, and a first-party C# launcher are assembled into a self-contained `<app_root>` and packaged as a signed Inno Setup installer. This is the accepted V1 packaging path, not a research candidate.
 
-Historical M11 evidence: Nuitka/pyside6-deploy was retired after
-repeated build-system/resource blockers (RAM exhaustion and an
+Historical M11 evidence (preserved): Nuitka/pyside6-deploy was retired
+after repeated build-system/resource blockers (RAM exhaustion and an
 indeterminate codegen stall across multiple controlled attempts on the
 actual build machine — see `PROJECT_STATUS.md`'s Stage ⑦-A/⑦-B section
 for the full evidence). PyInstaller onedir was technically demonstrated
-and partially hardened, but it is not accepted as a release-grade path
-and is not the current active packaging choice. Briefcase /
-embedded-CPython remain research candidates only. Packaging technology
-selection is deliberately deferred.
+and partially hardened, but was superseded by the app-local embeddable
+CPython path above rather than being carried forward. Briefcase remains
+an unused research candidate.
 
-Future Packaging / RC form:
+Signing:
 
-> Under evaluation within Milestone 13 (Release Candidate & Signed Release).
+> Local M13 development-test certificate signing only (`CN=GlyphCue Development Test Certificate, O=GlyphCue Local Test Root`). This is **not** a production/public-trust signing identity — formal release signing remains a separate, unresolved post-M13 gate.
 
-Final installer technology:
+Public release readiness:
 
-> TBD. No installer technology is currently selected.
+> Packaging and installer-lifecycle validation (Phases A–F: offline install, DirectML/CPU-fallback runtime fidelity, performance/output-quality benchmarking, repair/upgrade/uninstall lifecycle) is COMPLETE and PASS. This does **not** make GlyphCue publicly shipped or Release Ready: the Release Redistribution Compliance Gate (all distributed unresolved model assets) and formal production/public-trust release signing and governance remain open. `Release Ready = NO`.
 
 ---
 
@@ -250,7 +249,7 @@ New milestones should be created only if a real dependency or acceptance gate ca
 | M10 | Evaluation & Career Evidence Closure | Benchmark, metrics, failure report, performance evidence, ADR closure |
 | M11 | Product Hardening & Full Regression | Product-quality convergence on frozen scope — CLOSED; Release Acceptance REJECTED BY HUMAN ADJUDICATION (§18 closure disposition) |
 | M12 | Product Rework & Cue Quality Recovery | Recover Cue quality and QA review UX without giving back M11's speed gains (§19) |
-| M13 | Release Candidate & Signed Release | Clean-install accepted V1 release |
+| M13 | Minimum Runtime-Fidelity Packaging Experiment (redefined; original goal historical) | COMPLETE — Phases A-F all PASS; does not itself make V1 publicly shipped/Release Ready (§20) |
 | M14 | Portfolio Packaging & Stop-Building Closure | Public technical story complete; V1 development formally stops |
 
 ---
@@ -1758,13 +1757,26 @@ Milestone 12 passes only when:
 
 ---
 
-# 20. Milestone 13 — Release Candidate & Signed Release
+# 20. Milestone 13 — Minimum Runtime-Fidelity Packaging Experiment (Status: COMPLETE)
 
-## Goal
+**Status: COMPLETE — Phases A–F all PASS (2026-09-06).** This milestone's
+original goal below ("produce, verify, and accept the real GlyphCue V1
+release artifact," ending in a publicly shipped, GitHub-released product)
+was superseded during execution by the narrower, formally approved
+**Minimum Runtime-Fidelity Packaging Experiment**, governed by Issues
+[#17](https://github.com/Peter-S-Shi/glyphcue/issues/17),
+[#26](https://github.com/Peter-S-Shi/glyphcue/issues/26), and
+[#27](https://github.com/Peter-S-Shi/glyphcue/issues/27). The original
+goal/scope text immediately below is preserved as the historical starting
+intent; the actual completed scope and result are recorded in "Actual
+Completed Scope & Result" further down. **Milestone 13 completing does
+not mean V1 is publicly shipped or Release Ready.**
+
+## Goal (original, historical)
 
 Produce, verify, and accept the real GlyphCue V1 release artifact.
 
-## Scope
+## Scope (original, historical)
 
 ### RC build
 
@@ -1817,20 +1829,49 @@ Required:
 - third-party dependency/license attribution;
 - release notes.
 
+## Actual Completed Scope & Result
+
+Milestone 13 executed as the risk-separated, owner-executed,
+agent-instrumented **Minimum Runtime-Fidelity Packaging Experiment**
+(Phases A–F), not the original full-release vision above. Full detail:
+`PROJECT_STATUS.md` and `docs/m13_phase_d/PHASE_D_RELAY.md`.
+
+- **Phase A** — Frozen inputs & experiment scaffold: **ACCEPTED**.
+- **Phase B** — Primary runtime assembly & first installer build: **ACCEPTED**.
+- **Phase C** — Clean reconstruction & drift verification: **FINAL ACCEPTED**.
+- **Phase D** — Target-machine offline runtime & DirectML validation (D0–D4): **COMPLETE / PASS**.
+- **Phase E** — Representative performance & output-quality benchmarking (E1–E3): **COMPLETE / PASS**.
+- **Phase F** — Installer lifecycle, upgrade, repair & uninstall testing (F1, F2, Runtime-Write Prohibition, F3, F4): **COMPLETE / PASS**, including two real corrective fixes (launcher bytecode suppression / default-uninstall force-removal; invalid `{userprofile}` Inno constant in the explicit-purge path) and a metadata-only launcher-provenance correction, all preserved as historical fact in `PROJECT_STATUS.md`.
+
+Accepted packaging path (see §3 Packaging, updated): app-local embedded
+CPython 3.12.10 runtime + Inno Setup 6.3.3 offline installer, signed with
+a local M13 development-test certificate only.
+
 ## Acceptance gate
 
-M12 closes only when:
+Milestone 13 (as redefined above) closed when:
 
 ```text
-RC built
-→ clean install passed
-→ manual acceptance passed
-→ release blockers = 0
-→ signed/formal installer accepted
-→ GitHub release ready
+Phase A ACCEPTED
+→ Phase B ACCEPTED
+→ Phase C FINAL ACCEPTED
+→ Phase D COMPLETE / PASS
+→ Phase E COMPLETE / PASS
+→ Phase F COMPLETE / PASS
 ```
 
-At this point V1 is a shipped product.
+**All PASSED (2026-09-06). Milestone 13 is COMPLETE.**
+
+This does **not** mean V1 is a shipped product or that GlyphCue is
+Release Ready. The original goal's full release checklist above (`RC
+built → clean install passed → manual acceptance passed → release
+blockers = 0 → signed/formal installer accepted → GitHub release ready →
+V1 is a shipped product`) was **not** this milestone's actual acceptance
+gate and remains **unmet and unscheduled** as a numbered milestone: the
+Release Redistribution Compliance Gate (for all distributed unresolved
+model assets) and formal production/public-trust release signing and
+governance are still open, post-M13 gates, tracked separately from
+Milestone 14 (§21) below. `Release Ready = NO`.
 
 ---
 
@@ -1838,7 +1879,7 @@ At this point V1 is a shipped product.
 
 ## Goal
 
-Convert the shipped technical work into a concise, credible professional artifact and formally stop V1 feature development.
+Convert the completed technical work into a concise, credible professional artifact and formally stop V1 feature development. (Portfolio Packaging may begin now that Milestone 13's engineering closure is complete; it does not itself make GlyphCue publicly shipped or Release Ready — see §20.)
 
 ## Required public evidence
 
@@ -1920,7 +1961,7 @@ After this gate:
 
 ## Acceptance gate
 
-M13 passes only when the project can be shown to a technical recruiter / interviewer without requiring oral explanation to hide missing evidence.
+Milestone 14 passes only when the project can be shown to a technical recruiter / interviewer without requiring oral explanation to hide missing evidence.
 
 ---
 
@@ -2186,12 +2227,14 @@ Milestone 12 — Product Rework & Cue Quality Recovery ✓ complete / CLOSED (20
   ├─ Stage ① UI / Review Workflow Recovery           ✓ complete (2026-09-04)
   └─ Stage ② Cue Production Quality Recovery          ✓ complete (2026-09-05)
 Product Hardening II & Full Regression              ✓ complete / CLOSED (2026-09-05, PR #16)
+Milestone 13 — Minimum Runtime-Fidelity Packaging Experiment (Phases A-F) ✓ complete / COMPLETE (2026-09-06) — see §20
 
 Corrective Product Rework               CLOSED / ACCEPTED (2026-09-05)
 Product Hardening II & Full Regression  CLOSED / ACCEPTED (2026-09-05)
+Milestone 13 (Phases A-F)               COMPLETE / PASS (2026-09-06)
 Feature Freeze                          ACTIVE
-Release / Packaging                     Suspension lifted for scoped M13 release work
-Release Ready                           NO (pending M13 release gate)
+Release / Packaging                     App-local CPython + Inno Setup 6.3.3 path validated under M13; dev-test signing only
+Release Ready                           NO (Release Redistribution Compliance Gate + production signing/release governance still open, post-M13)
 ```
 
 ---
@@ -2200,18 +2243,19 @@ Release Ready                           NO (pending M13 release gate)
 
 The next engineering action is:
 
-> **Milestone 13 — Release Candidate & Signed Release** (ROADMAP §20; packaging work resumes within scoped M13 release activities)
+> **Milestone 14 — Portfolio Packaging & Stop-Building Closure** (ROADMAP §21; may begin now that Milestone 13's engineering closure is complete)
 
-**Product Hardening II & Full Regression Pass is CLOSED & ACCEPTED (2026-09-05).**
+**Milestone 13 — Minimum Runtime-Fidelity Packaging Experiment is COMPLETE (2026-09-06).**
 All verification gates have been satisfied:
-1. **Step ② Targeted Regressions**: 5 high-ROI seam regressions implemented in `tests/ui/test_product_hardening_ii_seams.py` passed (100% pass rate); 53 affected suite tests passed in 3.95s.
-2. **Step ④ Full Regression & Hardware Probe**: Local Windows suite achieved 962 passed, 1 skipped, 1 xfailed in 172.06s (0 failures); DirectML hardware probe confirmed `DmlExecutionProvider` active on detector and recognizer without silent fallback; clean-environment GitHub Actions CI (#152, Run ID `33966863334`) completed with SUCCESS.
-3. **Step ⑤ Final Human Acceptance**: Repository owner interactive real-product smoke check returned PASS (2026-09-05).
-4. **Accepted V1 Known Limitation Preserved**: Cue Cleaner V0.6.1 conservative contract preserved as a non-blocking V1 product trade-off; remaining cases resolved via manual Merge workflow.
-5. **Feature Freeze remains ACTIVE**.
-6. **Packaging Suspension Lifted**: Packaging work is no longer suspended by the Hardening II gate and may resume strictly within scoped Milestone 13 release/packaging work.
-7. **Release Ready remains NO** until the Milestone 13 release gate itself succeeds.
-8. **Next Target**: Milestone 13 (Release Candidate & Signed Release, §20).
+1. **Phases A-C** (frozen inputs, primary runtime assembly, clean reconstruction & drift verification): ACCEPTED / FINAL ACCEPTED.
+2. **Phase D** (target-machine offline runtime & DirectML validation, D0-D4): COMPLETE / PASS.
+3. **Phase E** (representative performance & output-quality benchmarking, E1-E3): COMPLETE / PASS.
+4. **Phase F** (installer lifecycle, upgrade, repair & uninstall testing, F1/F2/Runtime-Write/F3/F4): COMPLETE / PASS, including corrective fixes and a metadata-only provenance reconciliation, preserved as historical fact in `PROJECT_STATUS.md`.
+5. **Accepted V1 Known Limitation Preserved**: Cue Cleaner V0.6.1 conservative contract preserved as a non-blocking V1 product trade-off; remaining cases resolved via manual Merge workflow.
+6. **Feature Freeze remains ACTIVE**.
+7. **Accepted packaging path**: app-local embedded CPython runtime + Inno Setup 6.3.3 offline installer, validated under Milestone 13; local development-test signing only.
+8. **Release Ready remains NO**: the Release Redistribution Compliance Gate (all distributed unresolved model assets) and formal production/public-trust release signing and governance are open, post-M13 gates — not part of Milestone 13 or Milestone 14's scope.
+9. **Next Target**: Milestone 14 (Portfolio Packaging & Stop-Building Closure, §21). Starting Milestone 14 does not itself make GlyphCue publicly shipped or Release Ready.
 
 ---
 
@@ -2260,10 +2304,10 @@ Product Rework & Cue Quality Recovery (CLOSED / ACCEPTED 2026-09-05)
 Product Hardening II & Full Regression (CLOSED / ACCEPTED 2026-09-05)
         ↓
 M13
-Release Candidate + Signed Release (NEXT)
+Minimum Runtime-Fidelity Packaging Experiment, Phases A-F (COMPLETE)
         ↓
 M14
-Portfolio Packaging + Stop-Building Closure
+Portfolio Packaging + Stop-Building Closure (NEXT)
 ```
 
 The center of gravity is intentionally M2–M7.
@@ -2276,7 +2320,7 @@ M8 completes the second ingestion path.
 
 M9 closes the accepted V1 product surface and formally declares Feature Freeze.
 
-M10–M13 convert engineering work into a finished, evaluated, hardened, shipped, and professionally legible product.
+M10–M13 convert engineering work into a finished, evaluated, hardened, and professionally legible product. (M13's packaging-lifecycle validation is COMPLETE; this does not mean V1 is publicly shipped — Release Ready remains NO until the post-M13 redistribution-compliance and production-signing/release-governance gates close.)
 
 ---
 
