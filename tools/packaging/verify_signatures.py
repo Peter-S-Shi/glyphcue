@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -22,6 +23,11 @@ REQUIRED_FIRST_PARTY_PES = {"GlyphCue.exe", "unins000.exe", "GlyphCue-Setup.exe"
 
 # Authoritative approved test certificate subject per #26 charter and build base
 APPROVED_TEST_CERT_SUBJECT = "CN=GlyphCue Development Test Certificate, O=GlyphCue Local Test Root"
+POWERSHELL_EXE = Path(r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe")
+WINDOWS_POWERSHELL_MODULE_PATH = (
+    r"C:\Program Files\WindowsPowerShell\Modules;"
+    r"C:\WINDOWS\system32\WindowsPowerShell\v1.0\Modules"
+)
 
 
 def check_pe_signature(pe_path: Path, expected_thumbprint: str | None = None) -> dict[str, Any]:
@@ -42,11 +48,14 @@ def check_pe_signature(pe_path: Path, expected_thumbprint: str | None = None) ->
     }} | ConvertTo-Json -Compress
     """
     try:
+        env = os.environ.copy()
+        env["PSModulePath"] = WINDOWS_POWERSHELL_MODULE_PATH
         res = subprocess.run(
-            ["powershell", "-NoProfile", "-Command", ps_cmd],
+            [str(POWERSHELL_EXE), "-NoProfile", "-Command", ps_cmd],
             capture_output=True,
             text=True,
             check=False,
+            env=env,
         )
         data = json.loads(res.stdout.strip())
         status_str = data.get("Status", "Unknown")
@@ -138,8 +147,10 @@ def evaluate_signature_gate(
         $results | ConvertTo-Json -Compress
         """
         try:
-            cmd = ["powershell", "-NoProfile", "-Command", batch_script]
-            res = subprocess.run(cmd, capture_output=True, text=True, check=True)
+            env = os.environ.copy()
+            env["PSModulePath"] = WINDOWS_POWERSHELL_MODULE_PATH
+            cmd = [str(POWERSHELL_EXE), "-NoProfile", "-Command", batch_script]
+            res = subprocess.run(cmd, capture_output=True, text=True, check=True, env=env)
             temp_paths_file.unlink(missing_ok=True)
             raw_data = json.loads(res.stdout.strip())
             if isinstance(raw_data, dict):

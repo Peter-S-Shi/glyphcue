@@ -1,10 +1,10 @@
 # GlyphCue — PROJECT_STATUS.md
 
-**Last updated:** 2026-09-05
+**Last updated:** 2026-09-06
 
 ## Current milestone
 
-**Milestone 13 — Release Candidate & Signed Release / Minimum Runtime-Fidelity Packaging Experiment (Issue #27): Phase C FINAL ACCEPTED. Phase D0 Relay Scaffold COMPLETE.**
+**Milestone 13 — Release Candidate & Signed Release / Minimum Runtime-Fidelity Packaging Experiment (Issue #27): Phase D COMPLETE / PASS; Phase E is next; M13 remains in progress; Release Ready = NO.**
 
 Milestone 13 Minimum Runtime-Fidelity Packaging Experiment is executing on dedicated branch `milestone/13-release-candidate` governed by Wayfinder charter packages #17–#26 and execution issue #27:
 - **Phase A — Frozen Inputs & Experiment Scaffold: ACCEPTED (2026-09-05)**:
@@ -21,25 +21,49 @@ Milestone 13 Minimum Runtime-Fidelity Packaging Experiment is executing on dedic
   - Inno Setup installer envelope comparison: size delta 496 bytes within allowed Inno Setup header/timestamp and PKCS#7 envelope delta; signatures valid on both. Envelope verdict: **PASS**.
   - Manifest-to-disk reconciliation: 100% path and file count match (21,711 files) on both reconstructions with 0 unindexed and 0 missing files.
   - Gate verdicts: Integrity Gate: PASS, Untracked File Gate: PASS, Provenance Gate: PASS, Release Redistribution Compliance Gate: OPEN (recorded). Overall Phase C verdict: **FINAL PASS / ACCEPTED**.
+  - **Superseded for further Phase D testing** after D3 proved the accepted installer was not self-contained for offline OCR runtime initialization.
+- **Corrected Phase B/C Reseal for D3 Runtime Fix: PASS (2026-09-05)**:
+  - Previous development test certificate private key was unavailable, so a new local self-signed GlyphCue development test certificate was created for M13 local test signing only: subject `CN=GlyphCue Development Test Certificate, O=GlyphCue Local Test Root`, thumbprint `DEDF7D0881E3A172CC018B63CCCF69FC51333AFC`.
+  - The certificate is not a V1 production signing identity. Current local scope: `CurrentUser\My` with private key; public certificate trusted in `CurrentUser\Root` and `CurrentUser\TrustedPublisher` for corrected Phase B/C reseal and M13 local testing.
+  - Corrected Phase C reseal2 ran two clean reconstructions from 91 frozen artifacts, including the two Paddle CPU model archives. Both reconstructions produced 21,718-file payloads with identical unsigned payloads, identical launcher pre-sign and post-sign hashes, source identity PASS, model/DLL identity PASS, manifest/SBOM gates PASS, untracked/provenance gates PASS, signature gates PASS, and installer envelope drift PASS.
+  - Corrected reseal baseline installer: `build_artifacts/d3_c_reseal2/recon1/installer/GlyphCue-Setup.exe`, 544,136,408 bytes, SHA-256 `47c9fbe10db5481570cd4ee43606b818768707018987b294cebbd78a00d9b7a7`, Authenticode `Valid` under local test certificate `DEDF7D0881E3A172CC018B63CCCF69FC51333AFC`. The current selected Phase D installer is the later narrow recognizer fallback fix rebuild recorded under Phase D.
 - **Phase D — Target-Machine Offline Runtime & DirectML Validation**:
-  - **D0 — Execution Preflight, Relay Scaffold & Owner VM Qualification Gate: COMPLETE (2026-09-05)**:
-    - Operating Model: Owner-executed, agent-instrumented validation (owner operates clean target VM environment; AI assistants supply deterministic step-by-step guidance/commands; agents analyze & reconcile logs/screenshots in `build_artifacts/phase_d/`).
-    - Relay authority: `docs/m13_phase_d/PHASE_D_RELAY.md`; machine-readable state: `docs/m13_phase_d/phase_d_state.json`; local evidence root: `build_artifacts/phase_d/`.
+  - **D0 — Execution Preflight, Scaffold & Risk-Separated Qualification: COMPLETE (2026-09-05)**:
+    - Operating Model: Risk-separated, Owner-executed, Agent-instrumented validation. Owner operates target environments (clean VMware Environment B for installation/CPU fallback; real RTX 3060 Windows host for DirectML hardware fidelity); AI assistants provide step-by-step guidance; agents reconcile evidence logs in `build_artifacts/phase_d/`.
+    - Corrective Reseal Policy: runtime-code, packaged-model, manifest/SBOM, offline-resolution, or signer-identity changes supersede the previous Phase D installer and require corrected Phase B/C reseal before owner retest.
     - Baselines: `phase_c_closure_commit` = `00a3c65ccd7fca5180e94f242947c2438a0f9651`; `d0_scaffold_baseline_commit` = `182bc46788df66c95b272aa64193937ebed0fb4f`. Live branch HEAD dynamically resolved into `build_artifacts/phase_d/relay_state.json`.
-    - Selected installer frozen: Clean Reconstruction A `GlyphCue-Setup.exe`, 441,941,848 bytes, SHA-256 `3ea8720033d7d23a5c55296bb2ee08fffb3bc43e2f6a4d9ad0387c63951355a3`, Authenticode Valid.
-    - Owner VM Qualification Gate added before D1 (classifies target VM as Environment A DirectML-capable, Environment B CPU fallback, or Ineligible).
+    - Previous selected installer `3ea8720033d7d23a5c55296bb2ee08fffb3bc43e2f6a4d9ad0387c63951355a3` is superseded due D3 offline-runtime failure. Current selected Phase D installer is the narrow recognizer fallback fix rebuild `GlyphCue-Setup.exe`, 544,118,632 bytes, SHA-256 `cf76cb5632befccccb3b63bcd884e5f1e6f515d68fba8fdf0490845100d9b870`, Authenticode Valid under local development test certificate `DEDF7D0881E3A172CC018B63CCCF69FC51333AFC`.
     - Scope boundary: formal performance/quality benchmarking reserved for Phase E; lifecycle/upgrade/repair/uninstall reserved for Phase F. Release Ready = NO.
-  - **D1 — Environment A Clean Offline Install, First Launch & Relaunch: NOT STARTED**.
-  - **D2 — Environment A DirectML Runtime Fidelity (Bounded Smoke): NOT STARTED**.
-  - **D3 — Environment B CPU Fallback Validation (Bounded Smoke): NOT STARTED**.
-  - **D4 — Evidence Reconciliation & Phase D Verdict: NOT STARTED**.
+  - **D1 — Clean Offline Install, First Launch & Relaunch (Clean VMware Env B): PASS (owner-validated on corrected installer)**.
+  - **D2 — DirectML Hardware Runtime Fidelity (Owner Real RTX 3060 Host): PASS (owner-validated on corrected installer)**:
+    - Owner validation confirmed `DirectMlOcrEngine` and `DirectMlTextDetector` on the real RTX 3060 Windows host.
+    - Actual recognizer and detector ONNX sessions reported `['DmlExecutionProvider', 'CPUExecutionProvider']` with DirectML first, proving no silent CPU-only fallback.
+    - Bounded DirectML OCR smoke returned `GLYPHCUE DIRECTML 123`.
+  - **D3 — Production Path Offline CPU Fallback Validation (Clean VMware Env B): PASS (owner-validated on corrected installer)**:
+    - Initial canonical installer (`3ea87200...`) FAILED during D3 offline CPU fallback testing (historical fact: external retrieval attempted while offline) and is superseded.
+    - Corrective fix binds DirectML/RapidOCR to frozen packaged ONNX models and packages Paddle CPU detection/recognition artifacts under `models/paddle/`.
+    - Owner D3 evidence found one narrow remaining blocker: RapidOCR/ONNX Runtime fell back internally to `CPUExecutionProvider`, while `create_ocr_engine(..., prefer_directml=True)` still selected `DirectMlOcrEngine` and reported `backend='directml'`.
+    - Narrow fix rebuilt installer: `build_artifacts/d3_recognizer_fallback_fix/installer/GlyphCue-Setup.exe`, 544,118,632 bytes, SHA-256 `cf76cb5632befccccb3b63bcd884e5f1e6f515d68fba8fdf0490845100d9b870`, Authenticode Valid under local development test certificate `DEDF7D0881E3A172CC018B63CCCF69FC51333AFC`.
+    - Owner final CPU OCR smoke confirmed `PaddleOcrEngine`, `PaddleOcrTextDetector`, offline initialization, one polygon, and text `GLYPHCUE TEST 123`.
+  - **D4 — Evidence Reconciliation & Phase D Verdict: COMPLETE / PASS (2026-09-06)**:
+    - D1/D2/D3 owner-executed evidence reconciled against the Phase D contract. Phase D PASS permits progression to Phase E only.
+    - Newly discovered uninstall residual payload is recorded as a Phase F lifecycle hardening defect, not a Phase D failure.
 - **Release Status**: **Release Ready = NO** (Phase D PASS permits progression to Phase E only; Phase E, Phase F, Release Redistribution Compliance Gate, and Release Signing remain required).
 - **Release Redistribution Compliance Gate**: **OPEN**.
+- **Phase F Open Finding**: Normal Inno uninstall left substantial owned installation payload under the GlyphCue install directory, including `app/` and `lib/` trees. Owner manually removed only the install directory afterward and confirmed it no longer existed. This remains a Phase F uninstall hygiene defect; Phase F is not complete.
 
 ### Validation
 - Clean Reconstruction A vs B Verification: **PASS** (21,711/21,711 unsigned files identical, signed PE identical, installer envelope PASS).
 - Packaging Experiment Scaffold & Drift Test Suite (`tools/packaging/validate_scaffold.py`): **13 passed** (including manifest-to-disk reconciliation and strict offline staging regressions).
 - Phase C Isolated Clean Reconstruction & Drift Pipeline (`tools/packaging/execute_phase_c.py`): **PASS** (zero unsigned file drift, zero signed PE drift, envelope drift PASS).
+- D3 Corrective Runtime Binding Tests (`tests/adapters/test_packaged_runtime_model_binding.py`, plus selection regressions): **17 passed**.
+- D3 Corrected Phase B Reseal: **PASS** (`build_artifacts/d3_b_clean2/phase_b_report.json`); signed installer 544,156,896 bytes, SHA-256 `cff101ba4105e1f39d86ddfff1e585744a086315e6cf39317e398a76a68c1084`, runtime sanity PASS, signature gate PASS.
+- D3 Corrected Phase C Reseal: **PASS** (`build_artifacts/d3_c_reseal2/phase_c_summary.json`); recon1 installer 544,136,408 bytes SHA-256 `47c9fbe10db5481570cd4ee43606b818768707018987b294cebbd78a00d9b7a7`; recon2 installer 544,135,880 bytes SHA-256 `a7306ec7718215e5dcdaea03ca0353a5ba6d29fb4b52a505e840f33cdc4ff0a5`; payload drift PASS, installer envelope PASS with 528-byte allowed delta, source identity/model-DLL identity/untracked/provenance/manifest/SBOM/signature gates PASS.
+- D3 Narrow Recognizer Fallback Fix: **PASS** (`tests/adapters/test_ocr_engine_selection.py`, `tests/adapters/test_packaged_runtime_model_binding.py`, `tests/adapters/test_directml_ocr_engine_contract.py`: 20 passed); rebuilt installer `build_artifacts/d3_recognizer_fallback_fix/installer/GlyphCue-Setup.exe`, 544,118,632 bytes, SHA-256 `cf76cb5632befccccb3b63bcd884e5f1e6f515d68fba8fdf0490845100d9b870`, runtime sanity PASS, signature gate PASS.
+- Phase D D1 Owner Validation: **PASS** (clean offline install, first launch, reboot, and relaunch).
+- Phase D D2 Owner Validation: **PASS** (`DirectMlOcrEngine`, `DirectMlTextDetector`, DirectML-first ONNX Runtime providers, bounded OCR smoke returned `GLYPHCUE DIRECTML 123`).
+- Phase D D3 Owner Validation: **PASS** (`PaddleOcrEngine`, `PaddleOcrTextDetector`, offline initialization, bounded CPU OCR smoke returned `GLYPHCUE TEST 123`).
+- Phase D D4 Reconciliation: **PASS** (D1/D2/D3 reconciled; Phase E next; Release Ready remains NO).
 - Private Runtime Local Import Sanity Checks: **PASS** (imports and migrations verified on disposable scratch copies; DirectML hardware acceptance reserved for Phase D).
 - Product Hardening II Targeted Suite (`tests/ui/test_product_hardening_ii_seams.py`): **5 passed** in 1.03s.
 - Product Hardening II Affected Suites: **53 passed** in 3.95s.

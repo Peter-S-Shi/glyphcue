@@ -72,7 +72,7 @@ def test_frozen_build_base_completeness() -> None:
     assert "Inno Setup 6" in toolchain["inno_setup_compiler"]
     assert "SignTool" in toolchain["signtool_tool"]
     assert toolchain["test_certificate_subject"] == APPROVED_TEST_CERT_SUBJECT
-    assert toolchain["test_certificate_thumbprint"] == "A3E4E5320779C9F63E513D870E209C26B819C61E"
+    assert toolchain["test_certificate_thumbprint"] == "DEDF7D0881E3A172CC018B63CCCF69FC51333AFC"
     assert "CycloneDX 1.6" in toolchain["cyclonedx_sbom_spec"]
 
     # Models & DLLs

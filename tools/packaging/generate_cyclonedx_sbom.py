@@ -57,6 +57,12 @@ def generate_cyclonedx_sbom(manifest_path: Path, output_path: Path | None = None
             comp_version = "v6"
             comp_type = "data"
             license_expr = "NOASSERTION"  # Redistribution rights unconfirmed
+        elif role == "paddle_cpu_model_weights":
+            comp_key = "ppocr-paddle-cpu-models"
+            comp_name = "paddleocr-paddle-cpu-models"
+            comp_version = "v6"
+            comp_type = "data"
+            license_expr = "NOASSERTION"  # Redistribution rights unconfirmed
         elif role == "qt_runtime_plugin":
             comp_key = "pyside6-qt-plugins"
             comp_name = "pyside6-plugins"

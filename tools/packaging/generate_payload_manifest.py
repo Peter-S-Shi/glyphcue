@@ -91,6 +91,14 @@ def build_source_artifact_sha_map(frozen_inventory: dict[str, Any]) -> dict[str,
             sha_map[fn] = sha
             sha_map[f"frozen_model:{fn}"] = sha
 
+    # 3b. Paddle CPU model archives
+    for m in frozen_inventory.get("paddle_cpu_model_archives", []):
+        fn = m.get("archive_filename")
+        sha = m.get("sha256")
+        if fn and sha:
+            sha_map[fn] = sha
+            sha_map[f"frozen_paddle_model_archive:{fn}"] = sha
+
     # 4. Migrations
     for mig in frozen_inventory.get("database_migrations", []):
         fn = mig.get("filename")

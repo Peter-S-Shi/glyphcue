@@ -28,7 +28,13 @@ Both required clean reconstructions (Reconstruction 1 and Reconstruction 2) and 
 | **Installer Compiler** | Inno Setup 6.3.3 (`ISCC.exe` x64, per-user `{localappdata}\Programs\GlyphCue`) | Frozen |
 | **Code Signing Mechanism** | Windows SDK SignTool 10.0.26100.0 / PowerShell Authenticode API (Win11 Build 26200) | Frozen |
 | **Approved Test Certificate Subject** | `CN=GlyphCue Development Test Certificate, O=GlyphCue Local Test Root` | Frozen |
-| **Approved Test Certificate Thumbprint** | `A3E4E5320779C9F63E513D870E209C26B819C61E` | Frozen |
+| **Approved Test Certificate Thumbprint** | `DEDF7D0881E3A172CC018B63CCCF69FC51333AFC` | Frozen for D3 corrective reseal |
+
+> The previous development test certificate private key was unavailable during
+> D3 corrective reseal. The corrected Phase B/C reseal uses a newly-created
+> local self-signed GlyphCue development test certificate with the same subject
+> and thumbprint `DEDF7D0881E3A172CC018B63CCCF69FC51333AFC`.
+
 | **CycloneDX Generator Tool** | `cyclonedx-py 5.1.1` (`specVersion: "1.6"`) via `tools/packaging/generate_cyclonedx_sbom.py` | Frozen |
 | **Drift Comparator** | `tools/packaging/verify_payload_drift.py v1.2.0` | Frozen |
 
@@ -61,7 +67,13 @@ To prevent Phase B from silently resolving or downloading newer artifacts:
 | `PP-OCRv6_rec_small.onnx` | 21,234,383 | `6f327246b50388f3c176ae304bd95767ea6dc0c9ae92153ef8cbe210b3c14884` | PP-OCRv6 Text Recognizer (Small profile); `verification_status: unresolved` |
 | `ch_ppocr_mobile_v2.0_cls_mobile.onnx` | 585,532 | `e47acedf663230f8863ff1ab0e64dd2d82b838fceb5957146dab185a89d6215c` | Text Direction Classifier (Mobile profile); `verification_status: unresolved` |
 
-### 4.3 Critical Native DLLs
+### 4.3 Paddle CPU Model Artifacts
+| Archive Filename | Size (Bytes) | SHA-256 Hash | Installed Model Directory | Role / Status |
+|---|---:|---|---|---|
+| `PP-OCRv6_medium_det_infer.tar` | 62,279,680 | `144d0621e059566e5086e228829171591c144c2deb07b2dad4962214fbabfcf7` | `models/paddle/PP-OCRv6_medium_det` | Paddle CPU text detector inference model for offline fallback; `verification_status: unresolved` (Release Redistribution Compliance Gate OPEN downstream) |
+| `PP-OCRv6_medium_rec_infer.tar` | 76,851,200 | `4eecc1c6a4623765042e6fc15446da0da110b7d875b6b72b2d351d2b2dbd4da6` | `models/paddle/PP-OCRv6_medium_rec` | Paddle CPU text recognizer inference model for offline fallback; `verification_status: unresolved` (Release Redistribution Compliance Gate OPEN downstream) |
+
+### 4.4 Critical Native DLLs
 | Binary File | Size (Bytes) | SHA-256 Hash | Origin Wheel |
 |---|---|---|---|
 | `DirectML.dll` | 18,527,776 | `b73972115320e906a49602f2027a3266622881b0d325ba685e0f165a9482a8d7` | `onnxruntime_directml-1.24.4-cp312-cp312-win_amd64.whl` |
@@ -70,7 +82,7 @@ To prevent Phase B from silently resolving or downloading newer artifacts:
 | `ffmpegmediaplugin.dll` | 701,752 | Dynamic (Qt Multimedia plugin) | `PySide6-6.11.2-cp310-abi3-win_amd64.whl` |
 | `qsqlite.dll` | 1,986,872 | Dynamic (Qt SQL plugin) | `PySide6-6.11.2-cp310-abi3-win_amd64.whl` |
 
-### 4.4 Database SQL Migrations
+### 4.5 Database SQL Migrations
 | Migration File | Size (Bytes) | SHA-256 Hash |
 |---|---|---|
 | `0001_create_cues.sql` | 137 | `823d7aa7551f3c3fc3e61683f4e23699eef6438efd09a564f8b7e3b1ab2d05ff` |

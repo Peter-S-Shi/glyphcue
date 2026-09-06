@@ -25,7 +25,7 @@ import struct
 import tarfile
 import urllib.request
 import zipfile
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -45,7 +45,12 @@ from tools.packaging.verify_signatures import check_pe_signature, evaluate_signa
 FROZEN_BUILD_BASE_PATH = REPO_ROOT / "docs" / "m13_build_base_identity.json"
 CSC_COMPILER_PATH = Path(r"C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe")
 INNO_COMPILER_PATH = Path(os.environ.get("LOCALAPPDATA", "")) / "Programs" / "Inno Setup 6" / "ISCC.exe"
-TEST_CERT_THUMBPRINT = "A3E4E5320779C9F63E513D870E209C26B819C61E"
+POWERSHELL_EXE = Path(r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe")
+WINDOWS_POWERSHELL_MODULE_PATH = (
+    r"C:\Program Files\WindowsPowerShell\Modules;"
+    r"C:\WINDOWS\system32\WindowsPowerShell\v1.0\Modules"
+)
+TEST_CERT_THUMBPRINT = "DEDF7D0881E3A172CC018B63CCCF69FC51333AFC"
 APPROVED_TEST_CERT_SUBJECT = "CN=GlyphCue Development Test Certificate, O=GlyphCue Local Test Root"
 
 # Explicitly allowed deterministic overlapping artifact families in the frozen 85-wheel inventory:
@@ -241,6 +246,14 @@ def populate_isolated_cache(
         stage_offline_artifact(m_dest, m_sha, seed_cache_dir=seed_cache_dir)
         staged[m_fn] = m_dest
 
+    # 4. Authoritative Paddle CPU inference model archives
+    for m in frozen_inv.get("paddle_cpu_model_archives", []):
+        m_fn = m["archive_filename"]
+        m_sha = m["sha256"]
+        m_dest = downloads_dir / m_sha / m_fn
+        stage_offline_artifact(m_dest, m_sha, seed_cache_dir=seed_cache_dir)
+        staged[m_fn] = m_dest
+
     return staged
 
 
@@ -293,6 +306,62 @@ def unpack_sdist_pure_python(
                         }
 
 
+def unpack_paddle_model_archive(
+    archive_path: Path,
+    target_models_dir: Path,
+    extraction_map: dict[str, dict[str, str]],
+    source_filename: str,
+    source_sha: str,
+) -> None:
+    """Extract one verified Paddle inference archive into models/paddle with provenance."""
+    with tarfile.open(archive_path, "r") as tf:
+        members = [m for m in tf.getmembers() if m.isfile()]
+        expected_root = Path(source_filename).stem
+        required_files = {"inference.json", "inference.yml", "inference.pdiparams"}
+        seen_required: set[str] = set()
+        validated: list[tuple[tarfile.TarInfo, str, PurePosixPath]] = []
+
+        for member in members:
+            member_path = PurePosixPath(member.name)
+            parts = member_path.parts
+            if len(parts) < 2:
+                raise RuntimeError(f"Unexpected root-level file in Paddle archive {source_filename}: {member.name}")
+            if member_path.is_absolute() or ".." in parts:
+                raise RuntimeError(f"Unsafe path in Paddle archive {source_filename}: {member.name}")
+            root_name = parts[0]
+            if root_name != expected_root:
+                raise RuntimeError(
+                    f"Unexpected root '{root_name}' in Paddle archive {source_filename}; expected '{expected_root}'"
+                )
+            normalized_root = root_name[:-6] if root_name.endswith("_infer") else root_name
+            rel_inside = PurePosixPath(*parts[1:])
+            if rel_inside.name in required_files:
+                seen_required.add(rel_inside.name)
+            validated.append((member, normalized_root, rel_inside))
+
+        missing_required = sorted(required_files - seen_required)
+        if missing_required:
+            raise RuntimeError(
+                f"Paddle archive {source_filename} is missing required inference files: {missing_required}"
+            )
+
+        for member, normalized_root, rel_inside in validated:
+            dest_file = target_models_dir / "paddle" / normalized_root / rel_inside
+            dest_file.parent.mkdir(parents=True, exist_ok=True)
+            src = tf.extractfile(member)
+            if src is None:
+                continue
+            dest_file.write_bytes(src.read())
+            app_root_rel = f"models/paddle/{normalized_root}/{str(rel_inside).replace(chr(92), '/')}"
+            extraction_map[app_root_rel] = {
+                "source_artifact": source_filename,
+                "source_artifact_sha256": source_sha,
+                "license": "Apache-2.0 (Redistribution Unconfirmed)",
+                "verification_status": "unresolved",
+                "role": "paddle_cpu_model_weights",
+            }
+
+
 def compile_launcher(dest_exe: Path) -> str:
     """Compile first-party GlyphCue.exe launcher using csc.exe and return pre-sign SHA-256."""
     dest_exe.parent.mkdir(parents=True, exist_ok=True)
@@ -322,12 +391,23 @@ def sign_pe_file(pe_path: Path, thumbprint: str) -> None:
     """Apply Authenticode signature to a PE binary using PowerShell and the test cert."""
     ps_cmd = f"""
     $cert = Get-Item 'Cert:\\CurrentUser\\My\\{thumbprint}'
-    $sig = Set-AuthenticodeSignature -FilePath '{pe_path.resolve()}' -Certificate $cert -HashAlgorithm SHA256
-    if ($sig.Status -eq 'NotSigned') {{
-        throw 'Failed to sign {pe_path.name}'
-    }}
+    Set-AuthenticodeSignature -FilePath '{pe_path.resolve()}' -Certificate $cert -HashAlgorithm SHA256 | Out-Null
     """
-    subprocess.run(["powershell", "-NoProfile", "-Command", ps_cmd], capture_output=True, text=True, check=True)
+    env = os.environ.copy()
+    env["PSModulePath"] = WINDOWS_POWERSHELL_MODULE_PATH
+    res = subprocess.run(
+        [str(POWERSHELL_EXE), "-NoProfile", "-Command", ps_cmd],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+    )
+    actual = check_pe_signature(pe_path, expected_thumbprint=thumbprint)
+    if not actual["verified_first_party"]:
+        raise RuntimeError(
+            f"Failed to sign {pe_path.name}: returncode={res.returncode}; "
+            f"stdout={res.stdout.strip()!r}; stderr={res.stderr.strip()!r}; signature={actual}"
+        )
 
 
 def build_reconstruction_app_root(
@@ -454,18 +534,35 @@ def build_reconstruction_app_root(
             raise FileNotFoundError(f"Required frozen model missing: {m_name}")
         shutil.copy2(m_path, models_dir / m_name)
 
-    # 7. Diagnostics
+    # 7. Authoritative Paddle CPU Model Archives
+    paddle_archive_sha_lookup = {
+        m["archive_filename"]: m["sha256"]
+        for m in frozen_inv.get("paddle_cpu_model_archives", [])
+    }
+    for archive_name, archive_sha in paddle_archive_sha_lookup.items():
+        archive_path = staged_artifacts.get(archive_name)
+        if not archive_path or not archive_path.is_file():
+            raise FileNotFoundError(f"Required frozen Paddle CPU model archive missing: {archive_name}")
+        unpack_paddle_model_archive(
+            archive_path,
+            models_dir,
+            extraction_map,
+            archive_name,
+            archive_sha,
+        )
+
+    # 8. Diagnostics
     shutil.copy2(REPO_ROOT / "tools" / "devqa_directml_verify.py", diagnostics_dir / "devqa_directml_verify.py")
 
-    # 8. Compile first-party GlyphCue.exe launcher & record pre-sign SHA
+    # 9. Compile first-party GlyphCue.exe launcher & record pre-sign SHA
     launcher_exe = app_root / "GlyphCue.exe"
     presign_sha = compile_launcher(launcher_exe)
 
-    # 9. Inner Signing: Sign GlyphCue.exe
+    # 10. Inner Signing: Sign GlyphCue.exe
     sign_pe_file(launcher_exe, TEST_CERT_THUMBPRINT)
     postsign_sha = hash_file(launcher_exe)
 
-    # 10. Generate Signature Inventory for app_root
+    # 11. Generate Signature Inventory for app_root
     sig_inv_path = legal_dir / "signature_inventory.json"
     sig_inv = evaluate_signature_gate(
         app_root,
@@ -474,7 +571,7 @@ def build_reconstruction_app_root(
         allow_mock=False,
     )
 
-    # 11. Generate Payload Manifest & CycloneDX 1.6 SBOM
+    # 12. Generate Payload Manifest & CycloneDX 1.6 SBOM
     manifest_path = legal_dir / "payload_manifest.json"
     manifest = generate_manifest(
         app_root,
@@ -494,7 +591,7 @@ def build_reconstruction_app_root(
         extraction_provenance_map=extraction_map,
     )
 
-    # 12. Final payload tree reconciliation assertion against disk
+    # 13. Final payload tree reconciliation assertion against disk
     disk_files = {p.relative_to(app_root).as_posix() for p in app_root.rglob("*") if p.is_file() and p != manifest_path}
     manifest_files = {entry["path"].replace("\\", "/") for entry in manifest["files"]}
     unindexed_on_disk = disk_files - manifest_files
