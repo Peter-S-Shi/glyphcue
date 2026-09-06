@@ -1,10 +1,10 @@
-# GlyphCue v1.0.0 Public Distribution Gate — Gate A: Redistribution & Licensing Compliance Audit
+# GlyphCue v1.0.0 Public Distribution Gate — Gate A/B: Redistribution & Licensing Compliance Audit and Minimum Real Payload
 
 **Document type:** Authoritative public-safe compliance matrix
 **Target Issue:** #30 — GlyphCue v1.0.0 Public Distribution Gate
 **Branch:** `release/1.0.0-public-distribution`, based exactly on M13-closed `main` @ `4adbb6c4679b40220c07b01fb46969722138fd35`
-**Status:** Gate A audit only. No code, packaging, runtime, or product behavior changed. No rebuild, no tag, no GitHub Release performed.
-**Date:** 2026-09-06 (revised same day — see "Revision" note below)
+**Status:** Gate A **PASS**. Gate B (minimum real public-distribution payload) implemented and verified against a freshly rebuilt real `app_root`/installer — see §6. Both Owner governance questions RESOLVED (§5). Not yet tagged, not yet published as a GitHub Release, PR #31 not yet merged.
+**Date:** 2026-09-06 (revised twice same day — see "Revision" note below, then §6 for the Gate B closure)
 
 **Revision note:** This document's original §4.1/§6 recommended removing `libx264-*.dll`/`libx265-*.dll` from the shipped payload as a sufficient fix. That remediation is **wrong and has been struck below**: FFmpeg's own licensing policy is that enabling `--enable-gpl` at configure time makes the GPL apply to the FFmpeg build **as a whole**, not only to the specific GPL-only codec it enables — confirmed via FFmpeg's own legal page ("If those parts get used the GPL applies to all of FFmpeg"; its own LGPL-compliance checklist requires compiling **without** `--enable-gpl` from the start). Deleting the external `libx264`/`libx265` DLL files after compilation does not relicense the already-GPL-configured `avcodec`/`avformat`/`avutil`/etc. binaries back to LGPL, and risks breaking their dynamic dependencies. §4.1 is now revised to record a genuinely verified LGPL-only replacement path instead, empirically validated under `build_artifacts/`.
 
@@ -122,33 +122,51 @@ Despite 84 of 85 frozen wheels carrying proper `.dist-info/licenses/` folders (s
 
 ---
 
-## 5. Governance Questions for the Owner (not decided here)
+## 5. Governance Questions for the Owner
 
-### 5.1 No project LICENSE file exists (wording corrected this revision)
+### 5.1 No project LICENSE file exists — **RESOLVED: MIT**
 
-Confirmed: no `LICENSE`, `LICENSE.md`, `LICENSE.txt`, or `README.md` exists at the repository root. **Correction to the original wording:** the absence of a project LICENSE does **not** stop the Owner, as copyright holder, from distributing the compiled binary — the Owner owns the copyright in GlyphCue's own source and needs no license grant from themself to ship it. What an undeclared LICENSE actually means is narrower and different: **no downstream party is explicitly granted any source-code rights** (no stated permission to view, modify, redistribute, or build derivative works from GlyphCue's own source, whether the repository is public or not) — by default copyright law, all such rights are reserved absent an explicit grant. This is still a real, live decision for the Owner (permissive OSS like MIT/Apache-2.0, a source-available/all-rights-reserved terms-of-use for the binary, or leaving it fully proprietary/closed), and it still affects how the §4.2 third-party NOTICE document should be framed — but it is a source-rights question, not a distribution-permission question, and this audit does not choose it silently. Now that §4.1's remediation is a verified LGPL-only replacement rather than a component-removal that risked tainting the combined work, this decision no longer gates whether the binary itself can ship; it gates what rights, if any, GlyphCue grants downstream over its own source.
+Confirmed at the time of this audit: no `LICENSE`, `LICENSE.md`, `LICENSE.txt`, or `README.md` existed at the repository root. **Correction to the original wording:** the absence of a project LICENSE does **not** stop the Owner, as copyright holder, from distributing the compiled binary — the Owner owns the copyright in GlyphCue's own source and needs no license grant from themself to ship it. What an undeclared LICENSE actually means is narrower and different: **no downstream party is explicitly granted any source-code rights** (no stated permission to view, modify, redistribute, or build derivative works from GlyphCue's own source) — by default copyright law, all such rights are reserved absent an explicit grant. It was, however, still a real, live decision for the Owner, and it affects how the §4.4 third-party NOTICE document is framed.
 
-### 5.2 Signing policy inconsistency across the Owner's own projects
+**Owner decision (final):** GlyphCue's own source code is licensed under the **MIT License**, consistent with the Owner's Vocabulary App MIT posture. A root `LICENSE` file has been added to the repository and is copied into the installed application at `app_root\LICENSE` (see `docs/v1_public_release_dependency_provenance.json`).
 
-Current GlyphCue macro docs (`ROADMAP.md` §20, `docs/m13_phase_d/PHASE_D_RELAY.md`) treat **formal production/public-trust signing** as a hard release gate, separate from and blocking public distribution. The Owner has stated that two sibling projects — Vocabulary App and ListenTrace — ship self-signed or unsigned Windows binaries with honest SmartScreen disclosure instead. This is a real inconsistency across the Owner's own release governance, not a GlyphCue-specific technical requirement (nothing in GlyphCue's actual payload — Inno Setup installer, app-local Python runtime — technically requires a production certificate to function).
+### 5.2 Signing policy inconsistency across the Owner's own projects — **RESOLVED: self-signed with disclosure accepted**
 
-**Narrowest cross-repo-consistent recommendation (not a decision — flagged for the Owner):** align GlyphCue's policy with the precedent already set by Vocabulary App and ListenTrace — ship self-signed (or unsigned) with an honest, visible SmartScreen/"Unknown Publisher" disclosure in the README/release notes and in-app "About," rather than treating production code-signing as a hard release gate unique to GlyphCue. This is the narrowest change (aligns GlyphCue to existing practice, doesn't ask the other two projects to change) and avoids GlyphCue silently inventing a stricter bar than the Owner has applied elsewhere. **This is a recommendation only; governance documents are not being rewritten as part of this Gate A audit.**
+Current GlyphCue macro docs (`ROADMAP.md` §20, `docs/m13_phase_d/PHASE_D_RELAY.md`) treated **formal production/public-trust signing** as a hard release gate, separate from and blocking public distribution. The Owner had stated that two sibling projects — Vocabulary App and ListenTrace — ship self-signed or unsigned Windows binaries with honest SmartScreen disclosure instead. This was a real inconsistency across the Owner's own release governance, not a GlyphCue-specific technical requirement (nothing in GlyphCue's actual payload — Inno Setup installer, app-local Python runtime — technically requires a production certificate to function).
+
+**Owner decision (final):** the existing self-signed Authenticode development certificate (`CN=GlyphCue Development Test Certificate, O=GlyphCue Local Test Root`, thumbprint `DEDF7D0881E3A172CC018B63CCCF69FC51333AFC`) is **accepted for v1.0.0 public distribution**, with explicit SmartScreen / not-publicly-trusted disclosure to end users. This is the narrowest cross-repo-consistent policy this audit recommended: it aligns GlyphCue with the precedent already set by Vocabulary App and ListenTrace rather than inventing a stricter bar unique to GlyphCue. **Formal production/public-trust signing is not a v1.0.0 blocker.** The explicit SmartScreen/not-publicly-trusted disclosure text for the README/release notes and installer still needs drafting as a follow-up (see `docs/v1_public_release_dependency_provenance.json`'s `owner_governance_decisions.signing_policy_decision.not_yet_done`) — recording the decision here does not by itself produce that user-facing copy.
 
 ---
 
-## 6. Gate A Classification
+## 6. Gate A/B Classification
 
-## **PASS-WITH-ACTIONS**
+## **PASS** (Gate A research accepted; Gate B minimum real payload implemented and verified)
 
-Gate A is not BLOCKED: no finding here requires reopening Phase D/E/F, rerunning OCR evaluation, or a broad M13 retest. It is not a clean PASS either: one real, concrete redistribution risk (§4.1) exists in the payload today and must be fixed before the public installer is frozen.
+Both previously-blocking items are now resolved and empirically verified against a freshly rebuilt, real public-release candidate `app_root` and installer — not merely staged under `build_artifacts/`:
 
-### Minimum exact actions before freezing the public installer
+1. **LGPL-only FFmpeg replacement wired into the real packaging pipeline** (`execute_phase_b.py`/`execute_phase_c.py`, via `tools/packaging/lgpl_ffmpeg_replacement.py`): archive hash verified before extraction, all 7 core FFmpeg DLLs deterministically replaced, all 18 superseded GPL-build auxiliary DLLs removed, `assert_no_gpl_ffmpeg_codec_libraries()` and the strengthened `assert_lgpl_ffmpeg_core_identities()` (exact SHA-256 content match, not filename-only) both fail-closed gates in the pipeline.
+2. **Both Owner governance questions resolved** (§5.1 MIT license, §5.2 self-signed-with-disclosure) — recorded in `docs/v1_public_release_dependency_provenance.json`.
+3. **Third-party notices compliance surface** (`legal/THIRD-PARTY-NOTICES.txt` + `legal/third_party_licenses/`) generated and verified present inside the actual installed application, not only the repository.
+4. **FFmpeg LGPL corresponding-source package** prepared as a standalone, attachable GitHub Release asset (real FFmpeg source + BtbN build scripts + LGPLv3 text, not a link to a mutable upstream page).
 
-1. **(Required, blocking) Wire the verified LGPL-only FFmpeg replacement into the real packaging pipeline** (`execute_phase_b.py`/`execute_phase_c.py`): swap all 7 core FFmpeg DLLs in `app_root/lib/av.libs/` for the pinned build recorded in `tools/packaging/verify_no_gpl_ffmpeg_codecs.py`'s `LGPL_FFMPEG_PROVENANCE` (BtbN/FFmpeg-Builds `ffmpeg-n8.1.2-...-win64-lgpl-shared-8.1.zip`, SHA-256 `0f86693c...965043fb`), remove the now-superfluous old codec/runtime DLLs, and call `assert_no_gpl_ffmpeg_codec_libraries(app_root)` as a fail-closed packaging gate. **Not yet done** — this session validated the swap under `build_artifacts/v1_gate_a/` only, per instruction not to freeze/rebuild the real installer.
-2. **(Required, blocking) Owner decision on governance question 5.1** (project LICENSE / downstream source-code rights) — this no longer gates whether the binary can ship (corrected in this revision), but still needs an answer to correctly scope the NOTICE document in action 4.
-3. **(Required, blocking) Owner decision on governance question 5.2** (signing policy) — determines whether "formal production/public-trust signing" stays a hard gate or is relaxed to match Vocabulary App / ListenTrace precedent; blocks the release governance checklist either way.
-4. **(Required, non-blocking-for-Gate-A but required before public release) Produce the consolidated third-party NOTICE document and ship it inside the installed application** (e.g. `THIRD-PARTY-NOTICES.txt` in `app_root`, or an in-app "About → Licenses" surface) — not only in the repository/release notes, per the corrected notice-placement finding in §4.4.
-5. **(Recommended, non-blocking) Strip unused Qt Addon modules** (WebEngine, Charts, DataVisualization) from the packaging step to shrink payload size and attribution surface.
-6. **(Recommended, non-blocking) Archive dated snapshots** of the PaddlePaddle PP-OCRv6 release announcement and RapidOCR's ModelScope license page as durable evidence for the five frozen model assets (§3), since upstream pages can change after this audit.
+### Fresh rebuild verification results (real `app_root` and installer, not a staged mock)
 
-None of the above requires touching OCR/runtime architecture, rebuilding the already-Owner-validated installer, retesting Phase D/E/F, or a B/C dual reseal. Actions 1 and 5 are packaging-script changes (which files get copied, and a fail-closed guard); actions 2, 3, and 4 are governance/documentation decisions and their resulting paperwork.
+- No GPL-only codec library filename present: **PASS**
+- All 7 core FFmpeg DLLs match the pinned LGPL build's SHA-256 exactly: **PASS**
+- Runtime sanity (PySide6, PyAV, ONNX Runtime DirectML provider active, RapidOCR construction): **PASS**
+- Manifest-to-disk reconciliation (21,811 files, 0 unindexed, 0 missing) + `integrity_gate`/`untracked_file_gate`/`provenance_gate_experiment_scope` all `PASS`: **PASS**
+- `LICENSE`, `legal/THIRD-PARTY-NOTICES.txt`, and `legal/third_party_licenses/` (including full LGPL-3.0 and Apache-2.0 texts) confirmed present in the installed payload: **PASS**
+- PyAV import + canonical fixture decode, run under the rebuilt `app_root`'s own embedded CPython 3.12 (not the dev venv): frame count, PTS sequence, and decoded frame bytes (SHA-256 of raw RGB24 arrays) **byte-identical** to the original GPL-configured baseline: **PASS**
+- Installer signed with the existing self-signed development certificate, Authenticode `Valid`: **PASS**
+
+**Final candidate installer:** SHA-256 (signed) `bf576d81e626a04f0b0cfd78f834a748cb23c184af14e6720774185fb234ba69`, 611,055,240 bytes. See `build_artifacts/v1_public_release/provenance.json` and `SHA256SUMS.txt` (machine-local, gitignored) for the full candidate release-asset record.
+
+### Remaining before tagging/publishing v1.0.0 (not performed this session, per instruction)
+
+1. Draft the explicit SmartScreen/not-publicly-trusted disclosure text for the README/release notes and installer (the signing *policy* is resolved; the user-facing disclosure *copy* is not yet written).
+2. **(Recommended, non-blocking)** Strip unused Qt Addon modules (WebEngine, Charts, DataVisualization) — explicitly deferred, not performed this pass, to avoid unnecessarily broadening the payload delta.
+3. **(Recommended, non-blocking)** Archive dated snapshots of the PaddlePaddle PP-OCRv6 release announcement and RapidOCR's ModelScope license page as durable evidence for the five frozen model assets (§3).
+4. Attach the FFmpeg LGPL corresponding-source package, the installer, and `SHA256SUMS.txt`/`provenance.json` to an actual GitHub v1.0.0 Release (not created this session).
+5. Tag and publish `v1.0.0` only after Owner/ChatGPT distribution review of the candidate installer identity above.
+
+None of the above requires touching OCR/runtime architecture, retesting Phase D/E/F, F1-F4, or a B/C dual reseal — no targeted check this session exposed a contradiction requiring one.

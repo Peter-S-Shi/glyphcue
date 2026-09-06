@@ -35,6 +35,15 @@ if str(REPO_ROOT) not in sys.path:
 from tools.packaging.assemble_embeddable_runtime import APPROVED_PTH_CONTENT
 from tools.packaging.generate_cyclonedx_sbom import generate_cyclonedx_sbom
 from tools.packaging.generate_payload_manifest import generate_manifest
+from tools.packaging.generate_third_party_notices import generate_third_party_notices
+from tools.packaging.lgpl_ffmpeg_replacement import (
+    apply_lgpl_ffmpeg_replacement,
+    download_and_verify_lgpl_ffmpeg_archive,
+)
+from tools.packaging.verify_no_gpl_ffmpeg_codecs import (
+    assert_lgpl_ffmpeg_core_identities,
+    assert_no_gpl_ffmpeg_codec_libraries,
+)
 from tools.packaging.verify_payload_drift import (
     compare_installer_envelopes,
     compare_reconstructions,
@@ -416,6 +425,7 @@ def build_reconstruction_app_root(
     app_root: Path,
     staged_artifacts: dict[str, Path],
     frozen_inv: dict[str, Any],
+    lgpl_ffmpeg_cache_dir: Path | None = None,
 ) -> dict[str, Any]:
     """Assemble complete <app_root> tree with strict conflict gate and provenance recording."""
     if app_root.exists():
@@ -556,6 +566,26 @@ def build_reconstruction_app_root(
     # 8. Diagnostics
     shutil.copy2(REPO_ROOT / "tools" / "devqa_directml_verify.py", diagnostics_dir / "devqa_directml_verify.py")
 
+    # 8b. v1.0.0 Public Distribution Gate A: replace PyAV's vendored
+    # GPL-configured FFmpeg build with the pinned, verified LGPL-only build.
+    # See docs/v1_public_distribution_gate_a_compliance_audit.md Section 4.1
+    # and tools/packaging/lgpl_ffmpeg_replacement.py. Fails closed on any
+    # archive/DLL identity mismatch. Kept independently duplicated from
+    # execute_phase_b.py per this repo's reconstruction-independence
+    # convention -- both authoritative build paths call the same shared
+    # verified-provenance module, not each other.
+    cache_dir = lgpl_ffmpeg_cache_dir or (REPO_ROOT / ".cache" / "packaging" / "lgpl_ffmpeg")
+    lgpl_archive = download_and_verify_lgpl_ffmpeg_archive(cache_dir)
+    lgpl_ffmpeg_report = apply_lgpl_ffmpeg_replacement(app_root, lgpl_archive)
+    assert_no_gpl_ffmpeg_codec_libraries(app_root)
+    assert_lgpl_ffmpeg_core_identities(app_root)
+    (legal_dir / "lgpl_ffmpeg_replacement.json").write_text(
+        json.dumps(lgpl_ffmpeg_report, indent=2), encoding="utf-8"
+    )
+
+    # 8c. Ship GlyphCue's own MIT LICENSE inside the installed application.
+    shutil.copy2(REPO_ROOT / "LICENSE", app_root / "LICENSE")
+
     # 9. Compile first-party GlyphCue.exe launcher & record pre-sign SHA
     launcher_exe = app_root / "GlyphCue.exe"
     presign_sha = compile_launcher(launcher_exe)
@@ -596,13 +626,19 @@ def build_reconstruction_app_root(
     sbom_path = legal_dir / "sbom.json"
     generate_cyclonedx_sbom(manifest_path, sbom_path)
 
-    # Finalize payload manifest to index the generated sbom.json as well
+    # 12b. Generate the in-app third-party notices/license compliance
+    # surface (legal/THIRD-PARTY-NOTICES.txt + legal/third_party_licenses/).
+    generate_third_party_notices(app_root, manifest)
+
+    # Finalize payload manifest to index the generated sbom.json and
+    # third-party notices files as well
     manifest = generate_manifest(
         app_root,
         manifest_path,
         enforce_all_expected_present=True,
         extraction_provenance_map=extraction_map,
     )
+    generate_cyclonedx_sbom(manifest_path, sbom_path)
 
     # 13. Final payload tree reconciliation assertion against disk
     disk_files = {p.relative_to(app_root).as_posix() for p in app_root.rglob("*") if p.is_file() and p != manifest_path}
@@ -623,6 +659,7 @@ def build_reconstruction_app_root(
         "signature_inventory": sig_inv,
         "extraction_map": extraction_map,
         "conflict_log": conflict_log,
+        "lgpl_ffmpeg_replacement": lgpl_ffmpeg_report,
     }
 
 

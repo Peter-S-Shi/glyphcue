@@ -234,6 +234,22 @@ def classify_payload_file(
             "license": "N/A",
             "verification_status": "verified",
         }
+    elif norm == "LICENSE" or norm == "legal/THIRD-PARTY-NOTICES.txt":
+        return {
+            "role": "first_party_license_document",
+            "source_artifact": "glyphcue-source-commit:5905df09d012cb63a34b98c484b43958477e52e8",
+            "source_artifact_sha256": None,
+            "license": "MIT",
+            "verification_status": "verified",
+        }
+    elif norm.startswith("legal/third_party_licenses/"):
+        return {
+            "role": "third_party_license_text",
+            "source_artifact": "glyphcue_third_party_notices_generator",
+            "source_artifact_sha256": None,
+            "license": "Third-Party-Declared",
+            "verification_status": "verified",
+        }
     elif norm.startswith("diagnostics/"):
         src_art = "glyphcue-source-commit:5905df09d012cb63a34b98c484b43958477e52e8"
         return {
