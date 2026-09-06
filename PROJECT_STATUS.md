@@ -4,7 +4,7 @@
 
 ## Current milestone
 
-**Milestone 13 — Release Candidate & Signed Release / Minimum Runtime-Fidelity Packaging Experiment (Issue #27): COMPLETE / PASS (Phases A–F all passed; merged to `main` via PR #29); Post-M13 Public Distribution Gate (Issue #30, PR #31): CLOSED & ACCEPTED; Release Ready = NO; Portfolio Packaging Ready = NO.**
+**Milestone 13 — Release Candidate & Signed Release / Minimum Runtime-Fidelity Packaging Experiment (Issue #27): COMPLETE / PASS (Phases A–F all passed; merged to `main` via PR #29); Post-M13 Public Distribution Gate (Issue #30, PR #31): COMPLETE / PUBLICLY RELEASED & VERIFIED; GlyphCue v1.0.0 LIVE; Release Ready = YES; Portfolio Packaging Ready = YES; next target = Milestone 14.**
 
 Milestone 13 Minimum Runtime-Fidelity Packaging Experiment was executed on dedicated branch `milestone/13-release-candidate` governed by Wayfinder charter packages #17–#26 and execution issue #27:
 - **Phase A — Frozen Inputs & Experiment Scaffold: ACCEPTED (2026-09-05)**:
@@ -70,7 +70,7 @@ Milestone 13 Minimum Runtime-Fidelity Packaging Experiment was executed on dedic
   - **Gate B — Minimum Real Public Distribution Payload & Candidate Freeze**: **PASS**.
     - Rebuilt `app_root` (21,811 files), manifest-to-disk reconciliation confirmed (0 unindexed, 0 missing, all gates PASS).
     - Final frozen candidate installer: `GlyphCue-Setup-1.0.0.exe`, SHA-256 `F88C2FE2C6D226BD2FFF5ECFDC7E7F64DC32917B8C00597FB17D42B9A7244446`, Authenticode `Valid`.
-- **Release Status**: **Release Ready = NO**; **Portfolio Packaging Ready = NO** (v1.0.0 release candidate is accepted and packaging/redistribution compliance gates are closed; both remain NO until the post-merge release sequence — PR merge → create v1.0.0 tag → generate final provenance.json & SHA256SUMS.txt → publish GitHub Release with all four assets → independent download verification — is completed).
+- **Release Status**: **Release Ready = YES**; **Portfolio Packaging Ready = YES**. Annotated tag `v1.0.0` points to release commit `d394ec777803364f27a7a9f0cf287f393f977db3`; the public GitHub Release is live with all four required assets; independent clean-download verification reproduced installer SHA-256 `F88C2FE2C6D226BD2FFF5ECFDC7E7F64DC32917B8C00597FB17D42B9A7244446` and FFmpeg corresponding-source SHA-256 `FC59A64DB0B932A63FB7432C57CFE850BA3CAA07F73E9BEC4437416E3240D3CC`.
 
 ### Validation
 - Clean Reconstruction A vs B Verification: **PASS** (21,711/21,711 unsigned files identical, signed PE identical, installer envelope PASS).
@@ -877,13 +877,14 @@ appears anywhere in the repository.
 ## Git / PR status
 
 - Authoritative state: `main` contains Milestone 13 (PR [#29](https://github.com/Peter-S-Shi/glyphcue/pull/29)); Milestone 13 is COMPLETE / CLOSED.
-- Active working branch: `release/1.0.0-public-distribution` (PR [#31](https://github.com/Peter-S-Shi/glyphcue/pull/31) — Close GlyphCue v1.0.0 Public Distribution Gate; governing Issue [#30](https://github.com/Peter-S-Shi/glyphcue/issues/30)).
-- Public Distribution Gate vehicle: PR [#31](https://github.com/Peter-S-Shi/glyphcue/pull/31) — Gate A (Licensing & Redistribution Compliance) and Gate B (Minimum Real Public Distribution Payload & Candidate Freeze) are CLOSED & ACCEPTED.
+- Active working branch: none for V1 release engineering; `v1.0.0` is publicly released and verified.
+- Public Distribution Gate vehicle: PR [#31](https://github.com/Peter-S-Shi/glyphcue/pull/31) — merged; Gate A/B, release publication, and independent download verification are COMPLETE. Governing Issue [#30](https://github.com/Peter-S-Shi/glyphcue/issues/30) is ready to close as completed with this reconciliation.
+- Public release: [GlyphCue v1.0.0](https://github.com/Peter-S-Shi/glyphcue/releases/tag/v1.0.0), release commit `d394ec777803364f27a7a9f0cf287f393f977db3`.
 
 ## Unresolved
 
-- `Release Ready = NO`; `Portfolio Packaging Ready = NO`. The candidate installer and redistribution compliance gates are fully resolved and accepted, but formal release tag, GitHub Release asset publication, and independent download verification have not yet occurred.
-- SmartScreen / not-publicly-trusted disclosure text is accepted policy and to be included in user-facing release notes and documentation upon publication.
+- No open Public Distribution Gate blocker remains. `Release Ready = YES`; `Portfolio Packaging Ready = YES`.
+- SmartScreen / not-publicly-trusted disclosure is published in the v1.0.0 GitHub Release notes; formal production/public-trust signing remains optional future hardening, not a V1 release blocker.
 - Residual non-blocking evaluation findings preserved (informational, not release blockers on their own):
   - `sample_c`: Isolated window-boundary non-text reading (`"zh": "3\n8"`) on Cue 1 (1.1s), safely fail-closed with `ambiguous_languages: ["zh"]`; non-contaminating.
   - `sample_f`: One illegible Chinese layer at 661.1s left untranscribed in GT rather than guessed; rapid b-roll editor button glyphs flagged ambiguous.
@@ -891,9 +892,5 @@ appears anywhere in the repository.
 
 ## Next action
 
-1. Merge PR [#31](https://github.com/Peter-S-Shi/glyphcue/pull/31) into `main`.
-2. Create `v1.0.0` tag on the accepted `main` merge commit.
-3. Generate final `provenance.json` (binding the final `main` merge commit/tag and frozen installer hash) and `SHA256SUMS.txt`.
-4. Formally publish the GlyphCue `v1.0.0` GitHub Release attaching all four release assets: `GlyphCue-Setup-1.0.0.exe` (SHA-256 `F88C2FE2C6D226BD2FFF5ECFDC7E7F64DC32917B8C00597FB17D42B9A7244446`), `GlyphCue-v1.0.0-FFmpeg-LGPL-Corresponding-Source.zip` (SHA-256 `FC59A64DB0B932A63FB7432C57CFE850BA3CAA07F73E9BEC4437416E3240D3CC`), `SHA256SUMS.txt`, and `provenance.json`, with release notes including SmartScreen disclosure.
-5. Independently verify downloads and clean installation from public assets.
-6. Portfolio Packaging Ready = YES; advance to Milestone 14 (Portfolio Packaging & Stop-Building Closure).
+1. Close Issue [#30](https://github.com/Peter-S-Shi/glyphcue/issues/30) as completed after this post-release governance reconciliation merges.
+2. Advance to Milestone 14 — Portfolio Packaging & Stop-Building Closure. No further V1 release-engineering work is required unless new regression evidence appears.
