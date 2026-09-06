@@ -82,7 +82,9 @@ namespace GlyphCue.Launcher {
             }
             ProcessStartInfo psi = new ProcessStartInfo();
             psi.FileName = pythonExe;
-            psi.Arguments = "-m glyphcue.ui.app";
+            // -B: never write __pycache__/*.pyc into the installer-owned app root
+            // (uninstall cannot cleanly remove a directory it doesn't fully track).
+            psi.Arguments = "-B -m glyphcue.ui.app";
             psi.WorkingDirectory = baseDir;
             psi.UseShellExecute = false;
             try {

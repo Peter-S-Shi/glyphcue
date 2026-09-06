@@ -69,6 +69,7 @@ end;
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
   UserDataPath: string;
+  AppRootPath: string;
 begin
   if CurUninstallStep = usPostUninstall then
   begin
@@ -80,6 +81,18 @@ begin
       begin
         DelTree(UserDataPath, True, True, True);
       end;
+    end;
+
+    // Unconditional, independent of the purge choice above: standard Inno
+    // uninstall only removes the files/dirs it tracked at install time, so
+    // runtime-generated residue (e.g. __pycache__/*.pyc from installs
+    // predating -B) leaves {app} non-empty and never removed. {app} is
+    // entirely installer-owned, so force-remove it regardless.
+    // %USERPROFILE%\.glyphcue is a disjoint path and is never touched here.
+    AppRootPath := ExpandConstant('{app}');
+    if DirExists(AppRootPath) then
+    begin
+      DelTree(AppRootPath, True, True, True);
     end;
   end;
 end;

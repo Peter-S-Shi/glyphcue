@@ -23,6 +23,7 @@ or substitute for real Phase B runtime assembly.
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import sys
 from pathlib import Path
@@ -367,6 +368,68 @@ def test_strict_offline_reconstruction_fails_on_missing_staged_input(tmp_dir: Pa
     print("[OK] test_strict_offline_reconstruction_fails_on_missing_staged_input passed (fail closed)")
 
 
+def _find_matching_end(source: str, begin_index: int) -> int:
+    """Return the index of the ``end;`` keyword that closes the ``begin`` at begin_index."""
+    depth = 0
+    for match in re.finditer(r"\b(begin|end)\b", source[begin_index:], flags=re.IGNORECASE):
+        if match.group(1).lower() == "begin":
+            depth += 1
+        else:
+            depth -= 1
+            if depth == 0:
+                return begin_index + match.end()
+    raise AssertionError("Unbalanced begin/end while scanning Inno Setup [Code] section")
+
+
+def test_launcher_suppresses_bytecode_writes_into_app_root() -> None:
+    """Both authoritative launcher-compilation paths (Phase B real build and
+    Phase C independent reconstruction) must invoke python.exe with -B so no
+    __pycache__/*.pyc is ever written into the installer-owned <app_root>.
+    F3 default uninstall previously failed because standard Inno uninstall
+    cannot remove files/dirs it never tracked at install time."""
+    for module_name in ("execute_phase_b", "execute_phase_c"):
+        module_path = REPO_ROOT / "tools" / "packaging" / f"{module_name}.py"
+        source = module_path.read_text(encoding="utf-8")
+        assert "LAUNCHER_CS_SOURCE" in source, f"{module_name}.py must define LAUNCHER_CS_SOURCE"
+        assert 'psi.Arguments = "-B -m glyphcue.ui.app";' in source, (
+            f"{module_name}.py launcher must invoke python.exe with -B "
+            f"to suppress bytecode writes into <app_root>"
+        )
+    print("[OK] test_launcher_suppresses_bytecode_writes_into_app_root passed")
+
+
+def test_uninstaller_forcibly_removes_app_root_preserving_user_data() -> None:
+    """Default uninstall must force-remove the entire installer-owned
+    <app_root> (including any legacy runtime-generated residue such as
+    pre-existing __pycache__/*.pyc), unconditionally and independent of the
+    explicit, opt-in %USERPROFILE%\\.glyphcue user-data purge checkbox."""
+    iss_path = REPO_ROOT / "tools" / "packaging" / "glyphcue_installer.iss"
+    source = iss_path.read_text(encoding="utf-8")
+
+    proc_index = source.index("procedure CurUninstallStepChanged")
+    proc_begin_index = source.index("begin", proc_index)
+    proc_end_index = _find_matching_end(source, proc_begin_index)
+    proc_body = source[proc_begin_index:proc_end_index]
+
+    purge_if_marker = "if (PurgeUserDataCheckbox <> nil) and PurgeUserDataCheckbox.Checked then"
+    assert purge_if_marker in proc_body, "Explicit user-data purge checkbox gating must remain unchanged"
+    purge_if_index = proc_body.index(purge_if_marker)
+    purge_begin_index = proc_body.index("begin", purge_if_index)
+    purge_end_index = _find_matching_end(proc_body, purge_begin_index)
+
+    app_removal_marker = "AppRootPath := ExpandConstant('{app}');"
+    assert app_removal_marker in proc_body, "Uninstall must force-remove {app} unconditionally"
+    app_removal_index = proc_body.index(app_removal_marker)
+    assert app_removal_index >= purge_end_index, (
+        "{app} removal must sit outside (after) the purge checkbox's begin/end "
+        "block, not nested inside it -- otherwise default (non-purge) uninstall "
+        "would still leave <app_root> residue behind"
+    )
+    assert "DelTree(AppRootPath, True, True, True);" in proc_body[app_removal_index:]
+    assert "{userprofile}\\.glyphcue" in proc_body, "User data path must remain disjoint from {app}"
+    print("[OK] test_uninstaller_forcibly_removes_app_root_preserving_user_data passed")
+
+
 def run_all_scaffold_tests() -> bool:
     """Run complete scaffold validation suite."""
     test_dir = REPO_ROOT / "temp_scaffold_test"
@@ -385,6 +448,8 @@ def run_all_scaffold_tests() -> bool:
         test_installer_envelope_comparison_mock(test_dir)
         test_final_payload_manifest_exact_disk_reconciliation(test_dir)
         test_strict_offline_reconstruction_fails_on_missing_staged_input(test_dir)
+        test_launcher_suppresses_bytecode_writes_into_app_root()
+        test_uninstaller_forcibly_removes_app_root_preserving_user_data()
         print("\nALL PHASE A/C SCAFFOLD & FROZEN-INPUT VALIDATION TESTS PASSED (INCLUDING REGRESSIONS).")
         return True
     finally:
