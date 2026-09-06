@@ -2256,7 +2256,7 @@ All verification gates have been satisfied:
 6. **Accepted V1 Known Limitation Preserved**: Cue Cleaner V0.6.1 conservative contract preserved as a non-blocking V1 product trade-off; remaining cases resolved via manual Merge workflow.
 7. **Feature Freeze remains ACTIVE**.
 8. **Release Ready = YES; Portfolio Packaging Ready = YES**: `v1.0.0` is publicly released with all four required assets and independent clean-download SHA-256 verification PASS.
-9. **Milestone 14 Status**: COMPLETE. Portfolio `README.md` authored (without UI screenshots per user constraint); all relative links and empirical numbers verified.
+9. **Milestone 14 Status**: COMPLETE. Portfolio `README.md` authored; all relative links and empirical numbers verified.
 10. **Stop-Building Closure (§21)**: V1 product development is complete; new feature proposals default to Deferred / Next Version.
 
 ---

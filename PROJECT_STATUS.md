@@ -8,7 +8,7 @@
 
 - **Milestone 14 — Portfolio Packaging & Stop-Building Closure (2026-09-06)**:
   - Portfolio Story Audit completed: structured audience, 1-sentence value, 5 core capabilities, engineering evidence, and evaluation paths.
-  - Portfolio-ready `README.md` authored without UI screenshots (per user boundary), featuring problem context, pipeline architecture, DirectML hardware acceleration, selective OCR policy, multi-frame consensus, script-range layer separation, CJK rolling normalization, Build-vs-Integrate separation, and atomic multi-format export.
+  - Portfolio-ready `README.md` authored, presenting product positioning, pipeline architecture, DirectML hardware acceleration, selective OCR policy, multi-frame consensus, script-range layer separation, CJK rolling normalization, Build-vs-Integrate separation, and atomic multi-format export.
   - All relative links and quantitative claims verified against empirical repository evidence.
   - V1 feature development formally stopped (§21).
 - **Milestone 13 — Release Candidate & Signed Release / Minimum Runtime-Fidelity Packaging Experiment (Issue #27): COMPLETE / PASS (Phases A–F all passed; merged to `main` via PR #29); Post-M13 Public Distribution Gate (Issue #30, PR #31): COMPLETE / PUBLICLY RELEASED & VERIFIED; GlyphCue v1.0.0 LIVE; Release Ready = YES; Portfolio Packaging Ready = YES.**
