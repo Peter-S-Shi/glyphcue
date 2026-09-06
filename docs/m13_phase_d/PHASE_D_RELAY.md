@@ -24,11 +24,12 @@ Validation across Milestone 13 (Phases D, E, F) operates under a **risk-separate
 - Agents inspect, reconcile, and audit the resulting logs, screenshots, and command outputs deposited into `build_artifacts/phase_d/`.
 - `build_artifacts/phase_d/relay_state.json` serves as the machine-local handoff authority. Interrupted owner testing **must** be resumable from an exact recorded evidence checkpoint rather than restarted blindly.
 
-### Corrective Reseal Policy
+### Corrective Iteration Policy
 
-- If a corrective iteration changes first-party runtime code, packaged model inventory, payload manifest/SBOM inputs, offline model-resolution behavior, or signer identity, the previous Phase C accepted installer is superseded for further Phase D testing.
-- Such a corrective iteration must establish a corrected B/C reseal loop before owner retest: rebuild/sign the corrected installer, perform two clean corrected reconstructions, and re-run affected reproducibility, integrity, provenance, untracked-file, source-identity, model/DLL identity, manifest/SBOM, and normalized signed-envelope comparisons.
-- Only after corrected Phase C PASS may agents designate a new canonical Phase D installer. This designation does not mark D3 PASS; D3 PASS still requires owner clean-VM offline retest.
+- Corrective iterations are risk-scoped. Ordinary runtime/model/manifest/SBOM/offline-resolution/signer fixes require a corrected build, Authenticode/signature verification, payload integrity checks, and targeted owner retest of the affected Phase D gate(s).
+- A full Phase B/C dual-reconstruction reproducibility seal is not repeated automatically before every owner retest. It is reserved for final Release Candidate closure, or for a specific corrective change whose content, packaging, or provenance impact genuinely invalidates the existing reproducibility baseline and requires resealing.
+- If a corrective change does require resealing, agents must state the invalidated baseline and rerun the appropriate reproducibility, integrity, provenance, untracked-file, source-identity, model/DLL identity, manifest/SBOM, and normalized signed-envelope comparisons before selecting that resealed artifact.
+- A corrected build or reseal designation does not mark any Phase D gate PASS. D1/D2/D3/D4 PASS requires owner evidence and reconciliation under the applicable gate contract.
 
 > [!IMPORTANT]
 > **Dynamic HEAD Resolution Rule:**  
