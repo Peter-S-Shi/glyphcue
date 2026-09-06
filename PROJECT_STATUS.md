@@ -883,9 +883,9 @@ appears anywhere in the repository.
 
 ## Git / PR status
 
-- Authoritative state: `main` contains Milestone 13 (PR [#29](https://github.com/Peter-S-Shi/glyphcue/pull/29)), Post-M13 Public Distribution Gate (PR [#31](https://github.com/Peter-S-Shi/glyphcue/pull/31), commit `d394ec7`), and Post-Release Reconciliation (PR [#32](https://github.com/Peter-S-Shi/glyphcue/pull/32), commit `c0d28ac`).
+- Authoritative state: `main` contains Milestone 13 (PR [#29](https://github.com/Peter-S-Shi/glyphcue/pull/29)), Post-M13 Public Distribution Gate (PR [#31](https://github.com/Peter-S-Shi/glyphcue/pull/31), commit `d394ec7`), Post-Release Reconciliation (PR [#32](https://github.com/Peter-S-Shi/glyphcue/pull/32), commit `c0d28ac`), and Milestone 14 Portfolio Packaging & Stop-Building Closure (PR [#33](https://github.com/Peter-S-Shi/glyphcue/pull/33)).
 - Public release: [GlyphCue v1.0.0](https://github.com/Peter-S-Shi/glyphcue/releases/tag/v1.0.0), release commit `d394ec777803364f27a7a9f0cf287f393f977db3`.
-- Active working branch: `milestone/14-portfolio-packaging` (PR [#33](https://github.com/Peter-S-Shi/glyphcue/pull/33) — Milestone 14 Portfolio Packaging & Stop-Building Closure).
+- Active working branch: None for V1 development. Milestone 14 is COMPLETE and V1 Stop-Building Closure is active.
 
 ## Unresolved
 
@@ -898,5 +898,5 @@ appears anywhere in the repository.
 
 ## Next action
 
-1. Merge PR [#33](https://github.com/Peter-S-Shi/glyphcue/pull/33) into `main`.
-2. V1 Stop-Building Closure is active: V1 product development is complete; any future feature proposals default to Deferred / Next Version.
+1. V1 product development is formally complete; Stop-Building Closure (§21) is active.
+2. Any future feature or maintenance requests default to Deferred / Next Version.
