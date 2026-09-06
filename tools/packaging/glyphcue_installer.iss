@@ -4,7 +4,7 @@
 ; User Data: Isolated at %USERPROFILE%\.glyphcue\
 
 #ifndef MyAppVersion
-#define MyAppVersion "0.1.0"
+#define MyAppVersion "1.0.0"
 #endif
 
 #ifndef MyAppRoot
